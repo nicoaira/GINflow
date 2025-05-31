@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GINflow parameter schema",
+  "type": "object",
+  "properties": {
+    "input": {"type": "string", "description": "Path to the input TSV file"},
+    "outdir": {"type": "string", "description": "Output directory"},
+    "model_path": {"type": "string", "description": "Path to the pretrained model file"},
+    "structure_column_name": {"type": "string"},
+    "structure_column_num": {"type": ["integer", "null"]},
+    "id_column": {"type": "string"},
+    "device": {"type": "string", "enum": ["cpu", "gpu" ]},
+    "num_workers": {"type": "integer", "minimum": 1},
+    "subgraphs": {"type": "boolean"},
+    "L": {"type": ["integer", "null"]},
+    "keep_paired_neighbors": {"type": "boolean"},
+    "batch_size_embed": {"type": "integer", "minimum": 1},
+    "faiss_k": {"type": "integer", "minimum": 1},
+    "alpha1": {"type": "number"},
+    "alpha2": {"type": "number"},
+    "beta1": {"type": "number"},
+    "beta2": {"type": "number"},
+    "gamma": {"type": "number"},
+    "percentile": {"type": "number"},
+    "top_n": {"type": "integer", "minimum": 1},
+    "plot_distances_distribution": {"type": "boolean"},
+    "hist_frac": {"type": "number"},
+    "hist_bins": {"type": "integer"},
+    "plot_score_distribution": {"type": "boolean"},
+    "score_bins": {"type": "integer"}
+  },
+  "required": ["input", "model_path"]
+}
