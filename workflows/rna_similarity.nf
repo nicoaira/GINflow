@@ -502,7 +502,12 @@ workflow rna_similarity {
     } else {
         gen = GENERATE_EMBEDDINGS(batch_files_ch)
     }
-    def merged = MERGE_EMBEDDINGS(gen.batch_embeddings)
+    
+    // Explicitly collect all batch embeddings before merging
+    // This ensures MERGE_EMBEDDINGS only starts when all GENERATE_EMBEDDINGS tasks have completed
+    def all_embeddings = gen.batch_embeddings.collect()
+    def merged = MERGE_EMBEDDINGS(all_embeddings)
+    
     def idx     = BUILD_FAISS_INDEX(merged.embeddings)
     def dists   = QUERY_FAISS_INDEX(merged.embeddings, idx.faiss_idx, idx.faiss_map)
     def sorted  = SORT_DISTANCES(dists)
