@@ -63,7 +63,7 @@ process GENERATE_WINDOWS {
 
     script:
     """
-    python3 ${baseDir}/modules/generate_windows.py \\
+    ginfinity-generate-windows \\
       --input ${orig_tsv} \\
       --output-dir . \\
       --id-column ${params.id_column} \\
@@ -133,7 +133,7 @@ process GENERATE_EMBEDDINGS {
     maxForks = 1
 
     input:
-    each item // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]
+    each item  // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]
 
     output:
     path "embeddings_batch_${task.index}.tsv", emit: batch_embeddings
@@ -150,21 +150,19 @@ process GENERATE_EMBEDDINGS {
 
     def cmd
     if (params.subgraphs) {
-        // 'item' is [graphs_pt, metadata_tsv]
-        def graphs_pt_file = item[0]
+        def graphs_pt_file    = item[0]
         def metadata_tsv_file = item[1]
         cmd = """
-        python3 ${baseDir}/modules/generate_embeddings.py \\
+        ginfinity-embed \\
           --graph-pt ${graphs_pt_file} \\
           --meta-tsv ${metadata_tsv_file} \\
           --keep-cols ${params.id_column},window_start,window_end \\
           ${common_args}
         """
     } else {
-        // 'item' is batch_tsv_file (path)
         def batch_tsv_file = item
         cmd = """
-        python3 ${baseDir}/modules/generate_embeddings.py \\
+        ginfinity-embed \\
           --input ${batch_tsv_file} \\
           --structure-column-name ${params.structure_column_name} \\
           --keep-cols ${params.id_column},window_start,window_end \\
