@@ -52,14 +52,26 @@ process EXTRACT_META_MAP {
     """
     python3 - << 'PY'
 import pandas as pd, sys
-df  = pd.read_csv('${orig_tsv}', sep='\\t', dtype=str)
+df = pd.read_csv('${orig_tsv}', sep='\t', dtype=str)
 idc = '${params.id_column}'
-scol = '${params.structure_column_name}'.strip()
+# determine structure column: by name or index
+scol_name = '${params.structure_column_name}'
+scol_num = ${params.structure_column_num ?: 'None'}
+if scol_name:
+    scol = scol_name
+elif scol_num is not None:
+    try:
+        scol = df.columns[int(scol_num)]
+    except Exception:
+        sys.exit(f'Specified structure_column_num {scol_num} out of range')
+else:
+    scol = ''
+# detect sequence-like columns
 seq_cols = [c for c in df.columns if 'sequence' in c.lower()]
 if scol and scol in df.columns and scol not in seq_cols:
     seq_cols.append(scol)
 if not seq_cols:
-    sys.exit('No sequence or structure columns found – expected at least one column containing \"sequence\" or the specified structure column')
+    sys.exit('No sequence columns found – expected a column containing "sequence"')
 df[[idc] + seq_cols].to_csv('id_meta.tsv', sep='\\t', index=False)
 PY
     """
