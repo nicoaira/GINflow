@@ -1,1 +1,5 @@
 *.json
+work
+.nextflow*
+report*
+results*
