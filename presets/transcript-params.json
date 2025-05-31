@@ -1,7 +1,7 @@
 {
   "input": "/home/nicolas/documents/data/human/gencode_v47/canonical_transcript_sequences_f1437_ss_masked.small.tsv",
   "outdir": "results_nf_transcript",
-  "model_path": "/home/nicolas/programs/GINFINITY/src/ginfinity/weights/gin_weights_250224.pth",
+  "model_path": "./weights/gin_weights_250224.pth",
   "structure_column_name": "secondary_structure",
   "header": true,
   "device": "cuda",
