@@ -1,0 +1,23 @@
+FROM continuumio/miniconda3:latest
+
+# Copy environment file
+COPY modules/generate_windows/environment.yml /tmp/environment.yml
+
+# Create conda environment
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy
+
+# Activate environment by default
+ENV PATH /opt/conda/envs/generate_windows/bin:$PATH
+
+# Set working directory
+WORKDIR /app
+
+# Copy pipeline code
+COPY main.nf nextflow.config ./
+COPY workflows/ workflows/
+COPY bin/ bin/
+COPY conf/ conf/
+
+# Make scripts executable
+RUN chmod +x bin/*.py

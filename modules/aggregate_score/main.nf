@@ -6,6 +6,11 @@ process AGGREGATE_SCORE {
     cpus params.num_workers
     publishDir "${params.outdir}", mode: 'copy'
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow-aggregate-score:latest' :
+        'nicoaira/ginflow-aggregate-score:latest' }"
+
     input:
     path sorted_distances
     path meta_map

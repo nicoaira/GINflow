@@ -2,6 +2,11 @@
 nextflow.enable.dsl=2
 
 process PLOT_DISTANCES {
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow-plot-distances:latest' :
+        'nicoaira/ginflow-plot-distances:latest' }"
+
     when   { params.plot_distances_distribution }
     tag    "plot_distances"
     publishDir "${params.outdir}/plots", mode: 'copy'

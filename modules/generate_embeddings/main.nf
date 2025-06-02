@@ -4,6 +4,11 @@ nextflow.enable.dsl=2
 process GENERATE_EMBEDDINGS {
     tag { "embeddings batch=${task.index}" }
     maxForks = 1
+    
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow-generate-embeddings:latest' :
+        'nicoaira/ginflow-generate-embeddings:latest' }"
 
     input:
     val item   // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]

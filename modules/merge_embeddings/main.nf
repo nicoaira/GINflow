@@ -2,8 +2,12 @@
 nextflow.enable.dsl=2
 
 process MERGE_EMBEDDINGS {
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow:0.1.0' :
+        'ginflow:0.1.0' }"
+
     tag "merge_embeddings"
-    container ''
     publishDir "${params.outdir}", mode: 'copy'
 
     input:

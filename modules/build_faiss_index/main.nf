@@ -6,6 +6,11 @@ process BUILD_FAISS_INDEX {
     cpus   1
     memory '16 GB'
     publishDir "${params.outdir}/faiss_index", mode: 'copy'
+    
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow-build-faiss-index:latest' :
+        'nicoaira/ginflow-build-faiss-index:latest' }"
 
     input:
     path embeddings

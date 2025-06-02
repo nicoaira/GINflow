@@ -5,6 +5,11 @@ process EXTRACT_META_MAP {
     tag "extract_meta_map"
     publishDir "${params.outdir}", mode: 'copy'
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow:0.1.0' :
+        'nicoaira/ginflow-extract-meta-map:latest' }"
+
     input:
     path orig_tsv
 

@@ -6,6 +6,11 @@ process DRAW_UNAGG_SVGS {
     cpus params.num_workers
     publishDir "${params.outdir}/drawings/unagg_windows", mode: 'copy'
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/gin-draw-pairs:latest' :
+        'docker.io/nicoaira/gin-draw-pairs:latest' }"
+
     input:
     path top_unagg_tsv
 

@@ -5,6 +5,11 @@ process FILTER_TOP_CONTIGS {
     tag "filter_top_contigs"
     publishDir "${params.outdir}", mode: 'copy'
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow-filter-top-contigs:latest' :
+        'nicoaira/ginflow-filter-top-contigs:latest' }"
+
     input:
     path enriched_all
     path enriched_unagg

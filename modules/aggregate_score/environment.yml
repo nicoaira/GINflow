@@ -3,5 +3,7 @@ channels:
   - conda-forge
 dependencies:
   - python>=3.8
-  - pandas>=2.2
-  - numpy>=1.26
+  - pandas>=2.2,<3.0
+  - numpy>=1.26,<3.0
+  - dask>=2024.1.0
+  - pip

@@ -5,6 +5,11 @@ process SORT_DISTANCES {
     tag "sort_distances"
     publishDir "${params.outdir}", mode: 'copy'
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginflow:0.1.0' :
+        'nicoaira/ginflow-sort-distances:latest' }"
+
     input:
     path distances
 

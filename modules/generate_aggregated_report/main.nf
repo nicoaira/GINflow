@@ -5,6 +5,11 @@ process GENERATE_AGGREGATED_REPORT {
     tag "gen_agg_report"
     publishDir "${params.outdir}", mode: 'copy'
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://depot.galaxyproject.org/singularity/ginfinity-report:latest' :
+        'nicoaira/ginfinity-report:latest' }"
+
     input:
     path top_contigs_tsv
     path contig_individual
