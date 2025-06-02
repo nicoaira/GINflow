@@ -130,6 +130,7 @@ def validate(seq, dot):
     return len(seq)==len(dot)
 
 def process_pair(i, row):
+    global ID_COLUMN
     # Dynamically pick up ID_COLUMN_1 and ID_COLUMN_2
     id1 = row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
     id2 = row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
@@ -202,8 +203,7 @@ def process_pair(i, row):
         with LOG_LOCK: LOG_FH.write(f"{n1}\n{n2}\n")
 
 if __name__ == '__main__':
-    ARGS   = parse_args()
-    global ID_COLUMN
+    ARGS = parse_args()
     ID_COLUMN = ARGS.id_column
 
     # prepare output
