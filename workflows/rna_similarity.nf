@@ -103,15 +103,11 @@ process GENERATE_EMBEDDINGS {
     maxForks = 1
 
     input:
-    each item   // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]
+    val item   // CHANGED: use 'val' instead of 'each' to process items as they arrive
 
     output:
     path "embeddings_batch_${task.index}.tsv", emit: batch_embeddings
 
-    /*
-     * 1) Print debug info to show whether GPU is truly visible inside the container.
-     * 2) Run ginfinity-embed with the same arguments as before.
-     */
     script:
     def common_args = """ \\
       --id-column ${params.id_column} \\
@@ -122,6 +118,7 @@ process GENERATE_EMBEDDINGS {
 
     def cmd
     if (params.subgraphs) {
+        // item is a tuple [graphs_pt, metadata_tsv]
         def graphs_pt_file    = item[0]
         def metadata_tsv_file = item[1]
         cmd = """
@@ -137,6 +134,7 @@ process GENERATE_EMBEDDINGS {
           ${common_args}
         """
     } else {
+        // item is a batch_tsv file path
         def batch_tsv_file = item
         cmd = """
         # Detect if CUDA is available and use it
@@ -497,9 +495,12 @@ workflow rna_similarity {
 
     def gen
     if(params.subgraphs) {
-        def window_files = GENERATE_WINDOWS(batch_files_ch)
+        // Each GENERATE_WINDOWS task processes one batch and outputs window files
+        // GENERATE_EMBEDDINGS should start as soon as each window file is ready
+        def window_files = GENERATE_WINDOWS(batch_files_ch).window_files
         gen = GENERATE_EMBEDDINGS(window_files)
     } else {
+        // Direct processing of batch files without windowing
         gen = GENERATE_EMBEDDINGS(batch_files_ch)
     }
     
