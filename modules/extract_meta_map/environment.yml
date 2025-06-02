@@ -1,0 +1,6 @@
+name: extract_meta_map
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pandas>=2.2

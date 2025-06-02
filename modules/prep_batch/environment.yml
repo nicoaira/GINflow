@@ -1,0 +1,5 @@
+name: prep_batch
+channels:
+  - conda-forge
+dependencies:
+  - bash

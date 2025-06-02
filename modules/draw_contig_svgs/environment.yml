@@ -1,0 +1,10 @@
+name: draw_contig_svgs
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pandas>=2.2
+  - matplotlib>=3.5
+  - pip
+  - pip:
+    - forgi

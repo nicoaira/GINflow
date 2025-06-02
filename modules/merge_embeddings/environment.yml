@@ -1,0 +1,5 @@
+name: merge_embeddings
+channels:
+  - conda-forge
+dependencies:
+  - bash

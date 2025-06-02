@@ -1,0 +1,17 @@
+name: generate_embeddings
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python>=3.8
+  - pytorch>=2.0
+  - pytorch-cuda>=11.8
+  - pandas>=2.2
+  - numpy>=1.26
+  - networkx>=3.4
+  - psutil>=7.0
+  - pip
+  - pip:
+    - torch-geometric>=2.6
+    - git+https://github.com/nicoaira/GINFINITY.git#egg=ginfinity

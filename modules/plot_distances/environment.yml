@@ -1,0 +1,7 @@
+name: plot_distances
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pandas>=2.2
+  - matplotlib>=3.5

@@ -1,0 +1,6 @@
+name: generate_unaggregated_report
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pandas>=2.2

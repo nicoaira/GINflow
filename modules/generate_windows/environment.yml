@@ -1,0 +1,13 @@
+name: generate_windows
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.8
+  - pandas>=2.2
+  - numpy>=1.26
+  - networkx>=3.4
+  - psutil>=7.0
+  - pip
+  - pip:
+    - git+https://github.com/nicoaira/GINFINITY.git#egg=ginfinity
