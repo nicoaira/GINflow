@@ -2,6 +2,8 @@
 nextflow.enable.dsl=2
 
 process GENERATE_EMBEDDINGS {
+    label params.use_gpu ? 'gpu' : null
+
     tag { "embeddings batch=${task.index} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
     maxForks = 1
     
