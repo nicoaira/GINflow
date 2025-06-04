@@ -8,7 +8,7 @@ process PREP_BATCH {
     
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/official-debian-bullseye-slim:latest' :
-        'debian:bullseye-slim' }"
+        'ubuntu:22.04' }"
         
     input:
     val rows

@@ -6,3 +6,4 @@ notes.txt
 test_results
 containers/sifs/*
 sif_push.sh
+analyze_resources.py

@@ -28,8 +28,13 @@ RUN printf '#!/usr/bin/env bash\nJAR=$(ls /opt/RNArtistCore/target/rnartistcore-
 # Set working directory
 WORKDIR /app
 
-# Copy the draw_pairs script into the container
-COPY nextflow/modules/draw_pairs.py ./draw_pairs.py
+# Copy pipeline code
+COPY main.nf nextflow.config ./
+COPY workflows/ workflows/
+COPY bin/ bin/
+
+# Make scripts executable
+RUN chmod +x bin/*.py
 
 # Install required Python packages
 RUN pip install cairosvg pandas

@@ -6,7 +6,7 @@ process MERGE_EMBEDDINGS {
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/official-debian-bullseye-slim:latest' :
-        'debian:bullseye-slim' }"
+        'ubuntu:22.04' }"
 
     tag "merge_embeddings"
     publishDir "${params.outdir}", mode: 'copy'

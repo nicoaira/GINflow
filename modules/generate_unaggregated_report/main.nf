@@ -7,8 +7,8 @@ process GENERATE_UNAGGREGATED_REPORT {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginfinity-report:latest' :
-        'nicoaira/ginfinity-report:latest' }"
+        'oras://quay.io/nicoaira/ginflow-generate-report:latest' :
+        'nicoaira/ginflow-generate-report:latest' }"
 
     input:
     path top_contigs_unagg_tsv

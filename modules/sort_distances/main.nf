@@ -8,7 +8,7 @@ process SORT_DISTANCES {
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/amancevice-pandas-slim-2.2.2:latest' :
-        'amancevice/pandas:slim-2.2.2' }"        
+        'amancevice/pandas:2.2.2' }"        
 
     input:
     path distances

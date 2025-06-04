@@ -1,5 +1,5 @@
 {
-  "input": "/home/nicolas/documents/data/human/gencode_v47/canonical_transcript_sequences_f1437_ss_masked.small.tsv",
+  "input": "/home/nicolas/documents/data/human/gencode_v47/canonical_transcript_sequences_f1437_ss_masked.medium.tsv",
   "outdir": "results_nf_transcript",
   "structure_column_name": "secondary_structure",
   "header": true,
@@ -10,7 +10,6 @@
   "keep_paired_neighbors": true,
   "keep_cols": "transcript_id",
   "batch_size": 4096,
-  "mode": 2,
   "id_column": "transcript_id",
   "query": "ENST00000811669.1",
   "top_n": 30,
