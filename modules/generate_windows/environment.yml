@@ -1,12 +1,9 @@
-name: generate_windows
+name: ginfinity-env
 channels:
   - conda-forge
 dependencies:
   - python>=3.8
-  - pandas>=2.2,<3.0
-  - numpy>=1.26,<3.0
-  - networkx>=3.4,<4.0
-  - psutil>=7.0,<8.0
   - pip
+  - git
   - pip:
     - git+https://github.com/nicoaira/GINFINITY.git#egg=ginfinity

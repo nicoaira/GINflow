@@ -2,15 +2,15 @@
 nextflow.enable.dsl=2
 
 process GENERATE_EMBEDDINGS {
-    label params.use_gpu ? 'gpu' : null
+    label params.use_gpu ? 'gpu' : 'cpu'
 
     tag { "embeddings batch=${task.index} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
     maxForks = 1
     
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginflow-generate-embeddings:latest' :
-        'nicoaira/ginflow-generate-embeddings:latest' }"
+        'oras://quay.io/nicoaira/ginflow-sort-distances:latest' :
+        'nicoaira/ginfinity:latest' }"
 
     input:
     val item   // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]
@@ -19,8 +19,11 @@ process GENERATE_EMBEDDINGS {
     path "embeddings_batch_${task.index}.tsv", emit: batch_embeddings
 
     script:
-    // Determine device based on use_gpu parameter
     def DEVICE = params.use_gpu ? 'cuda' : 'cpu'
+
+    def cuda_check = """
+    python -c "import torch; print('TORCH_CUDA_IS_AVAILABLE=' + str(torch.cuda.is_available()))"
+    """
 
     def common_args = """ \\
       --id-column ${params.id_column} \\
@@ -35,8 +38,6 @@ process GENERATE_EMBEDDINGS {
         def graphs_pt_file    = item[0]
         def metadata_tsv_file = item[1]
         cmd = """
-        echo "Using device: ${DEVICE}"
-        
         ginfinity-embed \\
           --graph-pt ${graphs_pt_file} \\
           --meta-tsv ${metadata_tsv_file} \\
@@ -48,8 +49,6 @@ process GENERATE_EMBEDDINGS {
         // item is a batch_tsv file path
         def batch_tsv_file = item
         cmd = """
-        echo "Using device: ${DEVICE}"
-        
         ginfinity-embed \\
           --input ${batch_tsv_file} \\
           --structure-column-name ${params.structure_column_name} \\
@@ -61,6 +60,7 @@ process GENERATE_EMBEDDINGS {
 
     """
     echo "===== GENERATE_EMBEDDINGS: using device=${DEVICE} ====="
+    ${cuda_check}
     ${cmd}
     """
 }

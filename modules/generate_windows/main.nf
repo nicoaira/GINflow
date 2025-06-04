@@ -7,8 +7,8 @@ process GENERATE_WINDOWS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginflow-generate-windows:latest' :
-        'nicoaira/ginflow-generate-windows:latest' }"
+        'oras://quay.io/nicoaira/ginflow-generate-windows:latest' :
+        'nicoaira/ginfinity:latest' }"
 
     // initialize BLAS thread limits before running the script
     beforeScript 'export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1'
