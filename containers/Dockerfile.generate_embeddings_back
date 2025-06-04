@@ -39,7 +39,6 @@ WORKDIR /app
 COPY main.nf nextflow.config ./
 COPY workflows/ workflows/
 COPY bin/ bin/
-COPY conf/ conf/
 COPY presets/ presets/
 
 # 8) Make helper scripts in bin/ executable
