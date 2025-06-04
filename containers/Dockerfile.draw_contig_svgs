@@ -1,22 +1,35 @@
-FROM continuumio/miniconda3:latest
+FROM python:3.9-slim
 
-# Copy environment file
-COPY modules/draw_contig_svgs/environment.yml /tmp/environment.yml
+# Install system dependencies:
+# - Git, Maven, Java for RNArtistCore
+# - Cairo, Pango, GDK-Pixbuf for cairosvg rendering support
+# - procps for 'ps' command
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive \
+    apt-get install -y --no-install-recommends \
+        git \
+        maven \
+        default-jdk-headless \
+        libcairo2 \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libgdk-pixbuf2.0-0 \
+        procps \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create conda environment
-RUN conda env create -f /tmp/environment.yml && \
-    conda clean -afy
+# Clone and build RNArtistCore
+RUN git clone https://github.com/fjossinet/RNArtistCore.git /opt/RNArtistCore \
+    && cd /opt/RNArtistCore \
+    && mvn clean package
 
-# Activate environment by default
-ENV PATH /opt/conda/envs/draw_contig_svgs/bin:$PATH
+# Create a wrapper script for `rnartistcore`
+RUN printf '#!/usr/bin/env bash\nJAR=$(ls /opt/RNArtistCore/target/rnartistcore-*-SNAPSHOT-jar-with-dependencies.jar)\nexec java -jar "$JAR" "$@"\n' > /usr/local/bin/rnartistcore \
+    && chmod +x /usr/local/bin/rnartistcore
 
 # Set working directory
 WORKDIR /app
 
-# Copy pipeline code
-COPY main.nf nextflow.config ./
-COPY workflows/ workflows/
-COPY bin/ bin/
+# Copy the draw_pairs script into the container
+COPY nextflow/modules/draw_pairs.py ./draw_pairs.py
 
-# Make scripts executable
-RUN chmod +x bin/*.py
+# Install required Python packages
+RUN pip install cairosvg pandas
