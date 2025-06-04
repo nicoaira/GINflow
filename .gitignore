@@ -4,3 +4,4 @@ report*
 results*
 notes.txt
 test_results
+containers/sif/*
