@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 process PLOT_SCORE {
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginflow-plot-score:latest' :
+        'oras://quay.io/nicoaira/ginflow-plot-score:latest' :
         'nicoaira/ginflow-plot-score:latest' }"
 
     when   { params.plot_score_distribution }

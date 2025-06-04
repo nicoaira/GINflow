@@ -7,7 +7,7 @@ process GENERATE_AGGREGATED_REPORT {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginfinity-report:latest' :
+        'oras://quay.io/nicoaira/ginfinity-report:latest' :
         'nicoaira/ginfinity-report:latest' }"
 
     input:

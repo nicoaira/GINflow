@@ -8,7 +8,7 @@ process AGGREGATE_SCORE {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginflow-aggregate-score:latest' :
+        'oras://quay.io/nicoaira/ginflow-aggregate-score:latest' :
         'nicoaira/ginflow-aggregate-score:latest' }"
 
     input:

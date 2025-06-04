@@ -9,7 +9,7 @@ process BUILD_FAISS_INDEX {
     
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginflow-build-faiss-index:latest' :
+        'oras://quay.io/nicoaira/ginflow-build-faiss-index:latest' :
         'nicoaira/ginflow-build-faiss-index:latest' }"
 
     input:

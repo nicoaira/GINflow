@@ -7,8 +7,8 @@ process FILTER_TOP_CONTIGS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://depot.galaxyproject.org/singularity/ginflow-filter-top-contigs:latest' :
-        'nicoaira/ginflow-filter-top-contigs:latest' }"
+        'oras://quay.io/nicoaira/amancevice-pandas-slim-2.2.2:latest' :
+        'amancevice/pandas:slim-2.2.2' }"        
 
     input:
     path enriched_all
