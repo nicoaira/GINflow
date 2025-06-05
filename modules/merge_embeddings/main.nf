@@ -12,16 +12,20 @@ process MERGE_EMBEDDINGS {
     publishDir "${params.outdir}", mode: 'copy'
 
     input:
-    path batch_embeddings
+    path batch_embeddings, stageAs: 'batch_*.tsv'
 
     output:
     path "embeddings.tsv", emit: embeddings
 
     script:
     """
-    head -n1 ${batch_embeddings[0]} > embeddings.tsv
-    for f in ${batch_embeddings.join(' ')}; do
-      tail -n +2 \$f >> embeddings.tsv
+    # Get the first file to extract header
+    first_file=\$(ls batch_*.tsv | head -n 1)
+    head -n 1 "\$first_file" > embeddings.tsv
+    
+    # Append all data rows (skip header from each file)
+    for f in batch_*.tsv; do
+      tail -n +2 "\$f" >> embeddings.tsv
     done
     """
 }

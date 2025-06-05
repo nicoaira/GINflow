@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 process GENERATE_EMBEDDINGS {
     label params.use_gpu ? 'gpu' : 'cpu'
 
-    tag { "embeddings batch=${task.index} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
+    tag { item instanceof List ? "embeddings ${item[1].baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" : "embeddings ${item.baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
     maxForks = 1
     
     conda "${moduleDir}/environment.yml"
@@ -16,25 +16,22 @@ process GENERATE_EMBEDDINGS {
     val item   // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]
 
     output:
-    path "embeddings_batch_${task.index}.tsv", emit: batch_embeddings
+    path "embeddings.tsv", emit: batch_embeddings
 
     script:
     def DEVICE = params.use_gpu ? 'cuda' : 'cpu'
-
-    def cuda_check = """
-    python -c "import torch; print('TORCH_CUDA_IS_AVAILABLE=' + str(torch.cuda.is_available()))"
-    """
+    def OUTFILE = "embeddings.tsv"
 
     def common_args = """ \\
       --id-column ${params.id_column} \\
-      --output embeddings_batch_${task.index}.tsv \\
+      --output ${OUTFILE} \\
       --num-workers ${params.num_workers} \\
       --batch-size ${params.batch_size}
     """
 
     def cmd
-    if (params.subgraphs) {
-        // item is a tuple [graphs_pt, metadata_tsv]
+    if (item instanceof List) {
+        // subgraphs mode: item is a tuple [graphs_pt, metadata_tsv]
         def graphs_pt_file    = item[0]
         def metadata_tsv_file = item[1]
         cmd = """
@@ -46,7 +43,7 @@ process GENERATE_EMBEDDINGS {
           ${common_args}
         """
     } else {
-        // item is a batch_tsv file path
+        // direct mode: item is a batch_tsv file path
         def batch_tsv_file = item
         cmd = """
         ginfinity-embed \\
@@ -60,7 +57,10 @@ process GENERATE_EMBEDDINGS {
 
     """
     echo "===== GENERATE_EMBEDDINGS: using device=${DEVICE} ====="
-    ${cuda_check}
+    python - << 'PY'
+import torch
+print('TORCH_CUDA_IS_AVAILABLE=' + str(torch.cuda.is_available()))
+PY
     ${cmd}
     """
 }
