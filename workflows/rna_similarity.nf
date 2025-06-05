@@ -61,8 +61,16 @@ workflow rna_similarity {
 
     // 8-9-10-11-12-13
     def (top_c, top_u)  = FILTER_TOP_CONTIGS(agg_all, agg_un)
-    def contigs_draw    = DRAW_CONTIG_SVGS(top_c)
-    def windows_draw    = DRAW_UNAGG_SVGS(top_u)
-    GENERATE_AGGREGATED_REPORT(top_c, contigs_draw.contig_individual)
-    GENERATE_UNAGGREGATED_REPORT(top_u, windows_draw.window_individual)
+    
+    // Conditionally run aggregated report processes
+    if (params.run_aggregated_report) {
+        def contigs_draw = DRAW_CONTIG_SVGS(top_c)
+        GENERATE_AGGREGATED_REPORT(top_c, contigs_draw.contig_individual)
+    }
+    
+    // Conditionally run unaggregated report processes
+    if (params.run_unaggregated_report) {
+        def windows_draw = DRAW_UNAGG_SVGS(top_u)
+        GENERATE_UNAGGREGATED_REPORT(top_u, windows_draw.window_individual)
+    }
 }
