@@ -9,8 +9,8 @@ process GENERATE_EMBEDDINGS {
     
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginflow-sort-distances:latest' :
-        'nicoaira/ginfinity:latest' }"
+        'oras://quay.ion/nicoaira/ginfinity:latest' :
+        'nicoaira/ginfinity@sha256:a2a43687b5583700d6fb0376de3c24f3dcc81ab10ea86427d51877aef8368ed6' }"
 
     input:
     val item   // either a batch_tsv path or a tuple [graphs_pt, metadata_tsv]

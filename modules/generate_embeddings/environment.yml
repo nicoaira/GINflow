@@ -6,4 +6,4 @@ dependencies:
   - pip
   - git
   - pip:
-    - git+https://github.com/nicoaira/GINFINITY.git#egg=ginfinity
+    - git+https://github.com/nicoaira/GINFINITY.git@v0.2.0#egg=ginfinity
