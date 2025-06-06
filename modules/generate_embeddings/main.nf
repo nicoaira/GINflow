@@ -5,7 +5,8 @@ process GENERATE_EMBEDDINGS {
     label params.use_gpu ? 'gpu' : 'cpu'
 
     tag { item instanceof List ? "embeddings ${item[1].baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" : "embeddings ${item.baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
-    maxForks = 1
+    cpus 16
+    maxForks = 16
     
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
