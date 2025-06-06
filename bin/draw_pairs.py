@@ -28,7 +28,7 @@ ET.register_namespace('', 'http://www.w3.org/2000/svg')
 
 # load CairoSVG
 try:
-    import cairosvg
+    import cairosvg  # type: ignore
 except ImportError:
     sys.exit("[fatal] Please install 'cairosvg' (pip install cairosvg)")
 
@@ -50,6 +50,8 @@ def parse_args():
                    help='Parallel workers for rendering')
     p.add_argument('--keep-temp', action='store_true', help='Keep temp dir')
     p.add_argument('--debug',     action='store_true', help='Verbose')
+    p.add_argument('--batch_size', type=int, default=1,
+                   help='Number of RNAs per kts batch')
     return p.parse_args()
 
 def make_highlight(start, end, colour):
@@ -169,10 +171,15 @@ def process_pair(i, row):
         highlight_block=hl2
     )
 
+    # write kts scripts for each RNA
     for name,script in ((n1,s1),(n2,s2)):
         with open(os.path.join(KTS_DIR,f"{name}.kts"),'w') as fh: fh.write(script)
         with open(os.path.join(TMPDIR,f"{name}.kts"),'w') as fh: fh.write(script)
+    # if batching, defer execution to main
+    if ARGS.batch_size > 1:
+        return
 
+    # single-run execution
     if ARGS.debug: print(f"[rnartist] {n1}")
     subprocess.run(['rnartistcore', os.path.join(TMPDIR,f"{n1}.kts")])
     if ARGS.debug: print(f"[rnartist] {n2}")
@@ -223,18 +230,35 @@ if __name__ == '__main__':
         reader = csv.DictReader(fh, delimiter='\t')
         rows   = list(reader)
 
-    # dispatch
+    # dispatch: generate kts for each RNA
     if ARGS.num_workers>1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=ARGS.num_workers) as exe:
-            futures = [
-                exe.submit(process_pair, i, row)
-                for i,row in enumerate(rows,1)
-            ]
-            for _ in concurrent.futures.as_completed(futures):
-                pass
+            futures = [exe.submit(process_pair, i, row) for i,row in enumerate(rows,1)]
+            for _ in concurrent.futures.as_completed(futures): pass
     else:
-        for i,row in enumerate(rows,1):
-            process_pair(i,row)
+        for i,row in enumerate(rows,1): process_pair(i,row)
+
+    # if batching, run rnartistcore on combined scripts
+    if ARGS.batch_size > 1:
+        # collect all individual kts scripts
+        kts_files = sorted([os.path.join(TMPDIR, f) for f in os.listdir(TMPDIR) if f.endswith('.kts')])
+        for b in range(0, len(kts_files), ARGS.batch_size):
+            batch = kts_files[b:b+ARGS.batch_size]
+            batch_kts = os.path.join(KTS_DIR, f"batch_{b//ARGS.batch_size+1}.kts")
+            with open(batch_kts,'w') as fh:
+                fh.write('import io.github.fjossinet.rnartist.core.*\n\n')
+                for k in batch:
+                    # read script and remove duplicate imports
+                    lines = open(k,'r').read().splitlines()
+                    if lines and lines[0].strip().startswith('import io.github.fjossinet.rnartist.core'):
+                        lines = lines[1:]
+                    # remove leading blank line
+                    if lines and not lines[0].strip():
+                        lines = lines[1:]
+                    fh.write('\n'.join(lines) + '\n\n')
+            subprocess.run(['rnartistcore', batch_kts])
+        # after generation, finalize each pair (combine and convert)
+        for i,row in enumerate(rows,1): process_pair(i,row)
 
     LOG_FH.close()
     if ARGS.keep_temp and ARGS.debug:
