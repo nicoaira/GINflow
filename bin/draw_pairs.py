@@ -80,8 +80,6 @@ rnartist {{
 
     svg {{
         path   = "{path}"
-        width  = {w}
-        height = {h}
     }}
 }}'''
 
@@ -242,27 +240,22 @@ if __name__ == '__main__':
     if ARGS.batch_size > 1:
         # collect all individual kts scripts
         kts_files = sorted([os.path.join(TMPDIR, f) for f in os.listdir(TMPDIR) if f.endswith('.kts')])
-        # build batch scripts
-        batch_kts_list = []
         for b in range(0, len(kts_files), ARGS.batch_size):
             batch = kts_files[b:b+ARGS.batch_size]
             batch_kts = os.path.join(KTS_DIR, f"batch_{b//ARGS.batch_size+1}.kts")
             with open(batch_kts,'w') as fh:
                 fh.write('import io.github.fjossinet.rnartist.core.*\n\n')
                 for k in batch:
+                    # read script and remove duplicate imports
                     lines = open(k,'r').read().splitlines()
                     if lines and lines[0].strip().startswith('import io.github.fjossinet.rnartist.core'):
                         lines = lines[1:]
+                    # remove leading blank line
                     if lines and not lines[0].strip():
                         lines = lines[1:]
                     fh.write('\n'.join(lines) + '\n\n')
-            batch_kts_list.append(batch_kts)
-        # run all batch scripts in parallel
-        if ARGS.debug: print(f"[rnartist batches] running {len(batch_kts_list)} scripts with {ARGS.num_workers} workers")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=ARGS.num_workers) as exe:
-            futures = [exe.submit(subprocess.run, ['rnartistcore', kts]) for kts in batch_kts_list]
-            for _ in concurrent.futures.as_completed(futures): pass
-        # after batch generation, finalize each pair (combine and convert)
+            subprocess.run(['rnartistcore', batch_kts])
+        # after generation, finalize each pair (combine and convert)
         for i,row in enumerate(rows,1): process_pair(i,row)
 
     LOG_FH.close()
