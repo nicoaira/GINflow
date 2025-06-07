@@ -299,7 +299,7 @@ GINflow consists of 15+ independent Nextflow modules:
 - **`generate_windows`**: Create sliding windows for local analysis
 
 ### Visualization Modules
-- **`draw_contig_svgs`**: Generate RNA structure visualizations
+- **`draw_structures`**: Generate RNA structure visualizations
 - **`generate_aggregated_report`**: Create interactive HTML reports
 - **`plot_distances`**: Plot distance distributions
 

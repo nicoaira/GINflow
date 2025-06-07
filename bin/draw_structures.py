@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-draw_pairs.py – generate RNArtistCore plots for RNA pairs in parallel,
+draw_structuresraw_pairs.py – generate RNArtistCore plots for RNA pairs in parallel,
 highlight a window, strip the Reactivity legend, stitch SVGs side-by-side,
 and export PNGs.
 
 Usage:
-  python3 draw_pairs.py --tsv top_N.tsv --outdir outdir \
+  python3 draw_structures.py --tsv top_N.tsv --outdir outdir \
         --id-column <id_column> [--width W] [--height H] \
         [--highlight-colour COLOUR] [--num-workers N] \
         [--keep-temp] [--debug]
