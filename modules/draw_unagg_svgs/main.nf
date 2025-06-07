@@ -3,7 +3,7 @@ nextflow.enable.dsl=2
 
 process DRAW_UNAGG_SVGS {
     tag "draw_window_svgs"
-    cpus params.num_workers
+    cpus 16
     publishDir "${params.outdir}/drawings/unagg_windows", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
@@ -24,6 +24,6 @@ process DRAW_UNAGG_SVGS {
       --tsv ${top_unagg_tsv} --outdir individual_svgs \
       --pair-type "window" \
       --width 500 --height 500 --highlight-colour "#00FF99" \
-      --num-workers ${params.num_workers}
+      --num-workers ${task.cpus}
     """
 }

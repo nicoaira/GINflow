@@ -3,7 +3,7 @@ nextflow.enable.dsl=2
 
 process DRAW_CONTIG_SVGS {
     tag "draw_contig_svgs"
-    cpus params.num_workers
+    cpus 16
     publishDir "${params.outdir}/drawings/contigs", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
@@ -24,6 +24,6 @@ process DRAW_CONTIG_SVGS {
       --tsv ${top_contigs_tsv} --outdir individual_svgs \
       --pair-type "contig" \
       --width 500 --height 500 --highlight-colour "#00FF99" \
-      --num-workers ${params.num_workers}
+      --num-workers ${task.cpus}
     """
 }
