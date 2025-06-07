@@ -42,6 +42,8 @@ def parse_args():
     p.add_argument('--outdir',         required=True,  help='Output directory')
     p.add_argument('--id-column',      default='exon_id',
                        help='Name of the original ID column (without _1/_2).')
+    p.add_argument('--pair-type',      choices=['window', 'contig'], default='window',
+                       help='Type of pairs in TSV: "window" (window_start_1/window_end_1) or "contig" (contig_start_1/contig_end_1)')
     p.add_argument('--width',    type=float, default=500,  help='SVG width')
     p.add_argument('--height',   type=float, default=500,  help='SVG height')
     p.add_argument('--highlight-colour', default="#FFD700",
@@ -145,10 +147,23 @@ def process_pair(i, row):
     if not (validate(seq1,dot1) and validate(seq2,dot2)):
         return
 
-    w1s = int(row.get('window_start_1',0) or 0)
-    w1e = int(row.get('window_end_1',  0) or 0)
-    w2s = int(row.get('window_start_2',0) or 0)
-    w2e = int(row.get('window_end_2',  0) or 0)
+    # Use the correct column names based on pair type
+    if ARGS.pair_type == 'contig':
+        w1s = int(row.get('contig_start_1', 0) or 0)
+        w1e = int(row.get('contig_end_1', 0) or 0)
+        w2s = int(row.get('contig_start_2', 0) or 0)
+        w2e = int(row.get('contig_end_2', 0) or 0)
+    else:  # window
+        w1s = int(row.get('window_start_1', 0) or 0)
+        w1e = int(row.get('window_end_1', 0) or 0)
+        w2s = int(row.get('window_start_2', 0) or 0)
+        w2e = int(row.get('window_end_2', 0) or 0)
+    
+    # Debug print to verify coordinates are being read
+    if ARGS.debug:
+        coord_type = ARGS.pair_type
+        print(f"[debug] Row {i}: {coord_type}_1=({w1s},{w1e}), {coord_type}_2=({w2s},{w2e})")
+    
     hl1 = make_highlight(w1s,w1e,ARGS.highlight_colour)
     hl2 = make_highlight(w2s,w2e,ARGS.highlight_colour)
 
@@ -192,20 +207,12 @@ def process_pair(i, row):
     strip_reactivity_legend(svg1)
     strip_reactivity_legend(svg2)
 
-    indiv = os.path.join(ARGS.outdir,"individual_svgs"); os.makedirs(indiv, exist_ok=True)
+    # copy individual SVGs only; stop here (no pair stitching or PNG)
+    indiv = os.path.join(ARGS.outdir,"individual_svgs")
+    os.makedirs(indiv, exist_ok=True)
     shutil.copy(svg1, os.path.join(indiv,f"{n1}.svg"))
     shutil.copy(svg2, os.path.join(indiv,f"{n2}.svg"))
-
-    base    = f"pair_{i}_{id1}_{id2}"
-    pair_svg= os.path.join(ARGS.outdir, base + ".svg")
-    ok,_    = combine(svg1,svg2,pair_svg)
-    if ok: strip_reactivity_legend(pair_svg)
-
-    pair_png = os.path.join(ARGS.outdir, base + ".png")
-    if svg_to_png(pair_svg, pair_png):
-        print(f"[ok] {pair_png}")
-    else:
-        with LOG_LOCK: LOG_FH.write(f"{n1}\n{n2}\n")
+    return
 
 if __name__ == '__main__':
     ARGS = parse_args()
@@ -240,24 +247,40 @@ if __name__ == '__main__':
     if ARGS.batch_size > 1:
         # collect all individual kts scripts
         kts_files = sorted([os.path.join(TMPDIR, f) for f in os.listdir(TMPDIR) if f.endswith('.kts')])
+        # build batch scripts
+        batch_kts_list = []
         for b in range(0, len(kts_files), ARGS.batch_size):
             batch = kts_files[b:b+ARGS.batch_size]
             batch_kts = os.path.join(KTS_DIR, f"batch_{b//ARGS.batch_size+1}.kts")
             with open(batch_kts,'w') as fh:
                 fh.write('import io.github.fjossinet.rnartist.core.*\n\n')
                 for k in batch:
-                    # read script and remove duplicate imports
                     lines = open(k,'r').read().splitlines()
                     if lines and lines[0].strip().startswith('import io.github.fjossinet.rnartist.core'):
                         lines = lines[1:]
-                    # remove leading blank line
                     if lines and not lines[0].strip():
                         lines = lines[1:]
                     fh.write('\n'.join(lines) + '\n\n')
-            subprocess.run(['rnartistcore', batch_kts])
-        # after generation, finalize each pair (combine and convert)
-        for i,row in enumerate(rows,1): process_pair(i,row)
-
-    LOG_FH.close()
-    if ARGS.keep_temp and ARGS.debug:
-        print(f"[info] kept temp dir {TMPDIR}")
+            batch_kts_list.append(batch_kts)
+        # run all batch scripts in parallel
+        if ARGS.debug: print(f"[rnartist batches] running {len(batch_kts_list)} scripts with {ARGS.num_workers} workers")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=ARGS.num_workers) as exe:
+            futures = [exe.submit(subprocess.run, ['rnartistcore', kts]) for kts in batch_kts_list]
+            for _ in concurrent.futures.as_completed(futures): pass
+        
+        # after batch generation, copy individual SVGs (skip rnartistcore calls)
+        for i,row in enumerate(rows,1):
+            id1 = row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
+            id2 = row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
+            n1 = re.sub(r'[^A-Za-z0-9_]', '_', f"{id1}_{i}")
+            n2 = re.sub(r'[^A-Za-z0-9_]', '_', f"{id2}_{i}")
+            
+            svg1 = os.path.join(TMPDIR, f"{n1}.svg")
+            svg2 = os.path.join(TMPDIR, f"{n2}.svg")
+            if os.path.exists(svg1) and os.path.exists(svg2):
+                strip_reactivity_legend(svg1)
+                strip_reactivity_legend(svg2)
+                indiv = os.path.join(ARGS.outdir,"individual_svgs")
+                os.makedirs(indiv, exist_ok=True)
+                shutil.copy(svg1, os.path.join(indiv,f"{n1}.svg"))
+                shutil.copy(svg2, os.path.join(indiv,f"{n2}.svg"))
