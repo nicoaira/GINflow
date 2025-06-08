@@ -208,10 +208,10 @@ def process_pair(i, row):
     strip_reactivity_legend(svg2)
 
     # copy individual SVGs only; stop here (no pair stitching or PNG)
-    indiv = os.path.join(ARGS.outdir,"individual_svgs")
-    os.makedirs(indiv, exist_ok=True)
-    shutil.copy(svg1, os.path.join(indiv,f"{n1}.svg"))
-    shutil.copy(svg2, os.path.join(indiv,f"{n2}.svg"))
+    # Write directly to output directory instead of creating nested individual_svgs
+    os.makedirs(ARGS.outdir, exist_ok=True)
+    shutil.copy(svg1, os.path.join(ARGS.outdir, f"{n1}.svg"))
+    shutil.copy(svg2, os.path.join(ARGS.outdir, f"{n2}.svg"))
     return
 
 if __name__ == '__main__':
@@ -280,7 +280,7 @@ if __name__ == '__main__':
             if os.path.exists(svg1) and os.path.exists(svg2):
                 strip_reactivity_legend(svg1)
                 strip_reactivity_legend(svg2)
-                indiv = os.path.join(ARGS.outdir,"individual_svgs")
-                os.makedirs(indiv, exist_ok=True)
-                shutil.copy(svg1, os.path.join(indiv,f"{n1}.svg"))
-                shutil.copy(svg2, os.path.join(indiv,f"{n2}.svg"))
+                # Write directly to output directory instead of creating nested individual_svgs
+                os.makedirs(ARGS.outdir, exist_ok=True)
+                shutil.copy(svg1, os.path.join(ARGS.outdir, f"{n1}.svg"))
+                shutil.copy(svg2, os.path.join(ARGS.outdir, f"{n2}.svg"))
