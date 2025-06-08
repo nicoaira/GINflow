@@ -7,9 +7,10 @@ process DRAW_UNAGG_SVGS {
     publishDir "${params.outdir}/drawings/unagg_windows", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
+    // TODO: update singularity container
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/ginflow-draw-svgs:latest' :
-        'docker.io/nicoaira/ginflow-draw-svgs:latest' }"
+        'docker.io/nicoaira/ginflow-draw-structures:latest' }"
 
     input:
     path top_unagg_tsv
@@ -23,6 +24,7 @@ process DRAW_UNAGG_SVGS {
     python3 ${baseDir}/bin/draw_structures.py \
       --tsv ${top_unagg_tsv} --outdir individual_svgs \
       --pair-type "window" \
+      --id-column ${params.id_column} \
       --width 500 --height 500 --highlight-colour "#00FF99" \
       --num-workers ${task.cpus}
     """
