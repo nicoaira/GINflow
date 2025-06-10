@@ -3,6 +3,9 @@ nextflow.enable.dsl=2
 
 process EXTRACT_META_MAP {
     tag "extract_meta_map"
+
+    label 'lightweight'
+    
     publishDir "${params.outdir}", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"

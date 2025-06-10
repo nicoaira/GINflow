@@ -4,6 +4,8 @@ nextflow.enable.dsl=2
 process PREP_BATCH {
     tag "prep_batch"
 
+    label 'lightweight'
+
     conda "${moduleDir}/environment.yml"
     
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

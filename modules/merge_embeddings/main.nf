@@ -2,7 +2,10 @@
 nextflow.enable.dsl=2
 
 process MERGE_EMBEDDINGS {
-  
+    tag "merge_embeddings"
+
+    label 'lightweight'
+
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/official-debian-bullseye-slim:latest' :

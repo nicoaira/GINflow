@@ -3,7 +3,9 @@ nextflow.enable.dsl=2
 
 process AGGREGATE_SCORE {
     tag "aggregate_score"
-    cpus params.num_workers
+
+    label 'lightweight'
+
     publishDir "${params.outdir}", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"

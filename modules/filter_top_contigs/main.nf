@@ -3,6 +3,9 @@ nextflow.enable.dsl=2
 
 process FILTER_TOP_CONTIGS {
     tag "filter_top_contigs"
+
+    label 'lightweight'
+
     publishDir "${params.outdir}", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"

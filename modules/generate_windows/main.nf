@@ -3,7 +3,8 @@ nextflow.enable.dsl=2
 
 process GENERATE_WINDOWS {
     tag "generate_windows"
-    cpus 14
+    
+    label 'high_cpu'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

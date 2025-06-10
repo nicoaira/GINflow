@@ -3,7 +3,9 @@ nextflow.enable.dsl=2
 
 process DRAW_CONTIG_SVGS {
     tag "draw_contig_svgs"
-    cpus 16
+
+    label 'high_cpu'
+    
     publishDir "${params.outdir}/drawings/contigs", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"

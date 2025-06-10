@@ -3,7 +3,8 @@ nextflow.enable.dsl=2
 
 process QUERY_FAISS_INDEX {
     tag  "query_faiss_index"
-    cpus params.num_workers
+
+    label 'mediumweight'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?

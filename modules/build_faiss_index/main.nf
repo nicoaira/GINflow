@@ -2,9 +2,10 @@
 nextflow.enable.dsl=2
 
 process BUILD_FAISS_INDEX {
-    tag    "build_faiss_index"
-    cpus   1
-    memory '16 GB'
+    tag "build_faiss_index"
+
+    label 'mediumweight'
+
     publishDir "${params.outdir}/faiss_index", mode: 'copy'
     
     conda "${moduleDir}/environment.yml"

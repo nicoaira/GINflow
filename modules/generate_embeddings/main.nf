@@ -2,12 +2,10 @@
 nextflow.enable.dsl=2
 
 process GENERATE_EMBEDDINGS {
+    tag { item instanceof List ? "embeddings ${item[1].baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" : "embeddings ${item.baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
+    
     label params.use_gpu ? 'gpu' : 'cpu'
 
-    tag { item instanceof List ? "embeddings ${item[1].baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" : "embeddings ${item.baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
-    cpus 16
-    maxForks = 16
-    
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.ion/nicoaira/ginfinity:latest' :

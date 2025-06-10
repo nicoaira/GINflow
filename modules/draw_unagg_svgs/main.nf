@@ -3,7 +3,9 @@ nextflow.enable.dsl=2
 
 process DRAW_UNAGG_SVGS {
     tag "draw_window_svgs"
-    cpus 16
+
+    label 'high_cpu'
+    
     publishDir "${params.outdir}/drawings/unagg_windows", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"

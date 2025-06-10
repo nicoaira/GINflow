@@ -3,6 +3,9 @@ nextflow.enable.dsl=2
 
 process GENERATE_UNAGGREGATED_REPORT {
     tag "gen_unagg_report"
+
+    label 'lightweight'
+    
     publishDir "${params.outdir}", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"

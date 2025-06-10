@@ -1,10 +1,10 @@
 {
-  "input": "/home/nicolas/documents/data/human/gencode_v47/canonical_transcript_sequences_f1437_ss_masked.medium.tsv",
-  "outdir": "results_nf_transcript",
+  "input": "/home/nicolas/documents/data/human/gencode_v47/canonical_transcript_sequences_f1437_ss_masked.tsv",
+  "outdir": "results_nf_transcript_full",
   "structure_column_name": "secondary_structure",
   "header": true,
   "device": "cuda",
-  "num_workers": 14,
+  "num_workers": 16,
   "subgraphs": true,
   "L": 30,
   "keep_paired_neighbors": true,
@@ -12,6 +12,6 @@
   "batch_size": 4096,
   "id_column": "transcript_id",
   "query": "ENST00000811669.1",
-  "top_n": 30,
+  "top_n": 50,
   "faiss_k": 500
 }
