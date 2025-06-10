@@ -3,12 +3,10 @@ nextflow.enable.dsl=2
 
 // Note: parameter declarations and validation moved to main.nf
 
-// Include all modules
+// Include all modules (removed PREP_BATCH and MERGE_EMBEDDINGS)
 include { GENERATE_WINDOWS } from '../modules/generate_windows/main'
 include { EXTRACT_META_MAP } from '../modules/extract_meta_map/main'
-include { PREP_BATCH } from '../modules/prep_batch/main'
 include { GENERATE_EMBEDDINGS } from '../modules/generate_embeddings/main'
-include { MERGE_EMBEDDINGS } from '../modules/merge_embeddings/main'
 include { BUILD_FAISS_INDEX } from '../modules/build_faiss_index/main'
 include { QUERY_FAISS_INDEX } from '../modules/query_faiss_index/main'
 include { SORT_DISTANCES } from '../modules/sort_distances/main'
@@ -28,11 +26,19 @@ workflow rna_similarity {
     // 0) Build the metadata map once
     def meta = EXTRACT_META_MAP(file(params.input))
 
-    // Split transcripts into batches
-    // Ensuring header and separator are correctly used for TSV
-    def transcript_batches = Channel.fromPath(params.input)
-        .splitCsv(header: params.header, sep:'\t', strip:true, by: params.batch_size_embed)
-    def batch_files_ch = PREP_BATCH(transcript_batches).batch_file
+    // Split input TSV into batches using splitCsv operator
+    def input_records = Channel.fromPath(params.input)
+        .splitCsv(header: params.header, sep: '\t', strip: true, by: params.batch_size_embed)
+    
+    // Transform each batch of records into a temporary TSV file using collectFile
+    def batch_files_ch = input_records
+        .collectFile() { records ->
+            // Get header from first record
+            def header = records[0].keySet().join('\t')
+            // Convert records to TSV lines
+            def lines = records.collect { record -> record.values().join('\t') }.join('\n')
+            ["batch_${records.hashCode().abs()}.tsv", header + '\n' + lines + '\n']
+        }
 
     def gen
     if(params.subgraphs) {
@@ -45,13 +51,12 @@ workflow rna_similarity {
         gen = GENERATE_EMBEDDINGS(batch_files_ch)
     }
     
-    // Explicitly collect all batch embeddings before merging
-    // This ensures MERGE_EMBEDDINGS only starts when all GENERATE_EMBEDDINGS tasks have completed
-    def all_embeddings = gen.batch_embeddings.collect()
-    def merged = MERGE_EMBEDDINGS(all_embeddings)
+    // Use collectFile to merge all embedding files into a single TSV
+    def merged_embeddings = gen.batch_embeddings
+        .collectFile(name: 'embeddings.tsv', keepHeader: true, skip: 1)
     
-    def idx     = BUILD_FAISS_INDEX(merged.embeddings)
-    def dists   = QUERY_FAISS_INDEX(merged.embeddings, idx.faiss_idx, idx.faiss_map)
+    def idx     = BUILD_FAISS_INDEX(merged_embeddings)
+    def dists   = QUERY_FAISS_INDEX(merged_embeddings, idx.faiss_idx, idx.faiss_map)
     def sorted  = SORT_DISTANCES(dists.distances)
     PLOT_DISTANCES(sorted.sorted_distances)
 

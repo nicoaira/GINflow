@@ -28,35 +28,38 @@ The pipeline is designed for scalability and reproducibility, supporting multipl
 ```mermaid
 graph TD
     A[Input TSV] --> B[Extract Metadata]
-    A --> C[Prep Batches]
-    C --> D{Subgraphs Mode?}
-    D -->|Yes| E[Generate Windows]
-    D -->|No| F[Generate Embeddings]
-    E --> F
-    F --> G[Merge Embeddings]
-    G --> H[Build FAISS Index]
-    G --> I[Query FAISS Index]
-    H --> I
-    I --> J[Sort Distances]
-    J --> K[Plot Distances]
-    B --> L[Aggregate Scores]
-    J --> L
-    L --> M[Plot Scores]
-    L --> N[Filter Top Contigs]
-    N --> O[Draw Contig SVGs]
-    N --> P[Draw Unaggregated SVGs]
-    O --> Q[Generate Aggregated Report]
-    P --> R[Generate Unaggregated Report]
+    A --> C[Split CSV Records]
+    C --> D[Collect Batch Files]
+    D --> E{Subgraphs Mode?}
+    E -->|Yes| F[Generate Windows]
+    E -->|No| G[Generate Embeddings]
+    F --> G
+    G --> H[Collect Embeddings]
+    H --> I[Build FAISS Index]
+    H --> J[Query FAISS Index]
+    I --> J
+    J --> K[Sort Distances]
+    K --> L[Plot Distances]
+    B --> M[Aggregate Scores]
+    K --> M
+    M --> N[Plot Scores]
+    M --> O[Filter Top Contigs]
+    O --> P[Draw Contig SVGs]
+    O --> Q[Draw Unaggregated SVGs]
+    P --> R[Generate Aggregated Report]
+    Q --> S[Generate Unaggregated Report]
 ```
 
 ### Step-by-Step Process
 
-1. **Input Processing**: Extract metadata and split sequences into processing batches
-2. **Windowing** (optional): Generate sliding windows for local structure analysis
-3. **Embedding Generation**: Create vector embeddings using GINFINITY's GIN model
-4. **Similarity Search**: Build FAISS index and query for nearest neighbors
-5. **Score Aggregation**: Apply sophisticated scoring algorithm with multiple parameters
-6. **Visualization**: Generate SVG drawings and interactive HTML reports
+1. **Input Processing**: Extract metadata and split sequences using `splitCsv` operator
+2. **Batch Creation**: Use `collectFile` to create processing batches from split records
+3. **Windowing** (optional): Generate sliding windows for local structure analysis
+4. **Embedding Generation**: Create vector embeddings using GINFINITY's GIN model
+5. **Embedding Aggregation**: Use `collectFile` to merge embedding batches into single file
+6. **Similarity Search**: Build FAISS index and query for nearest neighbors
+7. **Score Aggregation**: Apply sophisticated scoring algorithm with multiple parameters
+8. **Visualization**: Generate SVG drawings and interactive HTML reports
 
 ## Installation & Setup
 
