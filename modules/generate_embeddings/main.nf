@@ -31,8 +31,8 @@ process GENERATE_EMBEDDINGS {
     def cmd
     if (item instanceof List) {
         // subgraphs mode: item is a tuple [graphs_pt, metadata_tsv]
-        def graphs_pt_file    = item[0]
-        def metadata_tsv_file = item[1]
+        graphs_pt_file    = item[0]
+        metadata_tsv_file = item[1]
         cmd = """
         ginfinity-embed \\
           --graph-pt ${graphs_pt_file} \\
@@ -43,7 +43,7 @@ process GENERATE_EMBEDDINGS {
         """
     } else {
         // direct mode: item is a batch_tsv file path
-        def batch_tsv_file = item
+        batch_tsv_file = item
         cmd = """
         ginfinity-embed \\
           --input ${batch_tsv_file} \\
