@@ -9,9 +9,8 @@ process DRAW_CONTIG_SVGS {
     publishDir "${params.outdir}/drawings/contigs", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
-    // TODO: update singularity container
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginflow-draw-svgs:latest' :
+        'oras://quay.io/nicoaira/ginflow-draw-structures:latest' :
         'docker.io/nicoaira/ginflow-draw-structures:latest' }"
 
     input:
