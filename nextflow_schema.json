@@ -14,7 +14,7 @@
     "subgraphs": {"type": "boolean"},
     "L": {"type": ["integer", "null"]},
     "keep_paired_neighbors": {"type": "boolean"},
-    "batch_size_embed": {"type": "integer", "minimum": 1},
+    "split_size": {"type": "integer", "minimum": 1},
     "faiss_k": {"type": "integer", "minimum": 1},
     "alpha1": {"type": "number"},
     "alpha2": {"type": "number"},

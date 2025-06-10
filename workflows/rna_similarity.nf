@@ -28,7 +28,7 @@ workflow rna_similarity {
 
     // Split input TSV into batches using splitCsv operator
     def input_records = Channel.fromPath(params.input)
-        .splitCsv(header: params.header, sep: '\t', strip: true, by: params.batch_size_embed)
+        .splitCsv(header: params.header, sep: '\t', strip: true, by: params.split_size)
     
     // Transform each batch of records into a temporary TSV file using collectFile
     def batch_files_ch = input_records

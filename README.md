@@ -165,7 +165,7 @@ nextflow run main.nf -profile test,conda
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `--batch_size_embed` | `128` | Batch size for embedding generation |
+| `--split_size` | `128` | Batch size for embedding generation |
 | `--num_workers` | `4` | Number of parallel workers |
 | `--use_gpu` | `false` | Enable GPU acceleration |
 
@@ -250,7 +250,7 @@ Create a JSON parameters file for complex analyses:
 {
   "input": "/path/to/large_dataset.tsv",
   "outdir": "large_analysis_results",
-  "batch_size_embed": 256,
+  "split_size": 256,
   "faiss_k": 5000,
   "top_n": 100,
   "use_gpu": true,
@@ -314,7 +314,7 @@ GINflow consists of 15+ independent Nextflow modules:
 
 ### Common Issues
 
-1. **Out of Memory**: Reduce `batch_size_embed` or increase memory allocation
+1. **Out of Memory**: Reduce `split_size` or increase memory allocation
 2. **GPU Not Detected**: Ensure CUDA drivers and `--gpus all` Docker flag
 3. **Container Pull Failures**: Check internet connectivity and container registry access
 

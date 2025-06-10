@@ -9,7 +9,7 @@
   "L": 30,
   "keep_paired_neighbors": true,
   "keep_cols": "transcript_id",
-  "batch_size": 4096,
+  "inference_batch_size": 4096,
   "id_column": "transcript_id",
   "query": "ENST00000811669.1",
   "top_n": 50,

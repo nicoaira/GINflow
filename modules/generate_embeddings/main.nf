@@ -25,7 +25,7 @@ process GENERATE_EMBEDDINGS {
       --id-column ${params.id_column} \\
       --output ${OUTFILE} \\
       --num-workers ${params.num_workers} \\
-      --batch-size ${params.batch_size}
+      --batch-size ${params.inference_batch_size}
     """
 
     def cmd
