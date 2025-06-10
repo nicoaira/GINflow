@@ -5,9 +5,7 @@ process QUERY_FAISS_INDEX {
     tag  "query_faiss_index"
 
     label 'medium_memory'
-
-    when { params.query_faiss_index }
-
+    
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/ginflow-query-faiss-index:latest' :
