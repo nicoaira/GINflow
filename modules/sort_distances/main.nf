@@ -6,8 +6,6 @@ process SORT_DISTANCES {
 
     label 'high_memory'
 
-    when { params.sort_distances }
-
     publishDir "${params.outdir}", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
