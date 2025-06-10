@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 process SORT_DISTANCES {
     tag "sort_distances"
 
-    label 'lightweight'
+    label 'high_memory'
 
     when { params.sort_distances }
 

@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 process BUILD_FAISS_INDEX {
     tag "build_faiss_index"
 
-    label 'mediumweight'
+    label 'medium_memory'
 
     publishDir "${params.outdir}/faiss_index", mode: 'copy'
     
