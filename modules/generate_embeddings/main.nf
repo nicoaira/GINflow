@@ -8,7 +8,7 @@ process GENERATE_EMBEDDINGS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.ion/nicoaira/ginfinity:latest' :
+        'oras://quay.io/nicoaira/ginfinity:latest' :
         'nicoaira/ginfinity@sha256:a2a43687b5583700d6fb0376de3c24f3dcc81ab10ea86427d51877aef8368ed6' }"
 
     input:
