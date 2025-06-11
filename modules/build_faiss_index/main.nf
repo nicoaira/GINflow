@@ -4,7 +4,7 @@ nextflow.enable.dsl=2
 process BUILD_FAISS_INDEX {
     tag "build_faiss_index"
 
-    label 'medium_memory'
+    label 'high_cpu'
 
     publishDir "${params.outdir}/faiss_index", mode: 'copy'
     
@@ -27,6 +27,7 @@ process BUILD_FAISS_INDEX {
       --id-column ${params.id_column} \
       --query ${params.query} \
       --index-path faiss.index \
-      --mapping-path faiss_mapping.tsv
+      --mapping-path faiss_mapping.tsv \
+      --num-workers ${task.cpus}
     """
 }

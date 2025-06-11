@@ -23,6 +23,9 @@ def parse_args():
                    help="Where to write the FAISS index file")
     p.add_argument('--mapping-path', required=True,
                    help="Where to write the DB metadata (with seq_len)")
+    p.add_argument('--num-workers', type=int, default=1,
+                   help="Number of workers for parallel operations")
+
     return p.parse_args()
 
 def infer_size_and_dim(tsv_path, vec_col='embedding_vector'):
@@ -39,6 +42,8 @@ def infer_size_and_dim(tsv_path, vec_col='embedding_vector'):
 
 def main():
     args = parse_args()
+
+    faiss.omp_set_num_threads(args.num_workers)
 
     # 1) figure out N,D
     N, D = infer_size_and_dim(args.input)
