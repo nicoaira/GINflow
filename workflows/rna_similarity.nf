@@ -26,37 +26,53 @@ workflow rna_similarity {
     // 0) Build the metadata map once
     def meta = EXTRACT_META_MAP(file(params.input))
 
-    // Split input TSV into batches using splitCsv operator
-    def input_records = Channel.fromPath(params.input)
-        .splitCsv(header: params.header, sep: '\t', strip: true, by: params.split_size)
-    
-    // Transform each batch of records into a temporary TSV file using collectFile
-    def batch_files_ch = input_records
-        .collectFile() { records ->
-            // Get header from first record
-            def header = records[0].keySet().join('\t')
-            // Convert records to TSV lines
-            def lines = records.collect { record -> record.values().join('\t') }.join('\n')
-            ["batch_${records.hashCode().abs()}.tsv", header + '\n' + lines + '\n']
+    def merged_embeddings
+    if (params.embeddings_tsv) {
+        // Use provided embeddings file
+        merged_embeddings = Channel.fromPath(params.embeddings_tsv)
+    } else {
+        // Split input TSV into batches using splitCsv operator
+        def input_records = Channel.fromPath(params.input)
+            .splitCsv(header: params.header, sep: '\t', strip: true, by: params.split_size)
+
+        // Transform each batch of records into a temporary TSV file using collectFile
+        def batch_files_ch = input_records
+            .collectFile() { records ->
+                // Get header from first record
+                def header = records[0].keySet().join('\t')
+                // Convert records to TSV lines
+                def lines = records.collect { record -> record.values().join('\t') }.join('\n')
+                ["batch_${records.hashCode().abs()}.tsv", header + '\n' + lines + '\n']
+            }
+
+        def gen
+        if(params.subgraphs) {
+            // Each GENERATE_WINDOWS task processes one batch and outputs window files
+            // GENERATE_EMBEDDINGS should start as soon as each window file is ready
+            def window_files = GENERATE_WINDOWS(batch_files_ch).window_files
+            gen = GENERATE_EMBEDDINGS(window_files)
+        } else {
+            // Direct processing of batch files without windowing
+            gen = GENERATE_EMBEDDINGS(batch_files_ch)
         }
 
-    def gen
-    if(params.subgraphs) {
-        // Each GENERATE_WINDOWS task processes one batch and outputs window files
-        // GENERATE_EMBEDDINGS should start as soon as each window file is ready
-        def window_files = GENERATE_WINDOWS(batch_files_ch).window_files
-        gen = GENERATE_EMBEDDINGS(window_files)
-    } else {
-        // Direct processing of batch files without windowing
-        gen = GENERATE_EMBEDDINGS(batch_files_ch)
+        // Use collectFile to merge all embedding files into a single TSV
+        merged_embeddings = gen.batch_embeddings
+            .collectFile(name: 'embeddings.tsv', keepHeader: true, skip: 1)
     }
-    
-    // Use collectFile to merge all embedding files into a single TSV
-    def merged_embeddings = gen.batch_embeddings
-        .collectFile(name: 'embeddings.tsv', keepHeader: true, skip: 1)
-    
-    def idx     = BUILD_FAISS_INDEX(merged_embeddings)
-    def dists   = QUERY_FAISS_INDEX(merged_embeddings, idx.faiss_idx, idx.faiss_map)
+
+    def faiss_idx_ch
+    def faiss_map_ch
+    if (params.faiss_index && params.faiss_mapping) {
+        faiss_idx_ch = Channel.fromPath(params.faiss_index)
+        faiss_map_ch = Channel.fromPath(params.faiss_mapping)
+    } else {
+        def idx = BUILD_FAISS_INDEX(merged_embeddings)
+        faiss_idx_ch = idx.faiss_idx
+        faiss_map_ch = idx.faiss_map
+    }
+
+    def dists   = QUERY_FAISS_INDEX(merged_embeddings, faiss_idx_ch, faiss_map_ch)
     def sorted  = SORT_DISTANCES(dists.distances)
     PLOT_DISTANCES(sorted.sorted_distances)
 

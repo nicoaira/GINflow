@@ -151,6 +151,9 @@ nextflow run main.nf -profile test,conda
 | `--outdir` | `results` | Output directory |
 | `--id_column` | `transcript_id` | Column name for sequence IDs |
 | `--structure_column_name` | `secondary_structure` | Column with dot-bracket structures |
+| `--embeddings_tsv` | `null` | Use an existing embeddings TSV instead of generating |
+| `--faiss_index` | `null` | Path to a prebuilt FAISS index |
+| `--faiss_mapping` | `null` | Mapping TSV that accompanies `--faiss_index` |
 
 ### Analysis Parameters
 
@@ -264,6 +267,21 @@ Run with:
 ```bash
 nextflow run main.nf -params-file custom_params.json -profile slurm,singularity,gpu
 ```
+
+### Using precomputed embeddings and index
+
+Provide existing `embeddings.tsv` and FAISS index files to skip the most expensive steps:
+
+```bash
+nextflow run main.nf \
+  --input your_data.tsv \
+  --embeddings_tsv precomputed/embeddings.tsv \
+  --faiss_index precomputed/faiss.index \
+  --faiss_mapping precomputed/faiss_mapping.tsv \
+  -profile docker
+```
+
+Supplying `--embeddings_tsv` bypasses window generation and embedding computation. Adding `--faiss_index` together with `--faiss_mapping` skips rebuilding the FAISS index.
 
 ### Resuming Failed Runs
 

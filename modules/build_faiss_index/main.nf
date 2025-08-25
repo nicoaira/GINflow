@@ -23,7 +23,7 @@ process BUILD_FAISS_INDEX {
     script:
     """
     python3 ${baseDir}/bin/build_faiss_index.py \
-      --input embeddings.tsv \
+      --input ${embeddings} \
       --id-column ${params.id_column} \
       --query ${params.query} \
       --index-path faiss.index \
