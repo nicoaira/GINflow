@@ -22,11 +22,11 @@ process QUERY_FAISS_INDEX {
     script:
     """
     python3 ${baseDir}/bin/query_faiss_index.py \
-      --input embeddings.tsv \
+      --input ${embeddings} \
       --id-column ${params.id_column} \
       --query ${params.query} \
-      --index-path faiss.index \
-      --mapping-path faiss_mapping.tsv \
+      --index-path ${faiss_idx} \
+      --mapping-path ${faiss_map} \
       --top-k ${params.faiss_k} \
       --output distances.tsv
     """
