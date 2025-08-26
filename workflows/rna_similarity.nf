@@ -124,8 +124,8 @@ workflow rna_similarity {
     def per_query = PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 
     MERGE_QUERY_RESULTS(
-        per_query.out.sorted_distances.collect(),
-        per_query.out.enriched_all.collect(),
-        per_query.out.enriched_unagg.collect()
+        per_query.sorted_distances.collect(),
+        per_query.enriched_all.collect(),
+        per_query.enriched_unagg.collect()
     )
 }
