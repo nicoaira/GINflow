@@ -14,9 +14,9 @@ process MERGE_QUERY_RESULTS {
         'amancevice/pandas:2.2.2' }"
 
     input:
-    path distances,    stageAs: { "${it.parent.name}_${it.name}" }
-    path scores_all,   stageAs: { "${it.parent.name}_${it.name}" }
-    path scores_unagg, stageAs: { "${it.parent.name}_${it.name}" }
+    path distances
+    path scores_all
+    path scores_unagg
 
     output:
     path "distances.merged.sorted.tsv"

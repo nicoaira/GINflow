@@ -21,13 +21,13 @@ process BUILD_FAISS_INDEX {
     path "faiss_mapping.tsv", emit: faiss_map
 
     script:
+    def query_option = params.query ? "--query ${params.query} \\\n" : ''
     """
-    python3 ${baseDir}/bin/build_faiss_index.py \
-      --input ${embeddings} \
-      --id-column ${params.id_column} \
-      --query ${params.query} \
-      --index-path faiss.index \
-      --mapping-path faiss_mapping.tsv \
+    python3 ${baseDir}/bin/build_faiss_index.py \\
+      --input ${embeddings} \\
+      --id-column ${params.id_column} \\
+      ${query_option}--index-path faiss.index \\
+      --mapping-path faiss_mapping.tsv \\
       --num-workers ${task.cpus}
     """
 }
