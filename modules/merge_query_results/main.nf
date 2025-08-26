@@ -28,9 +28,9 @@ process MERGE_QUERY_RESULTS {
     python3 - <<'PY'
 import pandas as pd
 
-dist_files = ${groovy.json.JsonOutput.toJson(distances)}
-score_files = ${groovy.json.JsonOutput.toJson(scores_all)}
-unagg_files = ${groovy.json.JsonOutput.toJson(scores_unagg)}
+dist_files = ${groovy.json.JsonOutput.toJson(distances.collect { it.toString() })}
+score_files = ${groovy.json.JsonOutput.toJson(scores_all.collect { it.toString() })}
+unagg_files = ${groovy.json.JsonOutput.toJson(scores_unagg.collect { it.toString() })}
 
 def merge(files, out):
     dfs = [pd.read_csv(f, sep='\t') for f in files]
