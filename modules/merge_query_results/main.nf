@@ -14,9 +14,14 @@ process MERGE_QUERY_RESULTS {
         'amancevice/pandas:2.2.2' }"
 
     input:
-    path distances,    stageAs: { "${it.parent.name}_${it.name}" }
-    path scores_all,   stageAs: { "${it.parent.name}_${it.name}" }
-    path scores_unagg, stageAs: { "${it.parent.name}_${it.name}" }
+    // Collect all per-query result files as values. Using `val` avoids Nextflow
+    // staging (and renaming) the files in the work directory, which previously
+    // produced bogus temporary names like `Script_***` and caused the process to
+    // fail.  The files remain accessible at their original locations and are
+    // read directly by the Python merging script below.
+    val distances
+    val scores_all
+    val scores_unagg
 
     output:
     path "distances.merged.sorted.tsv"
