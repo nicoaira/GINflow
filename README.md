@@ -190,6 +190,14 @@ The pipeline uses a sophisticated scoring algorithm with several tunable paramet
 | `--gamma` | `0.41` | Combined score weight |
 | `--percentile` | `1` | Top percentile threshold |
 
+### Reporting Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--run_aggregated_report` | `true` | Generate aggregated HTML report |
+| `--run_unaggregated_report` | `false` | Generate unaggregated HTML report |
+| `--draw_contig_svgs` | `true` | Draw individual contig SVGs (disables aggregated report when `false`) |
+
 ## Testing
 
 ### Test Dataset

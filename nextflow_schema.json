@@ -31,7 +31,10 @@
     "hist_frac": {"type": "number"},
     "hist_bins": {"type": "integer"},
     "plot_score_distribution": {"type": "boolean"},
-    "score_bins": {"type": "integer"}
+    "score_bins": {"type": "integer"},
+    "run_aggregated_report": {"type": "boolean"},
+    "run_unaggregated_report": {"type": "boolean"},
+    "draw_contig_svgs": {"type": "boolean"}
   },
   "required": ["input", "model_path", "queries"]
 }
