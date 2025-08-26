@@ -11,7 +11,7 @@
   "keep_cols": "transcript_id",
   "inference_batch_size": 4096,
   "id_column": "transcript_id",
-  "query": "ENST00000811669.1",
+  "queries": "querysheet.csv",
   "top_n": 50,
   "faiss_k": 500
 }

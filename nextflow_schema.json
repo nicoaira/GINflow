@@ -26,11 +26,12 @@
     "embeddings_tsv": {"type": ["string", "null"], "description": "Path to precomputed embeddings.tsv"},
     "faiss_index": {"type": ["string", "null"], "description": "Path to prebuilt FAISS index"},
     "faiss_mapping": {"type": ["string", "null"], "description": "Path to FAISS mapping TSV"},
+    "queries": {"type": "string", "description": "CSV file with query IDs"},
     "plot_distances_distribution": {"type": "boolean"},
     "hist_frac": {"type": "number"},
     "hist_bins": {"type": "integer"},
     "plot_score_distribution": {"type": "boolean"},
     "score_bins": {"type": "integer"}
   },
-  "required": ["input", "model_path"]
+  "required": ["input", "model_path", "queries"]
 }

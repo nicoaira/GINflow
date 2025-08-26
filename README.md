@@ -86,6 +86,7 @@ graph TD
    ```bash
    nextflow run main.nf \
      --input your_data.tsv \
+     --queries querysheet.csv \
      --outdir results \
      -profile docker
    ```
@@ -100,6 +101,10 @@ The pipeline expects a TSV file with the following required columns:
 | `secondary_structure` | Dot-bracket notation | `(((...)))..((()))` |
 
 Optional columns include genomic coordinates, sequences, and additional metadata.
+
+## Query Sheet Format
+
+Provide a CSV file via `--queries` containing at least one column named `id` with the identifiers to search. Each row is processed independently and its results are written under `results/queries_results/<id>/`.
 
 ### Example Input
 

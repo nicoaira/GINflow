@@ -2,8 +2,8 @@
 nextflow.enable.dsl=2
 
 process PLOT_DISTANCES {
-    tag "plot_distances"
-    
+    tag "plot_distances_${query_id}"
+
     label 'lightweight'
 
     conda "${moduleDir}/environment.yml"
@@ -12,11 +12,11 @@ process PLOT_DISTANCES {
         'nicoaira/ginflow-plot-distances:latest' }"
 
     when   { params.plot_distances_distribution }
-    tag    "plot_distances"
-    publishDir "${params.outdir}/plots", mode: 'copy'
+    publishDir "${params.outdir}/queries_results/${query_id}/plots", mode: 'copy'
 
     input:
     path sorted_distances
+    val query_id
 
     output:
     path "distance_distribution.png"
@@ -25,7 +25,7 @@ process PLOT_DISTANCES {
     """
     python3 - << 'PY'
 import pandas as pd, matplotlib.pyplot as plt
-df = pd.read_csv('distances.sorted.tsv', sep='\\t')
+df = pd.read_csv('distances.sorted.tsv', sep='\t')
 sample = df.sample(frac=${params.hist_frac}, random_state=${params.hist_seed})
 plt.hist(sample['distance'], bins=${params.hist_bins})
 plt.xlabel('Distance')

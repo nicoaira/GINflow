@@ -19,6 +19,9 @@ if ( params.faiss_index && !file(params.faiss_index).exists() )
 if ( params.faiss_mapping && !file(params.faiss_mapping).exists() )
     error "Cannot find FAISS mapping: ${params.faiss_mapping}"
 
+if ( !file(params.queries).exists() )
+    error "Cannot find queries CSV: ${params.queries}"
+
 // ───────────────────────────────────────────────────────────
 // Include and invoke the main workflow
 // ───────────────────────────────────────────────────────────
