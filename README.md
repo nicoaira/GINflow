@@ -230,22 +230,27 @@ ls test_results/
 
 ```
 results/
-├── pairs_contigs_report.html                 # Main aggregated report
-├── pairs_contigs_report.unaggregated.html    # Unaggregated report
-├── embeddings.tsv                            # Vector embeddings
-├── distances.sorted.tsv                      # Sorted pairwise distances
-├── pairs_scores_all_contigs.tsv              # All similarity scores
-├── pairs_scores_top_contigs.tsv              # Top N similar pairs
-├── id_meta.tsv                               # Extracted metadata
+├── distances.merged.sorted.tsv                      # Sorted pairwise distances from all queries
+├── pairs_scores_all_contigs.merged.tsv              # All similarity scores across queries
+├── pairs_scores_all_contigs.unaggregated.merged.tsv # Unaggregated scores across queries
+├── embeddings.tsv                                   # Vector embeddings
+├── id_meta.tsv                                      # Extracted metadata
+├── queries_results/                                 # Per-query outputs
+│   └── <query_id>/
+│       ├── distances.sorted.tsv
+│       ├── pairs_scores_all_contigs.tsv
+│       ├── pairs_scores_all_contigs.unaggregated.tsv
+│       ├── pairs_scores_top_contigs.tsv
+│       └── pairs_scores_top_contigs.unaggregated.tsv
 ├── drawings/
-│   ├── contigs/                              # SVG visualizations (aggregated)
-│   └── unagg_windows/                        # SVG visualizations (windowed)
+│   ├── contigs/                                     # SVG visualizations (aggregated)
+│   └── unagg_windows/                               # SVG visualizations (windowed)
 ├── faiss_index/
-│   ├── faiss.index                          # FAISS similarity index
-│   └── faiss_mapping.tsv                    # Index to ID mapping
+│   ├── faiss.index                                 # FAISS similarity index
+│   └── faiss_mapping.tsv                           # Index to ID mapping
 └── plots/
-    ├── distance_distribution.png             # Distance histogram
-    └── score_distribution.png                # Score histogram
+    ├── distance_distribution.png                    # Distance histogram
+    └── score_distribution.png                       # Score histogram
 ```
 
 ## Advanced Usage
