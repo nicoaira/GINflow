@@ -2,10 +2,27 @@ name: GINflow CI Test
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'codex/**' ]
   pull_request:
-    branches: [ main, master ]
-  workflow_dispatch: {}
+    branches: [ main, master, 'codex/**' ]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode: smoke | test | full | auto'
+        required: false
+        default: 'auto'
+      use_gpu:
+        description: 'GPU usage: auto | yes | no'
+        required: false
+        default: 'auto'
+      extra_profiles:
+        description: 'Extra Nextflow profiles (comma-separated)'
+        required: false
+        default: ''
+      resume:
+        description: 'Use -resume cache (true|false)'
+        required: false
+        default: 'false'
 
 # Ensure only one test run per ref at a time
 concurrency:
@@ -16,24 +33,50 @@ permissions:
   contents: read
 
 env:
-  NXF_VER: 25.04.3          # Pin Nextflow version
+  NXF_VER: 25.04.3
   NXF_ANSI_LOG: false
-  # Avoid Nextflow pulling latest containers if digest unchanged
   NXF_DISABLE_CHECK_LATEST: true
 
 jobs:
   test-pipeline:
-    # Requires you to register a self-hosted runner on your local server
-    # Add labels (self-hosted, linux, x64, gpu) to match below if GPU available
     runs-on: [self-hosted, linux, x64]
-    # If you add a custom 'gpu' label to the runner, uncomment the line below and add it
-    # runs-on: [self-hosted, linux, x64, gpu]
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Cache Nextflow work & deps
+      - name: Determine run configuration
+        id: cfg
+        run: |
+          set -euo pipefail
+          REF='${GITHUB_REF}'
+          INPUT_MODE='${{ github.event.inputs.mode || '' }}'
+          MODE="$INPUT_MODE"
+          if [ -z "$MODE" ] || [ "$MODE" = auto ]; then
+            if [[ "$REF" == refs/heads/codex/* ]]; then MODE=smoke; else MODE=test; fi
+          fi
+          echo "Resolved MODE=$MODE (ref=$REF, input=$INPUT_MODE)"
+          BASE_PROFILES="docker"
+          case "$MODE" in
+            smoke) BASE_PROFILES="smoke,docker" ;;
+            test)  BASE_PROFILES="test,docker" ;;
+            full)  BASE_PROFILES="docker" ;;
+            *) echo "Unknown MODE=$MODE"; exit 1;;
+          esac
+          EXTRA='${{ github.event.inputs.extra_profiles || '' }}'
+          if [ -n "$EXTRA" ]; then
+            # remove spaces
+            EXTRA=$(echo "$EXTRA" | tr -d ' ')
+            if [ -n "$EXTRA" ]; then BASE_PROFILES="$BASE_PROFILES,$EXTRA"; fi
+          fi
+          USE_GPU_INPUT='${{ github.event.inputs.use_gpu || '' }}'
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
+          echo "base_profiles=$BASE_PROFILES" >> $GITHUB_OUTPUT
+          echo "use_gpu_input=$USE_GPU_INPUT" >> $GITHUB_OUTPUT
+          RESUME_FLAG=''
+          if [ '${{ github.event.inputs.resume || '' }}' = 'true' ]; then RESUME_FLAG='-resume'; fi
+          echo "resume_flag=$RESUME_FLAG" >> $GITHUB_OUTPUT
+
+      - name: Cache Nextflow dirs
         uses: actions/cache@v4
         with:
           path: |
@@ -41,7 +84,7 @@ jobs:
             ~/.nextflow/assets
           key: nf-${{ hashFiles('nextflow.config') }}
 
-      - name: Install Java (Temurin 17)
+      - name: Install Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -55,36 +98,68 @@ jobs:
           echo "$HOME/.local/bin" >> $GITHUB_PATH
           nextflow -version
 
-      - name: Docker info
+      - name: GPU preflight
+        id: gpu
         run: |
-          docker version
-          docker info
+          set +e
+          echo "Host nvidia-smi:" || true
+          if command -v nvidia-smi >/dev/null 2>&1; then nvidia-smi || true; else echo "nvidia-smi not present"; fi
+          RUNTIMES=$(docker info --format '{{json .Runtimes}}')
+          echo "Docker runtimes: $RUNTIMES"
+          if echo "$RUNTIMES" | grep -qi nvidia; then echo "nvidia_runtime=true" >> $GITHUB_OUTPUT; else echo "nvidia_runtime=false" >> $GITHUB_OUTPUT; fi
 
-      - name: Run test profile (with GPU if available)
+      - name: Run pipeline
         id: run_nf
-        env:
-          # If your self-hosted runner has GPUs + nvidia-container-toolkit, include ,gpu
-          USE_GPU: ${{ runner.tags && contains(runner.tags, 'gpu') }}
         run: |
           set -euo pipefail
-          PROFILE="test,docker"
-          if docker info --format '{{json .Runtimes.nvidia}}' | grep -qi nvidia; then
-            PROFILE="${PROFILE},gpu"
+          PROFILES='${{ steps.cfg.outputs.base_profiles }}'
+          GPU_INPUT='${{ steps.cfg.outputs.use_gpu_input }}'
+          NVIDIA_RUNTIME='${{ steps.gpu.outputs.nvidia_runtime }}'
+          if [ "$GPU_INPUT" = yes ]; then
+            PROFILES="$PROFILES,gpu"
+          elif [ "$GPU_INPUT" = auto ] || [ -z "$GPU_INPUT" ]; then
+            if [ "$NVIDIA_RUNTIME" = true ]; then PROFILES="$PROFILES,gpu"; fi
+          else
+            echo "GPU explicitly disabled (use_gpu=$GPU_INPUT)"
           fi
-          echo "Using profile: $PROFILE"
-          nextflow run main.nf -profile ${PROFILE} -with-report -with-trace -with-timeline -with-dag
+          echo "Using profiles: $PROFILES"
+          RESUME='${{ steps.cfg.outputs.resume_flag }}'
+          set -x
+          nextflow run main.nf -profile "$PROFILES" $RESUME -with-report -with-trace -with-timeline -with-dag || echo "NF_EXIT_CODE=$?" >> nf_exit_code.tmp
+          set +x
+          if [ -f nf_exit_code.tmp ]; then exit $(cut -d= -f2 nf_exit_code.tmp); fi
 
-      - name: Archive test results (always)
+      - name: Generate CI summary artifact
+        if: always()
+        run: |
+          mkdir -p ci_summary
+          SUCCESS=${{ steps.run_nf.outcome == 'success' && 'true' || 'false' }}
+          printf '{\n' > ci_summary/summary.json
+          printf '  "branch": "%s",\n' "${GITHUB_REF}" >> ci_summary/summary.json
+          printf '  "sha": "%s",\n' "${GITHUB_SHA}" >> ci_summary/summary.json
+          printf '  "mode": "%s",\n' "${{ steps.cfg.outputs.mode }}" >> ci_summary/summary.json
+          printf '  "profiles": "%s",\n' "${{ steps.cfg.outputs.base_profiles }}" >> ci_summary/summary.json
+          printf '  "gpu_runtime": "%s",\n' "${{ steps.gpu.outputs.nvidia_runtime }}" >> ci_summary/summary.json
+          printf '  "requested_gpu": "%s",\n' "${{ steps.cfg.outputs.use_gpu_input }}" >> ci_summary/summary.json
+          printf '  "resume": "%s",\n' "${{ steps.cfg.outputs.resume_flag }}" >> ci_summary/summary.json
+          printf '  "success": "SUCCESS_PLACEHOLDER"\n' >> ci_summary/summary.json
+          printf '}\n' >> ci_summary/summary.json
+          sed -i "s/SUCCESS_PLACEHOLDER/${SUCCESS}/" ci_summary/summary.json
+          echo "Summary:"; cat ci_summary/summary.json
+
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test_results
+          name: ci_${{ steps.cfg.outputs.mode }}
           path: |
             test_results/**
+            smoke_results/**
+            ci_summary/summary.json
             .nextflow.log*
           if-no-files-found: warn
 
-      - name: Fail if Nextflow run failed
+      - name: Fail if run failed
         if: steps.run_nf.outcome != 'success'
         run: exit 1
 

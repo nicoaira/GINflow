@@ -103,3 +103,64 @@ See LICENSE.
 
 Contact
 Open issues / pull requests for improvements.
+
+## CI & Automated Testing (Agents)
+
+Purpose: Provide rapid feedback on branch changes, especially for agent-created branches (codex/*).
+
+Key Workflows:
+- GINflow CI Test (ci.yml): Runs on push / PR to main, master, and codex/** branches. Supports manual dispatch.
+
+Branch-based Modes:
+- codex/* branches default to `smoke` mode (very fast, minimal resources) with profiles: smoke,docker,(gpu if available)
+- Other branches default to `test` mode (moderate coverage) with profiles: test,docker,(gpu if available)
+- `full` mode may be selected manually via workflow_dispatch input when deeper validation needed.
+
+Dispatch Inputs:
+- mode: auto | smoke | test | full (auto selects smoke for codex/* else test)
+- use_gpu: auto | yes | no (auto adds gpu profile if runtime present)
+- extra_profiles: comma-separated list appended (e.g. `singularity` or `monitor`)
+- resume: true|false to enable `-resume` cache reuse
+
+Smoke vs Test vs Full:
+- smoke: Minimal k (100), top_n (3), reduced workers/batch size, no plotting of distributions, skips SVG drawings, fastest (<2 min)
+- test: Medium size (default small test dataset), some plots, moderate runtime
+- full: Uses only explicitly requested profiles (start from docker) and full default params
+
+Artifacts:
+- ci_<mode> artifact containing: test_results/ or smoke_results/, .nextflow.log, ci_summary/summary.json
+- summary.json fields: branch, sha, mode, profiles, gpu_runtime, requested_gpu, resume, success
+
+Agent Workflow Loop (Recommended):
+1. Create or update branch `codex/<task-name>` with changes.
+2. Push commits; CI auto-runs in smoke mode.
+3. Download summary.json & logs via GitHub API. Parse success.
+4. If failure: parse .nextflow.log for the first process failure (search for 'ERROR ~' or process name) and patch code.
+5. Re-push changes; repeat until success.
+6. Optionally dispatch `mode=test` for deeper coverage before opening PR.
+7. For performance-sensitive modifications (embedding logic), manually trigger `mode=full`.
+
+Failure Parsing Heuristics:
+- Container/image pull errors: retry once; if persistent, switch to conda profile (`extra_profiles=conda`).
+- Memory errors (Exit status 137 / OOM): reduce inference_batch_size or add label adjustments (future enhancement: dynamic memory scaling).
+- GPU missing: rerun with `use_gpu=no` if gpu profile added but runtime absent.
+
+Security & Safety:
+- Avoid adding secrets directly into workflow edits; use repository secrets for new credentials.
+- Keep changes to nextflow.config additive; do not delete existing profiles (agents should append new profile blocks).
+
+Extending CI (Agent Tasks):
+- Add new quick validation modules: create `profile smoke` variations or stub-run mode (future optional).
+- Append new artifacts (e.g., param snapshot) by writing JSON to `ci_summary/` and updating upload step.
+
+Status Badge (add to README):
+`![CI](https://github.com/nicoaira/GINflow/actions/workflows/ci.yml/badge.svg)`
+
+Triggering Manually via API (for agents):
+`POST /repos/nicoaira/GINflow/actions/workflows/ci.yml/dispatches` JSON body: `{ "ref": "codex/my-branch", "inputs": { "mode": "smoke" } }` with a token having `workflow` scope.
+
+Cache Considerations:
+- Resume flag reuses previous work/ hashes; only use when underlying input & params stable.
+- Agents should omit resume after structural pipeline edits to force full rebuild.
+
+End of CI Agent Section.
