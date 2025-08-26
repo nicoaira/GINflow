@@ -37,7 +37,7 @@ workflow PER_QUERY {
 
         def filtered = FILTER_TOP_CONTIGS(agg.enriched_all, agg.enriched_unagg, query_id)
 
-        if (params.run_aggregated_report) {
+        if (params.run_aggregated_report && params.draw_contig_svgs) {
             def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs, query_id)
             GENERATE_AGGREGATED_REPORT(filtered.top_contigs, contigs_draw.contig_individual, query_id)
         }
