@@ -2,11 +2,11 @@
 nextflow.enable.dsl=2
 
 process GENERATE_UNAGGREGATED_REPORT {
-    tag "gen_unagg_report"
+    tag "gen_unagg_report_${query_id}"
 
     label 'lightweight'
-    
-    publishDir "${params.outdir}", mode: 'copy'
+
+    publishDir "${params.outdir}/queries_results/${query_id}", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -16,6 +16,7 @@ process GENERATE_UNAGGREGATED_REPORT {
     input:
     path top_contigs_unagg_tsv
     path window_individual
+    val query_id
 
     output:
     path "pairs_contigs_report.unaggregated.html"

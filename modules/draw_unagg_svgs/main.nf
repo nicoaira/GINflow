@@ -2,11 +2,11 @@
 nextflow.enable.dsl=2
 
 process DRAW_UNAGG_SVGS {
-    tag "draw_window_svgs"
+    tag "draw_window_svgs_${query_id}"
 
     label 'high_cpu'
-    
-    publishDir "${params.outdir}/drawings/unagg_windows", mode: 'copy'
+
+    publishDir "${params.outdir}/queries_results/${query_id}/drawings/unagg_windows", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -15,6 +15,7 @@ process DRAW_UNAGG_SVGS {
 
     input:
     path top_unagg_tsv
+    val query_id
 
     output:
     path 'individual_svgs', emit: window_individual

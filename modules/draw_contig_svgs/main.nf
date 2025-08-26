@@ -2,11 +2,11 @@
 nextflow.enable.dsl=2
 
 process DRAW_CONTIG_SVGS {
-    tag "draw_contig_svgs"
+    tag "draw_contig_svgs_${query_id}"
 
     label 'high_cpu'
-    
-    publishDir "${params.outdir}/drawings/contigs", mode: 'copy'
+
+    publishDir "${params.outdir}/queries_results/${query_id}/drawings/contigs", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -15,6 +15,7 @@ process DRAW_CONTIG_SVGS {
 
     input:
     path top_contigs_tsv
+    val query_id
 
     output:
     path 'individual_svgs', emit: contig_individual

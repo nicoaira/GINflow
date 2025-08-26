@@ -19,6 +19,34 @@ include { DRAW_UNAGG_SVGS } from '../modules/draw_unagg_svgs/main'
 include { GENERATE_AGGREGATED_REPORT } from '../modules/generate_aggregated_report/main'
 include { GENERATE_UNAGGREGATED_REPORT } from '../modules/generate_unaggregated_report/main'
 
+workflow PER_QUERY {
+    take:
+        query_id
+        embeddings
+        faiss_idx
+        faiss_map
+        meta_map
+    main:
+        def dists  = QUERY_FAISS_INDEX(embeddings, faiss_idx, faiss_map, query_id)
+        def sorted = SORT_DISTANCES(dists.distances, query_id)
+        PLOT_DISTANCES(sorted.sorted_distances, query_id)
+
+        def agg    = AGGREGATE_SCORE(sorted.sorted_distances, meta_map, query_id)
+        PLOT_SCORE(agg.enriched_all, query_id)
+
+        def filtered = FILTER_TOP_CONTIGS(agg.enriched_all, agg.enriched_unagg, query_id)
+
+        if (params.run_aggregated_report) {
+            def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs, query_id)
+            GENERATE_AGGREGATED_REPORT(filtered.top_contigs, contigs_draw.contig_individual, query_id)
+        }
+
+        if (params.run_unaggregated_report) {
+            def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg, query_id)
+            GENERATE_UNAGGREGATED_REPORT(filtered.top_contigs_unagg, windows_draw.window_individual, query_id)
+        }
+}
+
 // ───────────────────────────────────────────────────────────
 // Workflow wiring
 // ───────────────────────────────────────────────────────────
@@ -72,26 +100,9 @@ workflow rna_similarity {
         faiss_map_ch = idx.faiss_map
     }
 
-    def dists   = QUERY_FAISS_INDEX(merged_embeddings, faiss_idx_ch, faiss_map_ch)
-    def sorted  = SORT_DISTANCES(dists.distances)
-    PLOT_DISTANCES(sorted.sorted_distances)
+    def queries = Channel.fromPath(params.queries)
+        .splitCsv(header: true, sep: ',', strip: true)
+        .map { row -> row['id'] }
 
-    // 7
-    def (agg_all, agg_un) = AGGREGATE_SCORE(sorted.sorted_distances, meta.meta_map)
-    PLOT_SCORE(agg_all)
-
-    // 8-9-10-11-12-13
-    def (top_c, top_u)  = FILTER_TOP_CONTIGS(agg_all, agg_un)
-    
-    // Conditionally run aggregated report processes
-    if (params.run_aggregated_report) {
-        def contigs_draw = DRAW_CONTIG_SVGS(top_c)
-        GENERATE_AGGREGATED_REPORT(top_c, contigs_draw.contig_individual)
-    }
-    
-    // Conditionally run unaggregated report processes
-    if (params.run_unaggregated_report) {
-        def windows_draw = DRAW_UNAGG_SVGS(top_u)
-        GENERATE_UNAGGREGATED_REPORT(top_u, windows_draw.window_individual)
-    }
+    PER_QUERY(queries, merged_embeddings, faiss_idx_ch, faiss_map_ch, meta.meta_map)
 }

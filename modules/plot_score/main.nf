@@ -2,22 +2,21 @@
 nextflow.enable.dsl=2
 
 process PLOT_SCORE {
-    tag "plot_score"
+    tag "plot_score_${query_id}"
 
     label 'lightweight'
 
-    
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/ginflow-plot-score:latest' :
         'nicoaira/ginflow-plot-score:latest' }"
 
     when   { params.plot_score_distribution }
-    tag    "plot_score"
-    publishDir "${params.outdir}/plots", mode: 'copy'
+    publishDir "${params.outdir}/queries_results/${query_id}/plots", mode: 'copy'
 
     input:
     path enriched_all
+    val query_id
 
     output:
     path "score_distribution.png"
@@ -26,7 +25,7 @@ process PLOT_SCORE {
     """
     python3 - << 'PY'
 import pandas as pd, matplotlib.pyplot as plt
-df = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\\t')
+df = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\t')
 plt.hist(df['score'], bins=${params.score_bins})
 plt.xlabel('Score')
 plt.ylabel('Frequency')
