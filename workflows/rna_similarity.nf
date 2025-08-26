@@ -110,5 +110,11 @@ workflow rna_similarity {
         .splitCsv(header: true, sep: ',', strip: true)
         .map { row -> row['id'] }
 
-    PER_QUERY(queries, merged_embeddings, faiss_idx_ch, faiss_map_ch, meta.meta_map)
+    // Convert single-value channels to value channels so they can be reused for each query
+    def embeddings_val = merged_embeddings.first()
+    def faiss_idx_val  = faiss_idx_ch.first()
+    def faiss_map_val  = faiss_map_ch.first()
+    def meta_map_val   = meta.meta_map.first()
+
+    PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 }
