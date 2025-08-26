@@ -18,6 +18,7 @@ include { DRAW_CONTIG_SVGS } from '../modules/draw_contig_svgs/main'
 include { DRAW_UNAGG_SVGS } from '../modules/draw_unagg_svgs/main'
 include { GENERATE_AGGREGATED_REPORT } from '../modules/generate_aggregated_report/main'
 include { GENERATE_UNAGGREGATED_REPORT } from '../modules/generate_unaggregated_report/main'
+include { MERGE_QUERY_RESULTS } from '../modules/merge_query_results/main'
 
 workflow PER_QUERY {
     take:
@@ -45,6 +46,10 @@ workflow PER_QUERY {
             def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg, query_id)
             GENERATE_UNAGGREGATED_REPORT(filtered.top_contigs_unagg, windows_draw.window_individual, query_id)
         }
+    emit:
+        sorted_distances = sorted.sorted_distances
+        enriched_all     = agg.enriched_all
+        enriched_unagg   = agg.enriched_unagg
 }
 
 // ───────────────────────────────────────────────────────────
@@ -116,5 +121,11 @@ workflow rna_similarity {
     def faiss_map_val  = faiss_map_ch.first()
     def meta_map_val   = meta.meta_map.first()
 
-    PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
+    def per_query = PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
+
+    MERGE_QUERY_RESULTS(
+        per_query.out.sorted_distances.collect(),
+        per_query.out.enriched_all.collect(),
+        per_query.out.enriched_unagg.collect()
+    )
 }
