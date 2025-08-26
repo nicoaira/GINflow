@@ -56,8 +56,14 @@ workflow rna_similarity {
 
     def merged_embeddings
     if (params.embeddings_tsv) {
-        // Use provided embeddings file
+        // Use provided embeddings file and ensure it's available in the output directory
         merged_embeddings = Channel.fromPath(params.embeddings_tsv)
+            .map { path ->
+                def out = file(params.outdir).resolve('embeddings.tsv')
+                out.parent.mkdirs()
+                path.copyTo(out)
+                out
+            }
     } else {
         // Split input TSV into batches using splitCsv operator
         def input_records = Channel.fromPath(params.input)
@@ -86,7 +92,7 @@ workflow rna_similarity {
 
         // Use collectFile to merge all embedding files into a single TSV
         merged_embeddings = gen.batch_embeddings
-            .collectFile(name: 'embeddings.tsv', keepHeader: true, skip: 1)
+            .collectFile(name: 'embeddings.tsv', keepHeader: true, skip: 1, storeDir: params.outdir)
     }
 
     def faiss_idx_ch
