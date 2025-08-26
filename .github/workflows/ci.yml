@@ -1,0 +1,94 @@
+name: GINflow CI Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch: {}
+
+# Ensure only one test run per ref at a time
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NXF_VER: 25.04.3          # Pin Nextflow version
+  NXF_ANSI_LOG: false
+  # Avoid Nextflow pulling latest containers if digest unchanged
+  NXF_DISABLE_CHECK_LATEST: true
+
+jobs:
+  test-pipeline:
+    # Requires you to register a self-hosted runner on your local server
+    # Add labels (self-hosted, linux, x64, gpu) to match below if GPU available
+    runs-on: [self-hosted, linux, x64]
+    # If you add a custom 'gpu' label to the runner, uncomment the line below and add it
+    # runs-on: [self-hosted, linux, x64, gpu]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Nextflow work & deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.nextflow/cache
+            ~/.nextflow/assets
+          key: nf-${{ hashFiles('nextflow.config') }}
+
+      - name: Install Java (Temurin 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Nextflow
+        run: |
+          curl -sL https://get.nextflow.io | bash
+          mkdir -p ~/.local/bin
+          mv nextflow ~/.local/bin/nextflow
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          nextflow -version
+
+      - name: Docker info
+        run: |
+          docker version
+          docker info
+
+      - name: Run test profile (with GPU if available)
+        id: run_nf
+        env:
+          # If your self-hosted runner has GPUs + nvidia-container-toolkit, include ,gpu
+          USE_GPU: ${{ runner.tags && contains(runner.tags, 'gpu') }}
+        run: |
+          set -euo pipefail
+          PROFILE="test,docker"
+          if docker info --format '{{json .Runtimes.nvidia}}' | grep -qi nvidia; then
+            PROFILE="${PROFILE},gpu"
+          fi
+          echo "Using profile: $PROFILE"
+          nextflow run main.nf -profile ${PROFILE} -with-report -with-trace -with-timeline -with-dag
+
+      - name: Archive test results (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_results
+          path: |
+            test_results/**
+            .nextflow.log*
+          if-no-files-found: warn
+
+      - name: Fail if Nextflow run failed
+        if: steps.run_nf.outcome != 'success'
+        run: exit 1
+
+      - name: Cleanup work directory (optional)
+        if: always()
+        run: |
+          rm -rf work || true
