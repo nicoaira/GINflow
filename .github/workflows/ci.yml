@@ -46,8 +46,15 @@ jobs:
         run: |
           # Fix permissions and clean work directory before checkout
           if [ -d "$GITHUB_WORKSPACE" ]; then
+            echo "Fixing permissions on workspace directory..."
             chmod -R u+w "$GITHUB_WORKSPACE" || true
             rm -rf "$GITHUB_WORKSPACE" || true
+          fi
+          # Also clean any leftover work directories from previous runs
+          if [ -d "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" ]; then
+            echo "Fixing permissions on previous work directory..."
+            chmod -R u+w "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" || true
+            rm -rf "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" || true
           fi
           
       - name: Checkout
@@ -172,7 +179,20 @@ jobs:
         if: steps.run_nf.outcome != 'success'
         run: exit 1
 
+      - name: Set permissions before cleanup
+        if: always()
+        run: |
+          # Fix permissions on work directory before attempting to delete
+          if [ -d "work" ]; then
+            echo "Fixing permissions on work directory for cleanup..."
+            chmod -R u+w work || true
+          fi
+          if [ -d "$GITHUB_WORKSPACE/work" ]; then
+            chmod -R u+w "$GITHUB_WORKSPACE/work" || true
+          fi
+
       - name: Cleanup work directory (optional)
         if: always()
         run: |
           rm -rf work || true
+          rm -rf "$GITHUB_WORKSPACE/work" || true
