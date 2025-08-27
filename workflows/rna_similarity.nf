@@ -29,22 +29,25 @@ workflow PER_QUERY {
         meta_map
     main:
         def dists  = QUERY_FAISS_INDEX(embeddings, faiss_idx, faiss_map, query_id)
-        def sorted = SORT_DISTANCES(dists.distances, query_id)
-        PLOT_DISTANCES(sorted.sorted_distances, query_id)
+        def sorted = SORT_DISTANCES(dists.distances)
+        PLOT_DISTANCES(sorted.sorted_distances)
 
-        def agg    = AGGREGATE_SCORE(sorted.sorted_distances, meta_map, query_id)
-        PLOT_SCORE(agg.enriched_all, query_id)
+        def agg    = AGGREGATE_SCORE(sorted.sorted_distances, meta_map)
+        PLOT_SCORE(agg.enriched_all)
 
-        def filtered = FILTER_TOP_CONTIGS(agg.enriched_all, agg.enriched_unagg, query_id)
+        def joined_scores = agg.enriched_all.join(agg.enriched_unagg)
+        def filtered = FILTER_TOP_CONTIGS(joined_scores)
 
         if (params.run_aggregated_report && params.draw_contig_svgs) {
-            def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs, query_id)
-            GENERATE_AGGREGATED_REPORT(filtered.top_contigs, contigs_draw.contig_individual, query_id)
+            def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs)
+            def agg_report_in = filtered.top_contigs.join(contigs_draw.contig_individual)
+            GENERATE_AGGREGATED_REPORT(agg_report_in)
         }
 
         if (params.run_unaggregated_report) {
-            def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg, query_id)
-            GENERATE_UNAGGREGATED_REPORT(filtered.top_contigs_unagg, windows_draw.window_individual, query_id)
+            def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg)
+            def unagg_report_in = filtered.top_contigs_unagg.join(windows_draw.window_individual)
+            GENERATE_UNAGGREGATED_REPORT(unagg_report_in)
         }
     emit:
         sorted_distances = sorted.sorted_distances
@@ -124,8 +127,8 @@ workflow rna_similarity {
     def per_query = PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 
     MERGE_QUERY_RESULTS(
-        per_query.sorted_distances.collect(),
-        per_query.enriched_all.collect(),
-        per_query.enriched_unagg.collect()
+        per_query.sorted_distances.map{ it[1] }.collect(),
+        per_query.enriched_all.map{ it[1] }.collect(),
+        per_query.enriched_unagg.map{ it[1] }.collect()
     )
 }

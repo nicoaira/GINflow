@@ -14,11 +14,10 @@ process SORT_DISTANCES {
         'amancevice/pandas:2.2.2' }"
 
     input:
-    path distances
-    val query_id
+    tuple val(query_id), path(distances)
 
     output:
-    path "distances.sorted.tsv", emit: sorted_distances
+    tuple val(query_id), path("distances.sorted.tsv"), emit: sorted_distances
 
     script:
     """

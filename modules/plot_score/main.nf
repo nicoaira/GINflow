@@ -15,8 +15,7 @@ process PLOT_SCORE {
     publishDir "${params.outdir}/queries_results/${query_id}/plots", mode: 'copy'
 
     input:
-    path enriched_all
-    val query_id
+    tuple val(query_id), path(enriched_all)
 
     output:
     path "score_distribution.png"

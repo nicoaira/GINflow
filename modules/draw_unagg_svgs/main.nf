@@ -14,11 +14,10 @@ process DRAW_UNAGG_SVGS {
         'docker.io/nicoaira/ginflow-draw-structures:latest' }"
 
     input:
-    path top_unagg_tsv
-    val query_id
+    tuple val(query_id), path(top_unagg_tsv)
 
     output:
-    path 'individual_svgs', emit: window_individual
+    tuple val(query_id), path('individual_svgs'), emit: window_individual
 
     script:
     """

@@ -14,13 +14,11 @@ process FILTER_TOP_CONTIGS {
         'amancevice/pandas:2.2.2' }"
 
     input:
-    path enriched_all
-    path enriched_unagg
-    val query_id
+    tuple val(query_id), path(enriched_all), path(enriched_unagg)
 
     output:
-    path "pairs_scores_top_contigs.tsv",              emit: top_contigs
-    path "pairs_scores_top_contigs.unaggregated.tsv", emit: top_contigs_unagg
+    tuple val(query_id), path("pairs_scores_top_contigs.tsv"),              emit: top_contigs
+    tuple val(query_id), path("pairs_scores_top_contigs.unaggregated.tsv"), emit: top_contigs_unagg
 
     script:
     """

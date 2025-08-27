@@ -20,7 +20,7 @@ process QUERY_FAISS_INDEX {
     val query_id
 
     output:
-    path "distances.tsv", emit: distances
+    tuple val(query_id), path("distances.tsv"), emit: distances
 
     script:
     """

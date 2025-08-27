@@ -14,9 +14,7 @@ process GENERATE_UNAGGREGATED_REPORT {
         'nicoaira/ginflow-generate-report:latest' }"
 
     input:
-    path top_contigs_unagg_tsv
-    path window_individual
-    val query_id
+    tuple val(query_id), path(top_contigs_unagg_tsv), path(window_individual)
 
     output:
     path "pairs_contigs_report.unaggregated.html"
