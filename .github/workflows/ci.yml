@@ -41,6 +41,15 @@ jobs:
   test-pipeline:
     runs-on: [self-hosted, linux, x64]
     steps:
+      - name: Pre-cleanup
+        if: always()
+        run: |
+          # Fix permissions and clean work directory before checkout
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            chmod -R u+w "$GITHUB_WORKSPACE" || true
+            rm -rf "$GITHUB_WORKSPACE" || true
+          fi
+          
       - name: Checkout
         uses: actions/checkout@v4
 
