@@ -14,11 +14,10 @@ process DRAW_CONTIG_SVGS {
         'docker.io/nicoaira/ginflow-draw-structures:latest' }"
 
     input:
-    path top_contigs_tsv
-    val query_id
+    tuple val(query_id), path(top_contigs_tsv)
 
     output:
-    path 'individual_svgs', emit: contig_individual
+    tuple val(query_id), path('individual_svgs'), emit: contig_individual
 
     script:
     """

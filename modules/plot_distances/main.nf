@@ -15,8 +15,7 @@ process PLOT_DISTANCES {
     publishDir "${params.outdir}/queries_results/${query_id}/plots", mode: 'copy'
 
     input:
-    path sorted_distances
-    val query_id
+    tuple val(query_id), path(sorted_distances)
 
     output:
     path "distance_distribution.png"

@@ -14,13 +14,12 @@ process AGGREGATE_SCORE {
         'nicoaira/ginflow-aggregate-score:latest' }"
 
     input:
-    path sorted_distances
+    tuple val(query_id), path(sorted_distances)
     path meta_map
-    val query_id
 
     output:
-    path "pairs_scores_all_contigs.tsv",              emit: enriched_all
-    path "pairs_scores_all_contigs.unaggregated.tsv", emit: enriched_unagg
+    tuple val(query_id), path("pairs_scores_all_contigs.tsv"),              emit: enriched_all
+    tuple val(query_id), path("pairs_scores_all_contigs.unaggregated.tsv"), emit: enriched_unagg
 
     script:
     """
