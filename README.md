@@ -91,6 +91,13 @@ graph TD
      -profile docker
    ```
 
+   To make scores comparable across queries, either provide a TSV containing a
+   null distribution of baseline scores via `--null_scores` or request automatic
+   generation with `--null_iterations <N>`. When the latter is used, each query
+   sequence is dinucleotide-shuffled and folded with RNAfold `N` times to build
+   a null distribution. The pipeline will then emit
+   `pairs_scores_all_contigs.normalized.tsv` with added z-score and p-value columns.
+
 ## Input Format
 
 The pipeline expects a TSV file with the following required columns:
@@ -345,6 +352,8 @@ GINflow consists of 15+ independent Nextflow modules:
 ### Utility Modules
 - **`merge_embeddings`**: Combine embedding batches
 - **`sort_distances`**: Sort similarity results
+- **`generate_null_scores`**: Create baseline scores by dinucleotide shuffling and RNAfold
+- **`normalize_scores`**: Compute z-scores using a provided null distribution
 
 ## Troubleshooting
 

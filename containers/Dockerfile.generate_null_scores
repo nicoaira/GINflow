@@ -1,0 +1,11 @@
+FROM continuumio/miniconda3:latest
+
+COPY modules/generate_null_scores/environment.yml /tmp/environment.yml
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy
+
+ENV PATH /opt/conda/envs/generate_null_scores/bin:$PATH
+
+WORKDIR /app
+COPY . .
+RUN chmod +x bin/*.py

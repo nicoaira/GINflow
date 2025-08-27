@@ -1,0 +1,8 @@
+name: generate_null_scores
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pandas
+  - viennarna

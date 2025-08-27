@@ -19,6 +19,8 @@ include { DRAW_UNAGG_SVGS } from '../modules/draw_unagg_svgs/main'
 include { GENERATE_AGGREGATED_REPORT } from '../modules/generate_aggregated_report/main'
 include { GENERATE_UNAGGREGATED_REPORT } from '../modules/generate_unaggregated_report/main'
 include { MERGE_QUERY_RESULTS } from '../modules/merge_query_results/main'
+include { NORMALIZE_SCORES } from '../modules/normalize_scores/main'
+include { GENERATE_NULL_SCORES } from '../modules/generate_null_scores/main'
 
 workflow PER_QUERY {
     take:
@@ -126,9 +128,20 @@ workflow rna_similarity {
 
     def per_query = PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 
-    MERGE_QUERY_RESULTS(
+    def merged = MERGE_QUERY_RESULTS(
         per_query.sorted_distances.map{ it[1] }.collect(),
         per_query.enriched_all.map{ it[1] }.collect(),
         per_query.enriched_unagg.map{ it[1] }.collect()
     )
+
+    def null_scores_ch
+    if (params.null_scores) {
+        null_scores_ch = Channel.fromPath(params.null_scores)
+    } else if (params.null_iterations && params.null_iterations.toInteger() > 0) {
+        null_scores_ch = GENERATE_NULL_SCORES(file(params.queries), meta_map_val).null_scores
+    }
+
+    if (null_scores_ch) {
+        NORMALIZE_SCORES(merged.scores, null_scores_ch)
+    }
 }

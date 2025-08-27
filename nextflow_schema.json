@@ -23,6 +23,8 @@
     "gamma": {"type": "number"},
     "percentile": {"type": "number"},
     "top_n": {"type": "integer", "minimum": 1},
+    "null_scores": {"type": ["string", "null"], "description": "TSV with baseline scores"},
+    "null_iterations": {"type": "integer", "minimum": 0, "description": "Dinucleotide shuffles per query for null distribution"},
     "embeddings_tsv": {"type": ["string", "null"], "description": "Path to precomputed embeddings.tsv"},
     "faiss_index": {"type": ["string", "null"], "description": "Path to prebuilt FAISS index"},
     "faiss_mapping": {"type": ["string", "null"], "description": "Path to FAISS mapping TSV"},
