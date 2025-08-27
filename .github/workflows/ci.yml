@@ -43,21 +43,31 @@ jobs:
     steps:
       - name: Pre-cleanup
         run: |
-          # Fix permissions and clean work directory before checkout
-          # Use the known path since GITHUB_WORKSPACE isn't set yet
-          WORKSPACE_PATH="/home/nicolas/actions-runner/_work/GINflow/GINflow"
-          if [ -d "$WORKSPACE_PATH" ]; then
-            echo "Fixing permissions on workspace directory..."
-            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || true
-            sudo chmod -R u+w "$WORKSPACE_PATH" || true
-            rm -rf "$WORKSPACE_PATH"/* || true
-            rm -rf "$WORKSPACE_PATH"/.* 2>/dev/null || true
+          # Clean any leftover files in the workspace (simplified since work dir is now external)
+          if [ -d "$GITHUB_WORKSPACE" ]; then
+            rm -rf "$GITHUB_WORKSPACE"/* || true
+            rm -rf "$GITHUB_WORKSPACE"/.* 2>/dev/null || true
           fi
           
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          clean: false  # Disable built-in cleanup since we handle it manually
+          clean: true  # Re-enable since work dir is now external
+
+      - name: Set Nextflow environment variables
+        run: |
+          # Option A: Ensure Docker runs as runner user (prevents root-owned files)
+          echo "NXF_DOCKER_OPTS=-u $(id -u):$(id -g)" >> $GITHUB_ENV
+          
+          # Option B: Move work directory outside repo to avoid blocking checkout
+          echo "NXF_WORK=/home/nicolas/actions-runner/_work/nxf-work" >> $GITHUB_ENV
+
+      - name: Create external work directory
+        run: |
+          # Create the external work directory if it doesn't exist
+          mkdir -p /home/nicolas/actions-runner/_work/nxf-work
+          # Ensure it has correct permissions (no sudo needed since runner owns it)
+          chmod 755 /home/nicolas/actions-runner/_work/nxf-work
 
       - name: Determine run configuration
         id: cfg
@@ -178,23 +188,8 @@ jobs:
         if: steps.run_nf.outcome != 'success'
         run: exit 1
 
-      - name: Set permissions before cleanup
+      - name: Cleanup external work directory
         if: always()
         run: |
-          # Fix permissions and ownership on work directory before attempting to delete
-          if [ -d "work" ]; then
-            echo "Fixing ownership and permissions on work directory for cleanup..."
-            sudo chown -R $USER:$USER work || true
-            sudo chmod -R u+w work || true
-          fi
-          if [ -d "$GITHUB_WORKSPACE/work" ]; then
-            sudo chown -R $USER:$USER "$GITHUB_WORKSPACE/work" || true
-            sudo chmod -R u+w "$GITHUB_WORKSPACE/work" || true
-          fi
-
-      - name: Cleanup work directory
-        if: always()
-        run: |
-          # Remove work directory with proper permissions
-          rm -rf work || true
-          rm -rf "$GITHUB_WORKSPACE/work" || true
+          # Clean the external work directory (now owned by runner user)
+          rm -rf /home/nicolas/actions-runner/_work/nxf-work || true
