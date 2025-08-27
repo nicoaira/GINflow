@@ -5,7 +5,7 @@ FROM continuumio/miniconda3:latest
 RUN conda create -y -n ginfinity-env python=3.10
 
 # Install required ginfinity in the new environment
-RUN conda run -n ginfinity-env pip install git+https://github.com/nicoaira/GINFINITY.git@v0.2.2#egg=ginfinity -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
+RUN conda run -n ginfinity-env pip install git+https://github.com/nicoaira/GINFINITY.git#egg=ginfinity -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
 
 # Activate environment by default
 ENV PATH=/opt/conda/envs/ginfinity-env/bin:$PATH

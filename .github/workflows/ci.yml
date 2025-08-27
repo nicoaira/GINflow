@@ -42,25 +42,22 @@ jobs:
     runs-on: [self-hosted, linux, x64]
     steps:
       - name: Pre-cleanup
-        if: always()
         run: |
           # Fix permissions and clean work directory before checkout
-          if [ -d "$GITHUB_WORKSPACE" ]; then
+          # Use the known path since GITHUB_WORKSPACE isn't set yet
+          WORKSPACE_PATH="/home/nicolas/actions-runner/_work/GINflow/GINflow"
+          if [ -d "$WORKSPACE_PATH" ]; then
             echo "Fixing permissions on workspace directory..."
-            sudo chown -R $USER:$USER "$GITHUB_WORKSPACE" || true
-            sudo chmod -R u+w "$GITHUB_WORKSPACE" || true
-            rm -rf "$GITHUB_WORKSPACE" || true
-          fi
-          # Also clean any leftover work directories from previous runs
-          if [ -d "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" ]; then
-            echo "Fixing permissions on previous work directory..."
-            sudo chown -R $USER:$USER "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" || true
-            sudo chmod -R u+w "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" || true
-            rm -rf "/home/nicolas/actions-runner/_work/GINflow/GINflow/work" || true
+            sudo chown -R $USER:$USER "$WORKSPACE_PATH" || true
+            sudo chmod -R u+w "$WORKSPACE_PATH" || true
+            rm -rf "$WORKSPACE_PATH"/* || true
+            rm -rf "$WORKSPACE_PATH"/.* 2>/dev/null || true
           fi
           
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false  # Disable built-in cleanup since we handle it manually
 
       - name: Determine run configuration
         id: cfg
