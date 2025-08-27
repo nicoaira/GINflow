@@ -35,6 +35,7 @@ process AGGREGATE_SCORE {
 
     python3 - << 'PY'
 import pandas as pd
+import numpy as np
 idc      = '${params.id_column}'
 
 # meta_map has IDs + *all* sequence and structure columns
@@ -46,6 +47,17 @@ m2 = meta.rename(columns={idc:f'{idc}_2', **{c:f'{c}_2' for c in meta_cols}})
 
 all_df   = pd.read_csv('raw_contigs.tsv', sep='\t').merge(m1,on=f'{idc}_1').merge(m2,on=f'{idc}_2')
 unagg_df = pd.read_csv('raw_contigs.unaggregated.tsv', sep='\t').merge(m1,on=f'{idc}_1').merge(m2,on=f'{idc}_2')
+
+# Fit a Gumbel distribution to contig scores and compute an E-value per contig
+scores = all_df['score'].astype(float)
+N = len(scores)
+if N > 1 and scores.std(ddof=0) > 0:
+    beta = scores.std(ddof=0) * np.sqrt(6) / np.pi
+    mu = scores.mean() - 0.5772156649 * beta
+    tail = np.exp(-np.exp(-(scores - mu) / beta))
+    all_df['e_value'] = N * tail
+else:
+    all_df['e_value'] = np.nan
 
 all_df.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
 unagg_df.to_csv('pairs_scores_all_contigs.unaggregated.tsv', sep='\t', index=False)

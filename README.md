@@ -246,9 +246,9 @@ results/
 ├── queries_results/                                 # Per-query outputs
 │   └── <query_id>/
 │       ├── distances.sorted.tsv
-│       ├── pairs_scores_all_contigs.tsv
+│       ├── pairs_scores_all_contigs.tsv              # Contig scores with e_value
 │       ├── pairs_scores_all_contigs.unaggregated.tsv
-│       ├── pairs_scores_top_contigs.tsv
+│       ├── pairs_scores_top_contigs.tsv              # Top-N contigs with e_value
 │       └── pairs_scores_top_contigs.unaggregated.tsv
 ├── drawings/
 │   ├── contigs/                                     # SVG visualizations (aggregated)

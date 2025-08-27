@@ -148,3 +148,26 @@ $(\mathrm{ENSE00001655346.1},\mathrm{ENSE00004286647.1})$:
 ---
 
 This framework balances **signal amplification** with **redundancy control**, yielding a robust per-base and global similarity score.
+
+## E-value normalisation
+
+Raw contig scores can span very different ranges for distinct queries. To make
+scores comparable, we fit a [Gumbel extreme value distribution](https://en.wikipedia.org/wiki/Gumbel_distribution)
+to the set of contig scores for each query. Let $S$ denote the contig scores and
+$N$ their count. The fitted parameters are
+
+$$
+\beta = \mathrm{sd}(S) \cdot \frac{\sqrt{6}}{\pi}, \qquad
+\mu = \mathrm{mean}(S) - \gamma \beta,
+$$
+
+where $\gamma\approx0.57721$ is the Euler–Mascheroni constant. The expected
+number of contigs scoring at least $s$ (the BLAST-style E-value) is then
+
+$$
+E(s) = N \exp\bigl(-\exp\bigl(-\tfrac{s-\mu}{\beta}\bigr)\bigr).
+$$
+
+This value is reported alongside each contig in
+`pairs_scores_all_contigs.tsv` and `pairs_scores_top_contigs.tsv` to allow for
+cross-query comparison.
