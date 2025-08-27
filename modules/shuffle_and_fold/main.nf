@@ -8,8 +8,8 @@ process SHUFFLE_AND_FOLD {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/viennarna:latest' :
-        'nicoaira/viennarna:latest' }"
+        'oras://quay.io/nicoaira/ginflow-shuffle-and-fold:latest' :
+        'nicoaira/ginflow-shuffle-and-fold:latest' }"
 
     input:
     tuple val(orig_id), val(new_id)

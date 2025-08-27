@@ -60,13 +60,11 @@ workflow PER_QUERY {
 
 workflow NULL_PER_QUERY {
     take:
-        orig_id
-        new_id
+        pairs
         faiss_idx
         faiss_map
         meta_map
     main:
-        def pairs = orig_id.zip(new_id)
         def shuf = SHUFFLE_AND_FOLD(pairs, meta_map)
         def emb  = GENERATE_EMBEDDINGS(shuf.shuffled)
         def ids  = shuf.shuffled.map{ it.baseName }
@@ -156,9 +154,7 @@ workflow rna_similarity {
 
     if (params.null_shuffles as int > 0) {
         def null_ids = queries.flatMap { q -> (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] } }
-        def orig_ch = null_ids.map{ it[0] }
-        def new_ch  = null_ids.map{ it[1] }
-        def null_per = NULL_PER_QUERY(orig_ch, new_ch, faiss_idx_val, faiss_map_val, meta_map_val)
+        def null_per = NULL_PER_QUERY(null_ids, faiss_idx_val, faiss_map_val, meta_map_val)
         // Collect score files
         def null_score_files = null_per.scores.map{ it[1] }
         def null_scores_path = null_score_files.collectFile(name: 'null_scores.tsv', keepHeader: true, skip: 1)
