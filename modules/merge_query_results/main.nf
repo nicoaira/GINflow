@@ -24,9 +24,9 @@ process MERGE_QUERY_RESULTS {
     val scores_unagg
 
     output:
-    path "distances.merged.sorted.tsv"
-    path "pairs_scores_all_contigs.merged.tsv"
-    path "pairs_scores_all_contigs.unaggregated.merged.tsv"
+    path "distances.merged.sorted.tsv",                  emit: distances
+    path "pairs_scores_all_contigs.merged.tsv",          emit: scores
+    path "pairs_scores_all_contigs.unaggregated.merged.tsv", emit: scores_unagg
 
     script:
     """

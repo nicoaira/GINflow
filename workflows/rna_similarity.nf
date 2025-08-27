@@ -12,6 +12,7 @@ include { QUERY_FAISS_INDEX } from '../modules/query_faiss_index/main'
 include { SORT_DISTANCES } from '../modules/sort_distances/main'
 include { PLOT_DISTANCES } from '../modules/plot_distances/main'
 include { AGGREGATE_SCORE } from '../modules/aggregate_score/main'
+include { AGGREGATE_SCORE_RAW } from '../modules/aggregate_score_raw/main'
 include { PLOT_SCORE } from '../modules/plot_score/main'
 include { FILTER_TOP_CONTIGS } from '../modules/filter_top_contigs/main'
 include { DRAW_CONTIG_SVGS } from '../modules/draw_contig_svgs/main'
@@ -19,6 +20,8 @@ include { DRAW_UNAGG_SVGS } from '../modules/draw_unagg_svgs/main'
 include { GENERATE_AGGREGATED_REPORT } from '../modules/generate_aggregated_report/main'
 include { GENERATE_UNAGGREGATED_REPORT } from '../modules/generate_unaggregated_report/main'
 include { MERGE_QUERY_RESULTS } from '../modules/merge_query_results/main'
+include { NORMALIZE_SCORES } from '../modules/normalize_scores/main'
+include { SHUFFLE_AND_FOLD } from '../modules/shuffle_and_fold/main'
 
 workflow PER_QUERY {
     take:
@@ -53,6 +56,25 @@ workflow PER_QUERY {
         sorted_distances = sorted.sorted_distances
         enriched_all     = agg.enriched_all
         enriched_unagg   = agg.enriched_unagg
+}
+
+workflow NULL_PER_QUERY {
+    take:
+        orig_id
+        new_id
+        faiss_idx
+        faiss_map
+        meta_map
+    main:
+        def pairs = orig_id.zip(new_id)
+        def shuf = SHUFFLE_AND_FOLD(pairs, meta_map)
+        def emb  = GENERATE_EMBEDDINGS(shuf.shuffled)
+        def ids  = shuf.shuffled.map{ it.baseName }
+        def d    = QUERY_FAISS_INDEX(emb.batch_embeddings, faiss_idx, faiss_map, ids)
+        def srt  = SORT_DISTANCES(d.distances)
+        def scr  = AGGREGATE_SCORE_RAW(srt.sorted_distances)
+    emit:
+        scores = scr.scores
 }
 
 // ───────────────────────────────────────────────────────────
@@ -126,9 +148,20 @@ workflow rna_similarity {
 
     def per_query = PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 
-    MERGE_QUERY_RESULTS(
+    def merged = MERGE_QUERY_RESULTS(
         per_query.sorted_distances.map{ it[1] }.collect(),
         per_query.enriched_all.map{ it[1] }.collect(),
         per_query.enriched_unagg.map{ it[1] }.collect()
     )
+
+    if (params.null_shuffles as int > 0) {
+        def null_ids = queries.flatMap { q -> (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] } }
+        def orig_ch = null_ids.map{ it[0] }
+        def new_ch  = null_ids.map{ it[1] }
+        def null_per = NULL_PER_QUERY(orig_ch, new_ch, faiss_idx_val, faiss_map_val, meta_map_val)
+        // Collect score files
+        def null_score_files = null_per.scores.map{ it[1] }
+        def null_scores_path = null_score_files.collectFile(name: 'null_scores.tsv', keepHeader: true, skip: 1)
+        NORMALIZE_SCORES(merged.scores, null_scores_path)
+    }
 }
