@@ -56,8 +56,9 @@ PY
     python3 - << 'PY'
 import pandas as pd, math
 
-def norm_cdf(z: float) -> float:
-    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+def norm_sf(z: float) -> float:
+    # Numerically stable survival function for Normal(0,1)
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
 
 scores = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\t')
 null   = pd.read_csv('null_scores.tsv', sep='\t')
@@ -75,7 +76,7 @@ if sd == 0:
     p = pd.Series([0.5] * len(scores))
 else:
     z = (scores['score'] - mu) / sd
-    p = 1.0 - z.map(norm_cdf)
+    p = z.map(norm_sf)
 
 # insert columns to the right of 'score'
 cols = scores.columns.tolist()
@@ -90,4 +91,3 @@ scores.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
 PY
     """
 }
-

@@ -4,9 +4,13 @@ import pandas as pd
 import math
 
 
-def norm_cdf(z: float) -> float:
-    """Cumulative distribution function for standard normal."""
-    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+def norm_sf(z: float) -> float:
+    """Survival function (1 - CDF) for standard normal.
+
+    Uses erfc for numerical stability in the extreme tail, avoiding
+    catastrophic cancellation that makes small p-values become 0.0.
+    """
+    return 0.5 * math.erfc(z / math.sqrt(2.0))
 
 
 def main():
@@ -45,7 +49,7 @@ def main():
 
     z = (scores_df["score"] - mu) / sigma
     scores_df["z_score"] = z
-    scores_df["p_value"] = 1.0 - z.map(norm_cdf)
+    scores_df["p_value"] = z.map(norm_sf)
 
     scores_df.to_csv(args.output, sep="\t", index=False)
     print(f"Written normalized scores to {args.output}")
