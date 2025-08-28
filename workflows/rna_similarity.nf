@@ -58,8 +58,14 @@ workflow NULL_PER_QUERY {
         def shuf = SHUFFLE_AND_FOLD(pairs, meta_map)
         // Batch null meta TSVs using the same split_size as real data.
         // Use toList + collate to ensure groups are emitted even with small totals.
+        // Collect all shuffled batches, then sort deterministically by new_id
+        // to keep chunk composition and order stable across runs for caching.
         def grouped = shuf.shuffled
             .toList()
+            .map { all_items ->
+                all_items.sort { it[0].toString() }
+                all_items
+            }
             .flatMap { all_items ->
                 def chunks = all_items.collate(params.split_size as int)
                 chunks.collect { chunk ->
@@ -178,7 +184,12 @@ workflow rna_similarity {
             [ base, f ]
         }
         // Group all null replicate scores per base query and merge into a single file
-        def null_grouped = null_map.groupTuple()
+        // Group all null replicate scores per base query and sort file lists
+        // to ensure stable ordering for cache-resume.
+        def null_grouped = null_map.groupTuple().map { base_id, files ->
+            def sorted_files = files.sort { it.toString() }
+            tuple(base_id, sorted_files)
+        }
         def null_merged  = MERGE_NULL_SCORES(null_grouped)
 
         // Join real sorted distances with their corresponding null distributions

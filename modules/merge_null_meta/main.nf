@@ -22,6 +22,8 @@ process MERGE_NULL_META {
     python3 - << 'PY'
 import pandas as pd
 files = ${groovy.json.JsonOutput.toJson(meta_tsvs.collect { it.toString() })}
+# Defensive: ensure deterministic order regardless of upstream ordering
+files = sorted(files)
 dfs = [pd.read_csv(f, sep='\t', dtype=str) for f in files]
 pd.concat(dfs, ignore_index=True).to_csv('batch.tsv', sep='\t', index=False)
 print(f"Merged {len(files)} files -> batch.tsv")

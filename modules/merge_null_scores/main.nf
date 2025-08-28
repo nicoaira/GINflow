@@ -23,6 +23,8 @@ process MERGE_NULL_SCORES {
     python3 - << 'PY'
 import pandas as pd
 files = ${groovy.json.JsonOutput.toJson(score_files.collect { it.toString() })}
+# Defensive: keep deterministic file order
+files = sorted(files)
 dfs = [pd.read_csv(f, sep='\t') for f in files]
 pd.concat(dfs, ignore_index=True).to_csv('null_scores.tsv', sep='\t', index=False)
 print(f"Merged {len(files)} null score files -> null_scores.tsv")
