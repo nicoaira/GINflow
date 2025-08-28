@@ -14,6 +14,7 @@ include { PLOT_DISTANCES } from '../modules/plot_distances/main'
 include { AGGREGATE_SCORE } from '../modules/aggregate_score/main'
 include { AGGREGATE_SCORE_RAW } from '../modules/aggregate_score_raw/main'
 include { PLOT_SCORE } from '../modules/plot_score/main'
+include { PLOT_SCORE_WITH_NULL } from '../modules/plot_score_with_null/main'
 include { FILTER_TOP_CONTIGS } from '../modules/filter_top_contigs/main'
 include { DRAW_CONTIG_SVGS } from '../modules/draw_contig_svgs/main'
 include { DRAW_UNAGG_SVGS } from '../modules/draw_unagg_svgs/main'
@@ -26,6 +27,9 @@ include { MERGE_NULL_META } from '../modules/merge_null_meta/main'
 include { GENERATE_NULL_WINDOWS } from '../modules/generate_null_windows/main'
 include { GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL } from '../modules/generate_embeddings_from_windows_null/main'
 include { QUERY_FAISS_INDEX_BY_TUPLE } from '../modules/query_faiss_index_by_tuple/main'
+include { SORT_DISTANCES_NULL } from '../modules/sort_distances_null/main'
+include { MERGE_NULL_SCORES } from '../modules/merge_null_scores/main'
+include { AGGREGATE_SCORE_WITH_NULL } from '../modules/aggregate_score_with_null/main'
 
 workflow PER_QUERY {
     take:
@@ -39,27 +43,9 @@ workflow PER_QUERY {
         def sorted = SORT_DISTANCES(dists.distances)
         PLOT_DISTANCES(sorted.sorted_distances)
 
-        def agg    = AGGREGATE_SCORE(sorted.sorted_distances, meta_map)
-        PLOT_SCORE(agg.enriched_all)
-
-        def joined_scores = agg.enriched_all.join(agg.enriched_unagg)
-        def filtered = FILTER_TOP_CONTIGS(joined_scores)
-
-        if (params.run_aggregated_report && params.draw_contig_svgs) {
-            def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs)
-            def agg_report_in = filtered.top_contigs.join(contigs_draw.contig_individual)
-            GENERATE_AGGREGATED_REPORT(agg_report_in)
-        }
-
-        if (params.run_unaggregated_report) {
-            def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg)
-            def unagg_report_in = filtered.top_contigs_unagg.join(windows_draw.window_individual)
-            GENERATE_UNAGGREGATED_REPORT(unagg_report_in)
-        }
+        // Aggregation is handled in the top-level workflow
     emit:
         sorted_distances = sorted.sorted_distances
-        enriched_all     = agg.enriched_all
-        enriched_unagg   = agg.enriched_unagg
 }
 
 workflow NULL_PER_QUERY {
@@ -99,7 +85,7 @@ workflow NULL_PER_QUERY {
         }
         // 4) Query FAISS with correct (query_id, embeddings.tsv)
         def d    = QUERY_FAISS_INDEX_BY_TUPLE(id_to_emb, faiss_idx, faiss_map)
-        def srt  = SORT_DISTANCES(d.distances)
+        def srt  = SORT_DISTANCES_NULL(d.distances)
         def scr  = AGGREGATE_SCORE_RAW(srt.sorted_distances)
     emit:
         scores = scr.scores
@@ -180,18 +166,74 @@ workflow rna_similarity {
 
     def per_query = PER_QUERY(queries_real, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 
-    def merged = MERGE_QUERY_RESULTS(
-        per_query.sorted_distances.map{ it[1] }.collect(),
-        per_query.enriched_all.map{ it[1] }.collect(),
-        per_query.enriched_unagg.map{ it[1] }.collect()
-    )
-
     if (params.null_shuffles as int > 0) {
+        // Build null distributions per query
         def null_ids = queries_null.flatMap { q -> (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] } }
         def null_per = NULL_PER_QUERY(null_ids, faiss_idx_val, faiss_map_val, meta_map_val)
-        // Collect score files
-        def null_score_files = null_per.scores.map{ it[1] }
-        def null_scores_path = null_score_files.collectFile(name: 'null_scores.tsv', keepHeader: true, skip: 1)
-        NORMALIZE_SCORES(merged.scores, null_scores_path)
+
+        // Map each null ID back to its base query ID (strip _nullN suffix)
+        def null_map = null_per.scores.map { nid, f ->
+            def m = (nid =~ /(.*)_null\d+$/)
+            def base = m ? m[0][1] : nid
+            [ base, f ]
+        }
+        // Group all null replicate scores per base query and merge into a single file
+        def null_grouped = null_map.groupTuple()
+        def null_merged  = MERGE_NULL_SCORES(null_grouped)
+
+        // Join real sorted distances with their corresponding null distributions
+        def joined = per_query.sorted_distances.join(null_merged.null_scores)
+
+        // Aggregate and normalize per query, then continue plotting and filtering
+        def agg_n = AGGREGATE_SCORE_WITH_NULL(joined, meta_map_val)
+        // Plot real vs. null distribution per query
+        PLOT_SCORE_WITH_NULL(agg_n.enriched_all.join(null_merged.null_scores))
+
+        def joined_scores = agg_n.enriched_all.join(agg_n.enriched_unagg)
+        def filtered = FILTER_TOP_CONTIGS(joined_scores)
+
+        if (params.run_aggregated_report && params.draw_contig_svgs) {
+            def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs)
+            def agg_report_in = filtered.top_contigs.join(contigs_draw.contig_individual)
+            GENERATE_AGGREGATED_REPORT(agg_report_in)
+        }
+
+        if (params.run_unaggregated_report) {
+            def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg)
+            def unagg_report_in = filtered.top_contigs_unagg.join(windows_draw.window_individual)
+            GENERATE_UNAGGREGATED_REPORT(unagg_report_in)
+        }
+
+        // Merge all final per-query results
+        MERGE_QUERY_RESULTS(
+            per_query.sorted_distances.map{ it[1] }.collect(),
+            agg_n.enriched_all.map{ it[1] }.collect(),
+            agg_n.enriched_unagg.map{ it[1] }.collect()
+        )
+    } else {
+        // No nulls: aggregate per query directly, then plot/filter/report and merge
+        def agg = AGGREGATE_SCORE(per_query.sorted_distances, meta_map_val)
+        PLOT_SCORE(agg.enriched_all)
+
+        def joined_scores = agg.enriched_all.join(agg.enriched_unagg)
+        def filtered = FILTER_TOP_CONTIGS(joined_scores)
+
+        if (params.run_aggregated_report && params.draw_contig_svgs) {
+            def contigs_draw = DRAW_CONTIG_SVGS(filtered.top_contigs)
+            def agg_report_in = filtered.top_contigs.join(contigs_draw.contig_individual)
+            GENERATE_AGGREGATED_REPORT(agg_report_in)
+        }
+
+        if (params.run_unaggregated_report) {
+            def windows_draw = DRAW_UNAGG_SVGS(filtered.top_contigs_unagg)
+            def unagg_report_in = filtered.top_contigs_unagg.join(windows_draw.window_individual)
+            GENERATE_UNAGGREGATED_REPORT(unagg_report_in)
+        }
+
+        MERGE_QUERY_RESULTS(
+            per_query.sorted_distances.map{ it[1] }.collect(),
+            agg.enriched_all.map{ it[1] }.collect(),
+            agg.enriched_unagg.map{ it[1] }.collect()
+        )
     }
 }

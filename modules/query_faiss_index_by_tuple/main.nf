@@ -6,7 +6,7 @@ process QUERY_FAISS_INDEX_BY_TUPLE {
 
     label 'medium_memory'
 
-    publishDir "${params.outdir}/queries_results/${query_id}", mode: 'copy'
+    // No publishDir here; null results are not copied to outdir
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -33,4 +33,3 @@ process QUERY_FAISS_INDEX_BY_TUPLE {
       --output distances.tsv
     """
 }
-
