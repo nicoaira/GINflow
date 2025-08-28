@@ -31,6 +31,8 @@ def main():
     ap.add_argument('--query', required=True, help='Query ID to shuffle')
     ap.add_argument('--new-id', required=True, help='ID to assign to shuffled sequence')
     ap.add_argument('--output', required=True, help='Output TSV path')
+    ap.add_argument('--structure-column-name', default='secondary_structure',
+                    help='Name for the output structure column')
     args = ap.parse_args()
 
     df = pd.read_csv(args.meta, sep='\t', dtype=str)
@@ -51,8 +53,12 @@ def main():
     L = len(shuffled)
 
     with open(args.output, 'w') as fh:
-        fh.write(f"{args.id_column}\tsequence\tsecondary_structure\twindow_start\twindow_end\tseq_len\n")
-        fh.write(f"{args.new_id}\t{shuffled}\t{structure}\t0\t{L}\t{L}\n")
+        fh.write(
+            f"{args.id_column}\tsequence\t{args.structure_column_name}\twindow_start\twindow_end\tseq_len\n"
+        )
+        fh.write(
+            f"{args.new_id}\t{shuffled}\t{structure}\t0\t{L}\t{L}\n"
+        )
 
 if __name__ == '__main__':
     main()

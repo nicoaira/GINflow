@@ -1,0 +1,10 @@
+name: query_faiss_index
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pandas>=2.2
+  - numpy>=1.26
+  - pip
+  - pip:
+    - faiss-cpu>=1.7

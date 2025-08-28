@@ -16,13 +16,14 @@ process SHUFFLE_AND_FOLD {
     path meta_map
 
     output:
-    path "${new_id}.tsv", emit: shuffled
+    tuple val(new_id), path("${new_id}.tsv"), emit: shuffled
 
     script:
     """
     python3 ${baseDir}/bin/shuffle_and_fold.py \
       --meta ${meta_map} \
       --id-column ${params.id_column} \
+      --structure-column-name ${params.structure_column_name} \
       --query ${orig_id} \
       --new-id ${new_id} \
       --output ${new_id}.tsv

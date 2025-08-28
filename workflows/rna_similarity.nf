@@ -22,6 +22,10 @@ include { GENERATE_UNAGGREGATED_REPORT } from '../modules/generate_unaggregated_
 include { MERGE_QUERY_RESULTS } from '../modules/merge_query_results/main'
 include { NORMALIZE_SCORES } from '../modules/normalize_scores/main'
 include { SHUFFLE_AND_FOLD } from '../modules/shuffle_and_fold/main'
+include { MERGE_NULL_META } from '../modules/merge_null_meta/main'
+include { GENERATE_NULL_WINDOWS } from '../modules/generate_null_windows/main'
+include { GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL } from '../modules/generate_embeddings_from_windows_null/main'
+include { QUERY_FAISS_INDEX_BY_TUPLE } from '../modules/query_faiss_index_by_tuple/main'
 
 workflow PER_QUERY {
     take:
@@ -66,9 +70,35 @@ workflow NULL_PER_QUERY {
         meta_map
     main:
         def shuf = SHUFFLE_AND_FOLD(pairs, meta_map)
-        def emb  = GENERATE_EMBEDDINGS(shuf.shuffled)
-        def ids  = shuf.shuffled.map{ it.baseName }
-        def d    = QUERY_FAISS_INDEX(emb.batch_embeddings, faiss_idx, faiss_map, ids)
+        // Batch null meta TSVs using the same split_size as real data.
+        // Use toList + collate to ensure groups are emitted even with small totals.
+        def grouped = shuf.shuffled
+            .toList()
+            .flatMap { all_items ->
+                def chunks = all_items.collate(params.split_size as int)
+                chunks.collect { chunk ->
+                    tuple( chunk.collect { it[0] }, chunk.collect { it[1] } )
+                }
+            }
+        // Merge per-batch TSVs (keeps header once)
+        def merged = MERGE_NULL_META(grouped)
+        def id_to_emb
+        if (params.subgraphs) {
+            // 1) Generate windows per null batch
+            def wins   = GENERATE_NULL_WINDOWS(merged.batch)
+            // 2) Embed windows per null batch
+            def emb    = GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL(wins.window_files_null)
+            // 3) Expand (ids, embeddings.tsv) into (id, embeddings.tsv) for querying
+            id_to_emb = emb.embeddings_for_query.flatMap { ids, embfile -> ids.collect { q -> [ q, embfile ] } }
+        } else {
+            // Direct embeddings from batched TSVs (no window generation)
+            def emb_direct = GENERATE_EMBEDDINGS(merged.batch.map{ it[1] })
+            // Pair back each batch's IDs with the produced embeddings file
+            def paired = merged.batch.map{ it[0] }.zip(emb_direct.batch_embeddings)
+            id_to_emb  = paired.flatMap { ids, embfile -> ids.collect { q -> [ q, embfile ] } }
+        }
+        // 4) Query FAISS with correct (query_id, embeddings.tsv)
+        def d    = QUERY_FAISS_INDEX_BY_TUPLE(id_to_emb, faiss_idx, faiss_map)
         def srt  = SORT_DISTANCES(d.distances)
         def scr  = AGGREGATE_SCORE_RAW(srt.sorted_distances)
     emit:
@@ -134,7 +164,11 @@ workflow rna_similarity {
         faiss_map_ch = idx.faiss_map
     }
 
-    def queries = Channel.fromPath(params.queries)
+    // Build two independent query streams so both branches receive all IDs
+    def queries_real = Channel.fromPath(params.queries)
+        .splitCsv(header: true, sep: ',', strip: true)
+        .map { row -> row['id'] }
+    def queries_null = Channel.fromPath(params.queries)
         .splitCsv(header: true, sep: ',', strip: true)
         .map { row -> row['id'] }
 
@@ -144,7 +178,7 @@ workflow rna_similarity {
     def faiss_map_val  = faiss_map_ch.first()
     def meta_map_val   = meta.meta_map.first()
 
-    def per_query = PER_QUERY(queries, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
+    def per_query = PER_QUERY(queries_real, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
 
     def merged = MERGE_QUERY_RESULTS(
         per_query.sorted_distances.map{ it[1] }.collect(),
@@ -153,7 +187,7 @@ workflow rna_similarity {
     )
 
     if (params.null_shuffles as int > 0) {
-        def null_ids = queries.flatMap { q -> (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] } }
+        def null_ids = queries_null.flatMap { q -> (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] } }
         def null_per = NULL_PER_QUERY(null_ids, faiss_idx_val, faiss_map_val, meta_map_val)
         // Collect score files
         def null_score_files = null_per.scores.map{ it[1] }

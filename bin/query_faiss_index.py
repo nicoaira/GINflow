@@ -56,7 +56,25 @@ def main():
             q_vecs_list.append(np.fromstring(parts[vec_i], sep=',', dtype='float32'))
 
     if not q_vecs_list:
-        sys.exit(f"ERROR: no rows found where {args.id_column} == {args.query}")
+        # Gracefully handle missing query rows by writing an empty distances.tsv
+        # with the expected header so downstream steps can proceed.
+        cols = [
+            f"{args.id_column}_1",
+            "window_start_1",
+            "window_end_1",
+            "seq_len_1",
+            f"{args.id_column}_2",
+            "window_start_2",
+            "window_end_2",
+            "seq_len_2",
+            "distance",
+        ]
+        pd.DataFrame(columns=cols).to_csv(args.output, sep='\t', index=False)
+        print(
+            f"WARNING: no rows found where {args.id_column} == {args.query}. "
+            f"Wrote empty {args.output}"
+        )
+        return
 
     q_vecs = np.stack(q_vecs_list)
 
