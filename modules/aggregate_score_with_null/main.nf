@@ -52,7 +52,7 @@ all_df.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
 unagg_df.to_csv('pairs_scores_all_contigs.unaggregated.tsv', sep='\t', index=False)
 PY
 
-    # 3) Insert z_score and p_value next to 'score' using the provided null distribution
+    # 3) Insert z_score, p_value and q_value (FDR) next to 'score' using the provided null distribution
     python3 - << 'PY'
 import pandas as pd, math
 
@@ -78,6 +78,20 @@ else:
     z = (scores['score'] - mu) / sd
     p = z.map(norm_sf)
 
+# Benjamini–Hochberg FDR adjustment
+def fdr_bh(pvals: pd.Series) -> pd.Series:
+    s = pvals.fillna(1.0)
+    m = len(s)
+    if m == 0:
+        return s
+    sorted_idx = s.sort_values(kind='mergesort').index
+    sorted_p = s.loc[sorted_idx].tolist()
+    adj = [min(p * m / (i + 1), 1.0) for i, p in enumerate(sorted_p)]
+    for i in range(m - 2, -1, -1):
+        adj[i] = min(adj[i], adj[i + 1])
+    q_map = {idx: val for idx, val in zip(sorted_idx, adj)}
+    return s.index.to_series().map(q_map)
+
 # insert columns to the right of 'score'
 cols = scores.columns.tolist()
 try:
@@ -86,6 +100,7 @@ except ValueError:
     idx = len(cols) - 1
 scores.insert(idx+1, 'z_score', z)
 scores.insert(idx+2, 'p_value', p)
+scores.insert(idx+3, 'q_value', fdr_bh(p))
 
 scores.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
 PY

@@ -95,8 +95,8 @@ graph TD
    For each query, the sequence is shuffled preserving dinucleotides, folded
    with RNAfold, and scored against the database `N` times using the same
    query pipeline. These randomized scores form a null distribution that
-   is used to emit `pairs_scores_all_contigs.normalized.tsv` with z-score and
-   p-value columns.
+   is used to emit `pairs_scores_all_contigs.normalized.tsv` with z-score,
+   p-value, and q-value (Benjamini–Hochberg FDR) columns.
 
 ## Input Format
 
@@ -352,7 +352,7 @@ GINflow consists of 15+ independent Nextflow modules:
 ### Utility Modules
 - **`merge_embeddings`**: Combine embedding batches
 - **`sort_distances`**: Sort similarity results
-- **`normalize_scores`**: Compute z-scores using a provided null distribution
+- **`normalize_scores`**: Compute z-scores and p/q-values (BH FDR) using a provided null distribution
 
 ## Troubleshooting
 
