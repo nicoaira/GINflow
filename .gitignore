@@ -7,3 +7,4 @@ test_results
 containers/sifs/*
 sif_push.sh
 analyze_resources.py
+rebuild_containers.sh

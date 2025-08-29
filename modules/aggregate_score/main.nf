@@ -41,11 +41,11 @@ idc      = '${params.id_column}'
 meta     = pd.read_csv('id_meta.tsv', sep='\t', dtype=str)
 meta_cols = [c for c in meta.columns if c != idc]
 
-m1 = meta.rename(columns={idc:f'{idc}_1', **{c:f'{c}_1' for c in meta_cols}})
-m2 = meta.rename(columns={idc:f'{idc}_2', **{c:f'{c}_2' for c in meta_cols}})
+m1 = meta.rename(columns={idc:'query_id',   **{c:f'query_{c}'   for c in meta_cols}})
+m2 = meta.rename(columns={idc:'subject_id', **{c:f'subject_{c}' for c in meta_cols}})
 
-all_df   = pd.read_csv('raw_contigs.tsv', sep='\t').merge(m1,on=f'{idc}_1').merge(m2,on=f'{idc}_2')
-unagg_df = pd.read_csv('raw_contigs.unaggregated.tsv', sep='\t').merge(m1,on=f'{idc}_1').merge(m2,on=f'{idc}_2')
+all_df   = pd.read_csv('raw_contigs.tsv', sep='\t').merge(m1,on='query_id').merge(m2,on='subject_id')
+unagg_df = pd.read_csv('raw_contigs.unaggregated.tsv', sep='\t').merge(m1,on='query_id').merge(m2,on='subject_id')
 
 all_df.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
 unagg_df.to_csv('pairs_scores_all_contigs.unaggregated.tsv', sep='\t', index=False)

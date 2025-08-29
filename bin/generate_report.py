@@ -79,9 +79,12 @@ def make_report(pairs_tsv, svg_dir, output_html, id_column):
     df = pd.read_csv(pairs_tsv, sep='\t')
     svg_dir = pathlib.Path(svg_dir)
     
-    # Dynamic ID columns
-    id1_col = f"{id_column}_1"
-    id2_col = f"{id_column}_2"
+    # Dynamic ID columns – prefer new query_/subject_ naming if present
+    if 'query_id' in df.columns and 'subject_id' in df.columns:
+        id1_col, id2_col = 'query_id', 'subject_id'
+    else:
+        id1_col = f"{id_column}_1"
+        id2_col = f"{id_column}_2"
 
     # Auto-detect sequence columns (case-insensitive)
     sequence_cols = [col for col in df.columns if 'sequence' in col.lower()]

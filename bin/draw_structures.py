@@ -133,13 +133,27 @@ def validate(seq, dot):
 
 def process_pair(i, row):
     global ID_COLUMN
-    # Dynamically pick up ID_COLUMN_1 and ID_COLUMN_2
-    id1 = row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
-    id2 = row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
-    seq1 = row.get('sequence_1') or row.get('seq1') or ""
-    seq2 = row.get('sequence_2') or row.get('seq2') or ""
-    dot1 = row.get('secondary_structure_1') or row.get('structure1') or "."*len(seq1)
-    dot2 = row.get('secondary_structure_2') or row.get('structure2') or "."*len(seq2)
+    # Prefer new query_/subject_ schema, fall back to _1/_2
+    id1 = row.get('query_id')   or row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
+    id2 = row.get('subject_id') or row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
+
+    # Sequence and structure fields (prefer query_/subject_, fallback to _1/_2)
+    seq1 = row.get('query_sequence')   or row.get('sequence_1') or row.get('seq1') or ""
+    seq2 = row.get('subject_sequence') or row.get('sequence_2') or row.get('seq2') or ""
+    dot1 = (
+        row.get('query_secondary_structure') or
+        row.get('query_structure') or
+        row.get('secondary_structure_1') or
+        row.get('structure_1') or
+        row.get('structure1') or "."*len(seq1)
+    )
+    dot2 = (
+        row.get('subject_secondary_structure') or
+        row.get('subject_structure') or
+        row.get('secondary_structure_2') or
+        row.get('structure_2') or
+        row.get('structure2') or "."*len(seq2)
+    )
 
     seq1 = seq1.replace('T','U').replace('t','u')
     seq2 = seq2.replace('T','U').replace('t','u')
@@ -149,15 +163,15 @@ def process_pair(i, row):
 
     # Use the correct column names based on pair type
     if ARGS.pair_type == 'contig':
-        w1s = int(row.get('contig_start_1', 0) or 0)
-        w1e = int(row.get('contig_end_1', 0) or 0)
-        w2s = int(row.get('contig_start_2', 0) or 0)
-        w2e = int(row.get('contig_end_2', 0) or 0)
+        w1s = int((row.get('query_contig_start')   or row.get('contig_start_1') or 0) or 0)
+        w1e = int((row.get('query_contig_end')     or row.get('contig_end_1')   or 0) or 0)
+        w2s = int((row.get('subject_contig_start') or row.get('contig_start_2') or 0) or 0)
+        w2e = int((row.get('subject_contig_end')   or row.get('contig_end_2')   or 0) or 0)
     else:  # window
-        w1s = int(row.get('window_start_1', 0) or 0)
-        w1e = int(row.get('window_end_1', 0) or 0)
-        w2s = int(row.get('window_start_2', 0) or 0)
-        w2e = int(row.get('window_end_2', 0) or 0)
+        w1s = int((row.get('query_window_start')   or row.get('window_start_1') or 0) or 0)
+        w1e = int((row.get('query_window_end')     or row.get('window_end_1')   or 0) or 0)
+        w2s = int((row.get('subject_window_start') or row.get('window_start_2') or 0) or 0)
+        w2e = int((row.get('subject_window_end')   or row.get('window_end_2')   or 0) or 0)
     
     # Debug print to verify coordinates are being read
     if ARGS.debug:
@@ -270,8 +284,8 @@ if __name__ == '__main__':
         
         # after batch generation, copy individual SVGs (skip rnartistcore calls)
         for i,row in enumerate(rows,1):
-            id1 = row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
-            id2 = row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
+            id1 = row.get('query_id')   or row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
+            id2 = row.get('subject_id') or row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
             n1 = re.sub(r'[^A-Za-z0-9_]', '_', f"{id1}_{i}")
             n2 = re.sub(r'[^A-Za-z0-9_]', '_', f"{id2}_{i}")
             

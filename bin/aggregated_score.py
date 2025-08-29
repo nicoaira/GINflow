@@ -205,12 +205,23 @@ def main():
     df_agg['contig_id']   = np.arange(1, len(df_agg) + 1)
     df_agg['contig_rank'] = df_agg['contig_id']
 
+    # Rename output columns to query_/subject_ schema
+    rename_map = {id1_col: 'query_id', id2_col: 'subject_id'}
+    if args.mode != 'global':
+        rename_map.update({
+            'contig_start_1': 'query_contig_start',
+            'contig_end_1':   'query_contig_end',
+            'contig_start_2': 'subject_contig_start',
+            'contig_end_2':   'subject_contig_end',
+        })
+    df_agg = df_agg.rename(columns=rename_map)
+
     if args.mode == 'global':
-        final_cols = [id1_col, id2_col, 'contig_id', 'contig_rank', 'n_collapsed_windows', 'score']
+        final_cols = ['query_id', 'subject_id', 'contig_id', 'contig_rank', 'n_collapsed_windows', 'score']
     else:
         final_cols = [
-            id1_col, 'contig_start_1', 'contig_end_1',
-            id2_col, 'contig_start_2', 'contig_end_2',
+            'query_id', 'query_contig_start', 'query_contig_end',
+            'subject_id', 'subject_contig_start', 'subject_contig_end',
             'contig_id', 'contig_rank', 'n_collapsed_windows', 'score'
         ]
 
@@ -238,6 +249,18 @@ def main():
             rows.append(rec)
 
         df_un = pd.DataFrame(rows)
+        # Rename unaggregated window columns to query_/subject_
+        unagg_rename = {
+            id1_col: 'query_id',
+            id2_col: 'subject_id',
+            'window_start_1': 'query_window_start',
+            'window_end_1':   'query_window_end',
+            'window_start_2': 'subject_window_start',
+            'window_end_2':   'subject_window_end',
+            'len_1':          'query_seq_len',
+            'len_2':          'subject_seq_len',
+        }
+        df_un = df_un.rename(columns=unagg_rename)
         df_un.sort_values('contig_score', ascending=False, inplace=True)
         df_un.to_csv(fn, sep='\t', index=False)
         print(f"Written unaggregated to {fn}")
