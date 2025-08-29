@@ -138,24 +138,11 @@ def main():
     ]]
     df['rnk'] = df['window_rank']
 
-    # 3) unify ID order on each row
+    # 3) preserve original orientation: left side are query windows, right side are subjects
+    # The input distances.sorted.tsv is produced per query with {_1}=query and {_2}=subject.
+    # Do not reorder by lexicographic ID; just carry rows through unchanged.
     def unify(r):
-        a, b = r[id1_col], r[id2_col]
-        if a <= b:
-            return r
-        return pd.Series({
-            id1_col:          b,
-            'window_start_1': r['window_start_2'],
-            'window_end_1':   r['window_end_2'],
-            id2_col:          a,
-            'window_start_2': r['window_start_1'],
-            'window_end_2':   r['window_end_1'],
-            'len_1':          r['len_2'],
-            'len_2':          r['len_1'],
-            'window_distance': r['window_distance'],
-            'window_rank':    r['window_rank'],
-            'rnk':            r['rnk']
-        })
+        return r
 
     df = df.apply(unify, axis=1)
     if args.output_unaggregated:
