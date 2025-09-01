@@ -18,8 +18,9 @@ process AGGREGATE_SCORE_WITH_NULL {
     path  meta_map
 
     output:
-    tuple val(query_id), path("pairs_scores_all_contigs.tsv"),              emit: enriched_all
-    tuple val(query_id), path("pairs_scores_all_contigs.unaggregated.tsv"), emit: enriched_unagg
+    tuple val(query_id), path("pairs_scores_all_contigs.tsv"),            emit: contigs
+    tuple val(query_id), path("pairs_scores_all_contigs.windows.tsv"),    emit: windows
+    tuple val(query_id), path("pairs_scores_all_contigs.aggregated.tsv"), emit: enriched_agg
 
     script:
     """
@@ -49,8 +50,14 @@ all_df   = pd.read_csv('raw_contigs.tsv', sep='\t').merge(m1,on='query_id').merg
 unagg_df = pd.read_csv('raw_contigs.unaggregated.tsv', sep='\t').merge(m1,on='query_id').merge(m2,on='subject_id')
 
 all_df.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
-unagg_df.to_csv('pairs_scores_all_contigs.unaggregated.tsv', sep='\t', index=False)
+unagg_df.to_csv('pairs_scores_all_contigs.windows.tsv', sep='\t', index=False)
 PY
+
+    python3 ${baseDir}/bin/aggregate_structural_contigs.py \
+      --input pairs_scores_all_contigs.tsv \
+      --output pairs_scores_all_contigs.aggregated.tsv \
+      --max-contig-overlap ${params.max_contig_overlap} \
+      --structure-column-name ${params.structure_column_name}
 
     # 3) Insert z_score, p_value and q_value (FDR) next to 'score' using the provided null distribution
     python3 - << 'PY'
@@ -60,7 +67,7 @@ def norm_sf(z: float) -> float:
     # Numerically stable survival function for Normal(0,1)
     return 0.5 * math.erfc(z / math.sqrt(2.0))
 
-scores = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\t')
+scores = pd.read_csv('pairs_scores_all_contigs.aggregated.tsv', sep='\t')
 null   = pd.read_csv('null_scores.tsv', sep='\t')
 
 if 'score' not in scores.columns:
@@ -102,7 +109,7 @@ scores.insert(idx+1, 'z_score', z)
 scores.insert(idx+2, 'p_value', p)
 scores.insert(idx+3, 'q_value', fdr_bh(p))
 
-scores.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
+scores.to_csv('pairs_scores_all_contigs.aggregated.tsv', sep='\t', index=False)
 PY
     """
 }

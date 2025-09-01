@@ -20,13 +20,15 @@ process MERGE_QUERY_RESULTS {
     // fail.  The files remain accessible at their original locations and are
     // read directly by the Python merging script below.
     val distances
-    val scores_all
-    val scores_unagg
+    val scores_contigs
+    val scores_windows
+    val scores_agg
 
     output:
-    path "distances.merged.sorted.tsv",                  emit: distances
-    path "pairs_scores_all_contigs.merged.tsv",          emit: scores
-    path "pairs_scores_all_contigs.unaggregated.merged.tsv", emit: scores_unagg
+    path "distances.merged.sorted.tsv",                emit: distances
+    path "pairs_scores_all_contigs.merged.tsv",        emit: scores
+    path "pairs_scores_all_contigs.windows.merged.tsv", emit: scores_win
+    path "pairs_scores_all_contigs.aggregated.merged.tsv", emit: scores_agg
 
     script:
     """
@@ -34,8 +36,9 @@ process MERGE_QUERY_RESULTS {
 import pandas as pd
 
 dist_files = ${groovy.json.JsonOutput.toJson(distances.collect { it.toString() })}
-score_files = ${groovy.json.JsonOutput.toJson(scores_all.collect { it.toString() })}
-unagg_files = ${groovy.json.JsonOutput.toJson(scores_unagg.collect { it.toString() })}
+score_files = ${groovy.json.JsonOutput.toJson(scores_contigs.collect { it.toString() })}
+win_files   = ${groovy.json.JsonOutput.toJson(scores_windows.collect { it.toString() })}
+agg_files   = ${groovy.json.JsonOutput.toJson(scores_agg.collect { it.toString() })}
 
 def merge(files, out):
     dfs = [pd.read_csv(f, sep='\t') for f in files]
@@ -43,7 +46,8 @@ def merge(files, out):
 
 merge(dist_files, 'distances.merged.sorted.tsv')
 merge(score_files, 'pairs_scores_all_contigs.merged.tsv')
-merge(unagg_files, 'pairs_scores_all_contigs.unaggregated.merged.tsv')
+merge(win_files,  'pairs_scores_all_contigs.windows.merged.tsv')
+merge(agg_files,  'pairs_scores_all_contigs.aggregated.merged.tsv')
 PY
     """
 }

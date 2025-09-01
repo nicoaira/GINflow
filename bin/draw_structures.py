@@ -65,6 +65,47 @@ def make_highlight(start, end, colour):
         }}
 '''
 
+def _parse_int_list(v):
+    """Parse an integer or a comma/semicolon-separated list of integers.
+    Returns a list of ints. Empty / None -> [].
+    Accepts strings like "12,34" or "12; 34" or single ints.
+    """
+    if v is None:
+        return []
+    # Already a number
+    if isinstance(v, (int, float)):
+        try:
+            iv = int(v)
+            return [iv] if iv != 0 else []
+        except Exception:
+            return []
+    s = str(v).strip()
+    if s == "" or s == "0":
+        return []
+    # normalize separators
+    s = s.replace(";", ",").replace("|", ",")
+    parts = [p.strip() for p in s.split(",") if p.strip() != ""]
+    out = []
+    for p in parts:
+        try:
+            out.append(int(p))
+        except Exception:
+            # ignore non-integer tokens gracefully
+            continue
+    return out
+
+def make_highlight_blocks(starts_list, ends_list, colour):
+    """Build a combined highlight block for multiple ranges.
+    Pairs entries by index; ignores incomplete or zero ranges.
+    """
+    blocks = []
+    n = min(len(starts_list), len(ends_list))
+    for i in range(n):
+        s, e = starts_list[i], ends_list[i]
+        if s and e:
+            blocks.append(make_highlight(s, e, colour))
+    return "".join(blocks)
+
 KTS_TEMPLATE = '''import io.github.fjossinet.rnartist.core.*
 
 rnartist {{
@@ -143,6 +184,7 @@ def process_pair(i, row):
     dot1 = (
         row.get('query_secondary_structure') or
         row.get('query_structure') or
+        row.get('query_rnafold_dotbracket') or
         row.get('secondary_structure_1') or
         row.get('structure_1') or
         row.get('structure1') or "."*len(seq1)
@@ -150,6 +192,7 @@ def process_pair(i, row):
     dot2 = (
         row.get('subject_secondary_structure') or
         row.get('subject_structure') or
+        row.get('subject_rnafold_dotbracket') or
         row.get('secondary_structure_2') or
         row.get('structure_2') or
         row.get('structure2') or "."*len(seq2)
@@ -161,25 +204,25 @@ def process_pair(i, row):
     if not (validate(seq1,dot1) and validate(seq2,dot2)):
         return
 
-    # Use the correct column names based on pair type
+    # Use the correct column names based on pair type. Accept multiple comma-separated ranges.
     if ARGS.pair_type == 'contig':
-        w1s = int((row.get('query_contig_start')   or row.get('contig_start_1') or 0) or 0)
-        w1e = int((row.get('query_contig_end')     or row.get('contig_end_1')   or 0) or 0)
-        w2s = int((row.get('subject_contig_start') or row.get('contig_start_2') or 0) or 0)
-        w2e = int((row.get('subject_contig_end')   or row.get('contig_end_2')   or 0) or 0)
+        w1s_list = _parse_int_list(row.get('query_contig_start')   or row.get('contig_start_1') or None)
+        w1e_list = _parse_int_list(row.get('query_contig_end')     or row.get('contig_end_1')   or None)
+        w2s_list = _parse_int_list(row.get('subject_contig_start') or row.get('contig_start_2') or None)
+        w2e_list = _parse_int_list(row.get('subject_contig_end')   or row.get('contig_end_2')   or None)
     else:  # window
-        w1s = int((row.get('query_window_start')   or row.get('window_start_1') or 0) or 0)
-        w1e = int((row.get('query_window_end')     or row.get('window_end_1')   or 0) or 0)
-        w2s = int((row.get('subject_window_start') or row.get('window_start_2') or 0) or 0)
-        w2e = int((row.get('subject_window_end')   or row.get('window_end_2')   or 0) or 0)
+        w1s_list = _parse_int_list(row.get('query_window_start')   or row.get('window_start_1') or None)
+        w1e_list = _parse_int_list(row.get('query_window_end')     or row.get('window_end_1')   or None)
+        w2s_list = _parse_int_list(row.get('subject_window_start') or row.get('window_start_2') or None)
+        w2e_list = _parse_int_list(row.get('subject_window_end')   or row.get('window_end_2')   or None)
     
     # Debug print to verify coordinates are being read
     if ARGS.debug:
         coord_type = ARGS.pair_type
-        print(f"[debug] Row {i}: {coord_type}_1=({w1s},{w1e}), {coord_type}_2=({w2s},{w2e})")
+        print(f"[debug] Row {i}: {coord_type}_1 starts={w1s_list} ends={w1e_list}; {coord_type}_2 starts={w2s_list} ends={w2e_list}")
     
-    hl1 = make_highlight(w1s,w1e,ARGS.highlight_colour)
-    hl2 = make_highlight(w2s,w2e,ARGS.highlight_colour)
+    hl1 = make_highlight_blocks(w1s_list, w1e_list, ARGS.highlight_colour)
+    hl2 = make_highlight_blocks(w2s_list, w2e_list, ARGS.highlight_colour)
 
     n1 = re.sub(r'[^A-Za-z0-9_]', '_', f"{id1}_{i}")
     n2 = re.sub(r'[^A-Za-z0-9_]', '_', f"{id2}_{i}")

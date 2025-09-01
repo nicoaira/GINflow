@@ -25,7 +25,7 @@ process BUILD_FAISS_INDEX {
     python3 ${baseDir}/bin/build_faiss_index.py \
       --input ${embeddings} \
       --id-column ${params.id_column} \
-      --query ${params.query} \
+      --query ${params.queries ?: 'null'} \
       --index-path faiss.index \
       --mapping-path faiss_mapping.tsv \
       --num-workers ${task.cpus}

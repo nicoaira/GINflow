@@ -196,6 +196,7 @@ The pipeline uses a sophisticated scoring algorithm with several tunable paramet
 | `--beta2` | `1.15` | Redundancy scaling exponent |
 | `--gamma` | `0.41` | Combined score weight |
 | `--percentile` | `1` | Top percentile threshold |
+| `--max_contig_overlap` | `10` | Maximum allowed overlap when merging contigs |
 
 ### Reporting Parameters
 
@@ -247,16 +248,18 @@ ls test_results/
 results/
 ├── distances.merged.sorted.tsv                      # Sorted pairwise distances from all queries
 ├── pairs_scores_all_contigs.merged.tsv              # All similarity scores across queries
-├── pairs_scores_all_contigs.unaggregated.merged.tsv # Unaggregated scores across queries
+├── pairs_scores_all_contigs.windows.merged.tsv      # Window-level scores across queries
+├── pairs_scores_all_contigs.aggregated.merged.tsv   # Scores aggregated by structure across queries
 ├── embeddings.tsv                                   # Vector embeddings
 ├── id_meta.tsv                                      # Extracted metadata
 ├── queries_results/                                 # Per-query outputs
 │   └── <query_id>/
 │       ├── distances.sorted.tsv
 │       ├── pairs_scores_all_contigs.tsv
-│       ├── pairs_scores_all_contigs.unaggregated.tsv
+│       ├── pairs_scores_all_contigs.windows.tsv
+│       ├── pairs_scores_all_contigs.aggregated.tsv
 │       ├── pairs_scores_top_contigs.tsv
-│       └── pairs_scores_top_contigs.unaggregated.tsv
+│       └── pairs_scores_top_contigs.windows.tsv
 ├── drawings/
 │   ├── contigs/                                     # SVG visualizations (aggregated)
 │   └── unagg_windows/                               # SVG visualizations (windowed)

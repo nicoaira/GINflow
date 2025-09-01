@@ -198,9 +198,9 @@ workflow rna_similarity {
         // Aggregate and normalize per query, then continue plotting and filtering
         def agg_n = AGGREGATE_SCORE_WITH_NULL(joined, meta_map_val)
         // Plot real vs. null distribution per query
-        PLOT_SCORE_WITH_NULL(agg_n.enriched_all.join(null_merged.null_scores))
+        PLOT_SCORE_WITH_NULL(agg_n.enriched_agg.join(null_merged.null_scores))
 
-        def joined_scores = agg_n.enriched_all.join(agg_n.enriched_unagg)
+        def joined_scores = agg_n.enriched_agg.join(agg_n.windows)
         def filtered = FILTER_TOP_CONTIGS(joined_scores)
 
         if (params.run_aggregated_report && params.draw_contig_svgs) {
@@ -218,15 +218,16 @@ workflow rna_similarity {
         // Merge all final per-query results
         MERGE_QUERY_RESULTS(
             per_query.sorted_distances.map{ it[1] }.collect(),
-            agg_n.enriched_all.map{ it[1] }.collect(),
-            agg_n.enriched_unagg.map{ it[1] }.collect()
+            agg_n.contigs.map{ it[1] }.collect(),
+            agg_n.windows.map{ it[1] }.collect(),
+            agg_n.enriched_agg.map{ it[1] }.collect()
         )
     } else {
         // No nulls: aggregate per query directly, then plot/filter/report and merge
         def agg = AGGREGATE_SCORE(per_query.sorted_distances, meta_map_val)
-        PLOT_SCORE(agg.enriched_all)
+        PLOT_SCORE(agg.enriched_agg)
 
-        def joined_scores = agg.enriched_all.join(agg.enriched_unagg)
+        def joined_scores = agg.enriched_agg.join(agg.windows)
         def filtered = FILTER_TOP_CONTIGS(joined_scores)
 
         if (params.run_aggregated_report && params.draw_contig_svgs) {
@@ -243,8 +244,9 @@ workflow rna_similarity {
 
         MERGE_QUERY_RESULTS(
             per_query.sorted_distances.map{ it[1] }.collect(),
-            agg.enriched_all.map{ it[1] }.collect(),
-            agg.enriched_unagg.map{ it[1] }.collect()
+            agg.contigs.map{ it[1] }.collect(),
+            agg.windows.map{ it[1] }.collect(),
+            agg.enriched_agg.map{ it[1] }.collect()
         )
     }
 }

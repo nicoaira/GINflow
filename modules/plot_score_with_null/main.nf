@@ -15,7 +15,7 @@ process PLOT_SCORE_WITH_NULL {
         'nicoaira/ginflow-plot-score:latest' }"
 
     input:
-    tuple val(query_id), path(enriched_all), path(null_scores)
+    tuple val(query_id), path(enriched_agg), path(null_scores)
 
     output:
     path "score_distribution.png"
@@ -26,7 +26,7 @@ process PLOT_SCORE_WITH_NULL {
 import pandas as pd
 import matplotlib.pyplot as plt
 
-real_df = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\t')
+real_df = pd.read_csv('pairs_scores_all_contigs.aggregated.tsv', sep='\t')
 null_df = pd.read_csv('null_scores.tsv', sep='\t')
 
 plt.figure(figsize=(6,4))

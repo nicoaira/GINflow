@@ -14,7 +14,7 @@ process DRAW_UNAGG_SVGS {
         'docker.io/nicoaira/ginflow-draw-structures:latest' }"
 
     input:
-    tuple val(query_id), path(top_unagg_tsv)
+    tuple val(query_id), path(top_windows_tsv)
 
     output:
     tuple val(query_id), path('individual_svgs'), emit: window_individual
@@ -23,7 +23,7 @@ process DRAW_UNAGG_SVGS {
     """
     mkdir -p individual_svgs
     python3 ${baseDir}/bin/draw_structures.py \
-      --tsv ${top_unagg_tsv} --outdir individual_svgs \
+      --tsv ${top_windows_tsv} --outdir individual_svgs \
       --pair-type "window" \
       --id-column ${params.id_column} \
       --width 500 --height 500 --highlight-colour "#00FF99" \

@@ -15,7 +15,7 @@ process PLOT_SCORE {
     publishDir "${params.outdir}/queries_results/${query_id}/plots", mode: 'copy'
 
     input:
-    tuple val(query_id), path(enriched_all)
+    tuple val(query_id), path(enriched_agg)
 
     output:
     path "score_distribution.png"
@@ -24,7 +24,7 @@ process PLOT_SCORE {
     """
     python3 - << 'PY'
 import pandas as pd, matplotlib.pyplot as plt
-df = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\t')
+df = pd.read_csv('pairs_scores_all_contigs.aggregated.tsv', sep='\t')
 plt.hist(df['score'], bins=${params.score_bins})
 plt.xlabel('Score')
 plt.ylabel('Frequency')

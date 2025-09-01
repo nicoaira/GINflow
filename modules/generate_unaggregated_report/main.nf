@@ -14,7 +14,7 @@ process GENERATE_UNAGGREGATED_REPORT {
         'nicoaira/ginflow-generate-report:latest' }"
 
     input:
-    tuple val(query_id), path(top_contigs_unagg_tsv), path(window_individual)
+    tuple val(query_id), path(top_windows_tsv), path(window_individual)
 
     output:
     path "pairs_contigs_report.unaggregated.html"
@@ -22,7 +22,7 @@ process GENERATE_UNAGGREGATED_REPORT {
     script:
     """
     python3 ${baseDir}/bin/generate_report.py \
-      --pairs ${top_contigs_unagg_tsv} \
+      --pairs ${top_windows_tsv} \
       --svg-dir ${window_individual} \
       --id-column ${params.id_column} \
       --output pairs_contigs_report.unaggregated.html

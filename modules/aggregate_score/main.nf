@@ -18,8 +18,9 @@ process AGGREGATE_SCORE {
     path meta_map
 
     output:
-    tuple val(query_id), path("pairs_scores_all_contigs.tsv"),              emit: enriched_all
-    tuple val(query_id), path("pairs_scores_all_contigs.unaggregated.tsv"), emit: enriched_unagg
+    tuple val(query_id), path("pairs_scores_all_contigs.tsv"),            emit: contigs
+    tuple val(query_id), path("pairs_scores_all_contigs.windows.tsv"),    emit: windows
+    tuple val(query_id), path("pairs_scores_all_contigs.aggregated.tsv"), emit: enriched_agg
 
     script:
     """
@@ -48,7 +49,13 @@ all_df   = pd.read_csv('raw_contigs.tsv', sep='\t').merge(m1,on='query_id').merg
 unagg_df = pd.read_csv('raw_contigs.unaggregated.tsv', sep='\t').merge(m1,on='query_id').merge(m2,on='subject_id')
 
 all_df.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
-unagg_df.to_csv('pairs_scores_all_contigs.unaggregated.tsv', sep='\t', index=False)
+unagg_df.to_csv('pairs_scores_all_contigs.windows.tsv', sep='\t', index=False)
 PY
+    python3 ${baseDir}/bin/aggregate_structural_contigs.py \
+      --input pairs_scores_all_contigs.tsv \
+      --output pairs_scores_all_contigs.aggregated.tsv \
+      --max-contig-overlap ${params.max_contig_overlap} \
+      --structure-column-name ${params.structure_column_name}
+
     """
 }

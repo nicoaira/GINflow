@@ -22,6 +22,7 @@
     "beta2": {"type": "number"},
     "gamma": {"type": "number"},
     "percentile": {"type": "number"},
+    "max_contig_overlap": {"type": "integer"},
     "top_n": {"type": "integer", "minimum": 1},
     "embeddings_tsv": {"type": ["string", "null"], "description": "Path to precomputed embeddings.tsv"},
     "faiss_index": {"type": ["string", "null"], "description": "Path to prebuilt FAISS index"},
