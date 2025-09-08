@@ -319,18 +319,6 @@ Nextflow automatically handles resume functionality:
 nextflow run main.nf -resume -profile docker
 ```
 
-### Resource Requirements
-
-Typical resource usage:
-
-| Dataset Size | Memory | CPU | Runtime |
-|--------------|--------|-----|---------|
-| 1K sequences | 8 GB | 4 cores | 30 min |
-| 10K sequences | 16 GB | 8 cores | 2 hours |
-| 100K sequences | 32 GB | 16 cores | 8 hours |
-
-GPU acceleration can reduce runtime by 3-5x for embedding generation.
-
 ## Pipeline Modules
 
 GINflow consists of 15+ independent Nextflow modules:
