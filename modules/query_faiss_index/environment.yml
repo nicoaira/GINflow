@@ -1,10 +1,9 @@
 name: query_faiss_index
 channels:
+  - pytorch
   - conda-forge
 dependencies:
-  - python>=3.8
+  - python=3.12
   - pandas>=2.2
   - numpy>=1.26
-  - pip
-  - pip:
-    - faiss-cpu>=1.7
+  - faiss-gpu>=1.7

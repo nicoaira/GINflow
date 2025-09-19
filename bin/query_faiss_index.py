@@ -23,6 +23,9 @@ def main():
                    help="How many nearest neighbors per query window")
     p.add_argument('--output',       required=True,
                    help="Path to write distances.tsv")
+    p.add_argument('--use-gpu', action='store_true',
+                   help="Move the FAISS index to GPU memory before querying")
+
     args = p.parse_args()
 
     # ─── 1) Read mapping (DB side) ───
@@ -80,6 +83,27 @@ def main():
 
     # ─── 3) Load FAISS index & over-fetch ───
     index = faiss.read_index(args.index_path)
+    gpu_resources = None
+    if args.use_gpu:
+        has_gpu_api = hasattr(faiss, 'StandardGpuResources') and hasattr(faiss, 'index_cpu_to_gpu')
+        num_gpus = faiss.get_num_gpus() if hasattr(faiss, 'get_num_gpus') else 0
+        if not has_gpu_api:
+            print(
+                "WARNING: --use-gpu requested but this FAISS build lacks GPU support; "
+                "continuing on CPU",
+                file=sys.stderr
+            )
+        elif num_gpus < 1:
+            print(
+                "WARNING: --use-gpu requested but no GPUs are visible to FAISS; "
+                "continuing on CPU",
+                file=sys.stderr
+            )
+        else:
+            gpu_resources = faiss.StandardGpuResources()
+            # Use the first visible GPU; extend later for multi-GPU fan-out if needed.
+            index = faiss.index_cpu_to_gpu(gpu_resources, 0, index)
+            print("FAISS index moved to GPU for querying")
     extra = len(q_meta)  # allow dropping up to one “self” per window
     D, I = index.search(q_vecs, args.top_k + extra)      # ← ask for a few extra
 

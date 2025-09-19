@@ -156,11 +156,8 @@ workflow rna_similarity {
         faiss_map_ch = idx.faiss_map
     }
 
-    // Build two independent query streams so both branches receive all IDs
+    // Build query stream for the main branch (null branch will be gated by its completion)
     def queries_real = Channel.fromPath(params.queries)
-        .splitCsv(header: true, sep: ',', strip: true)
-        .map { row -> row['id'] }
-    def queries_null = Channel.fromPath(params.queries)
         .splitCsv(header: true, sep: ',', strip: true)
         .map { row -> row['id'] }
 
@@ -171,10 +168,13 @@ workflow rna_similarity {
     def meta_map_val   = meta.meta_map.first()
 
     def per_query = PER_QUERY(queries_real, embeddings_val, faiss_idx_val, faiss_map_val, meta_map_val)
+    def sorted_distances_ch = per_query.sorted_distances
 
     if (params.null_shuffles as int > 0) {
-        // Build null distributions per query
-        def null_ids = queries_null.flatMap { q -> (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] } }
+        // Build null distributions per query only after the real query has completed
+        def null_ids = sorted_distances_ch.map { tup -> tup[0] }.flatMap { q ->
+            (1..(params.null_shuffles as int)).collect { r -> [q, "${q}_null${r}"] }
+        }
         def null_per = NULL_PER_QUERY(null_ids, faiss_idx_val, faiss_map_val, meta_map_val)
 
         // Map each null ID back to its base query ID (strip _nullN suffix)
@@ -193,7 +193,7 @@ workflow rna_similarity {
         def null_merged  = MERGE_NULL_SCORES(null_grouped)
 
         // Join real sorted distances with their corresponding null distributions
-        def joined = per_query.sorted_distances.join(null_merged.null_scores)
+        def joined = sorted_distances_ch.join(null_merged.null_scores)
 
         // Aggregate and normalize per query, then continue plotting and filtering
         def agg_n = AGGREGATE_SCORE_WITH_NULL(joined, meta_map_val)
@@ -217,14 +217,14 @@ workflow rna_similarity {
 
         // Merge all final per-query results
         MERGE_QUERY_RESULTS(
-            per_query.sorted_distances.map{ it[1] }.collect(),
+            sorted_distances_ch.map{ it[1] }.collect(),
             agg_n.contigs.map{ it[1] }.collect(),
             agg_n.windows.map{ it[1] }.collect(),
             agg_n.enriched_agg.map{ it[1] }.collect()
         )
     } else {
         // No nulls: aggregate per query directly, then plot/filter/report and merge
-        def agg = AGGREGATE_SCORE(per_query.sorted_distances, meta_map_val)
+        def agg = AGGREGATE_SCORE(sorted_distances_ch, meta_map_val)
         PLOT_SCORE(agg.enriched_agg)
 
         def joined_scores = agg.enriched_agg.join(agg.windows)
@@ -243,7 +243,7 @@ workflow rna_similarity {
         }
 
         MERGE_QUERY_RESULTS(
-            per_query.sorted_distances.map{ it[1] }.collect(),
+            sorted_distances_ch.map{ it[1] }.collect(),
             agg.contigs.map{ it[1] }.collect(),
             agg.windows.map{ it[1] }.collect(),
             agg.enriched_agg.map{ it[1] }.collect()

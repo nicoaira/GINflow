@@ -4,8 +4,8 @@ nextflow.enable.dsl=2
 process QUERY_FAISS_INDEX_BY_TUPLE {
     tag  { "query_faiss_index_${query_id}" }
 
-    label 'medium_memory'
-    maxForks = 2
+    label params.use_gpu ? 'gpu' : 'medium_memory'
+    maxForks = 1
     // No publishDir here; null results are not copied to outdir
 
     conda "${moduleDir}/environment.yml"
@@ -22,6 +22,7 @@ process QUERY_FAISS_INDEX_BY_TUPLE {
     tuple val(query_id), path("distances.tsv"), emit: distances
 
     script:
+    def gpuFlag = params.use_gpu ? '--use-gpu' : ''
     """
     python3 ${baseDir}/bin/query_faiss_index.py \
       --input ${embeddings} \
@@ -30,6 +31,6 @@ process QUERY_FAISS_INDEX_BY_TUPLE {
       --index-path ${faiss_idx} \
       --mapping-path ${faiss_map} \
       --top-k ${params.faiss_k} \
-      --output distances.tsv
+      --output distances.tsv ${gpuFlag}
     """
 }
