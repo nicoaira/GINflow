@@ -5,7 +5,7 @@ process QUERY_FAISS_INDEX_BY_TUPLE {
     tag  { "query_faiss_index_${query_id}" }
 
     label 'medium_memory'
-
+    maxForks = 2
     // No publishDir here; null results are not copied to outdir
 
     conda "${moduleDir}/environment.yml"

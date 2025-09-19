@@ -5,6 +5,7 @@ process QUERY_FAISS_INDEX {
     tag  "query_faiss_index_${query_id}"
 
     label 'medium_memory'
+    maxForks = 2
 
     publishDir "${params.outdir}/queries_results/${query_id}", mode: 'copy'
 
