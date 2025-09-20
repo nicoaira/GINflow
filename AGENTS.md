@@ -37,7 +37,7 @@ Adjust params { ... } for defaults; override on the CLI or with profiles:
 - Structure handling: --subgraphs, --L, --keep_paired_neighbors, --structure_column_name, --mask_threshold.
 - Embeddings: --num_workers, --inference_batch_size, --use_gpu (or -profile gpu), --gpu_type (t4|a100).
 - FAISS / Query: --faiss_k, --top_n, --queries, --embeddings_tsv, --faiss_index.
-- Aggregation: --alpha1 --alpha2 --beta1 --beta2 --gamma --percentile.
+- Aggregation: --alpha1 --alpha2 --beta1 --beta2 --gamma --percentile --aggregate_contigs.
 - Plot/Report toggles: --plot_distances_distribution, --plot_score_distribution, --draw_contig_svgs, --run_aggregated_report, --run_unaggregated_report.
 
 Profiles

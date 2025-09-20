@@ -23,16 +23,52 @@ process AGGREGATE_SCORE_WITH_NULL {
     tuple val(query_id), path("pairs_scores_all_contigs.aggregated.tsv"), emit: enriched_agg
 
     script:
+    def aggregateCmd = params.aggregate_contigs ? """
+    python3 ${baseDir}/bin/aggregate_structural_contigs.py \\
+      --input pairs_scores_all_contigs.tsv \\
+      --output pairs_scores_all_contigs.aggregated.tsv \\
+      --max-contig-overlap ${params.max_contig_overlap} \\
+      --structure-column-name ${params.structure_column_name}
+    """ : """
+    python3 - <<'PY'
+import pandas as pd
+
+def to_str(val):
+    if pd.isna(val):
+        return ''
+    if isinstance(val, (int, float)) and float(val).is_integer():
+        return str(int(val))
+    return str(val)
+
+df = pd.read_csv('pairs_scores_all_contigs.tsv', sep='\t')
+
+if 'contig_ids' not in df.columns and 'contig_id' in df.columns:
+    df['contig_ids'] = df['contig_id'].map(to_str)
+
+for col in ['query_contig_start', 'query_contig_end', 'subject_contig_start', 'subject_contig_end']:
+    if col in df.columns:
+        df[col] = df[col].map(to_str)
+
+for col in ['contig_rank', 'n_collapsed_windows']:
+    if col in df.columns:
+        df[col] = df[col].map(to_str)
+
+df = df.sort_values('score', ascending=False)
+df.to_csv('pairs_scores_all_contigs.aggregated.tsv', sep='\t', index=False)
+print('aggregate_contigs disabled; using contig-level scores only')
+PY
     """
+
+    return """
     # 1) Aggregate scores from sorted distances
-    python3 ${baseDir}/bin/aggregated_score.py \
-      --input ${sorted_distances} \
-      --id-column ${params.id_column} \
-      --alpha1 ${params.alpha1} --alpha2 ${params.alpha2} \
-      --beta1 ${params.beta1}   --beta2 ${params.beta2} \
-      --gamma ${params.gamma}   --percentile ${params.percentile} \
-      --mode contigs \
-      --output raw_contigs.tsv \
+    python3 ${baseDir}/bin/aggregated_score.py \\
+      --input ${sorted_distances} \\
+      --id-column ${params.id_column} \\
+      --alpha1 ${params.alpha1} --alpha2 ${params.alpha2} \\
+      --beta1 ${params.beta1}   --beta2 ${params.beta2} \\
+      --gamma ${params.gamma}   --percentile ${params.percentile} \\
+      --mode contigs \\
+      --output raw_contigs.tsv \\
       --output-unaggregated
 
     # 2) Enrich with meta map like the standard AGGREGATE_SCORE
@@ -53,11 +89,7 @@ all_df.to_csv('pairs_scores_all_contigs.tsv', sep='\t', index=False)
 unagg_df.to_csv('pairs_scores_all_contigs.windows.tsv', sep='\t', index=False)
 PY
 
-    python3 ${baseDir}/bin/aggregate_structural_contigs.py \
-      --input pairs_scores_all_contigs.tsv \
-      --output pairs_scores_all_contigs.aggregated.tsv \
-      --max-contig-overlap ${params.max_contig_overlap} \
-      --structure-column-name ${params.structure_column_name}
+${aggregateCmd}
 
     # 3) Insert z_score, p_value and q_value (FDR) next to 'score' using the provided null distribution
     python3 - << 'PY'

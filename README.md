@@ -197,6 +197,7 @@ The pipeline uses a sophisticated scoring algorithm with several tunable paramet
 | `--gamma` | `0.41` | Combined score weight |
 | `--percentile` | `1` | Top percentile threshold |
 | `--max_contig_overlap` | `10` | Maximum allowed overlap when merging contigs |
+| `--aggregate_contigs` | `false` | Merge contigs by secondary-structure connectivity before reporting |
 
 ### Reporting Parameters
 
