@@ -2,37 +2,43 @@
 nextflow.enable.dsl=2
 
 process QUERY_FAISS_INDEX {
-    tag  "query_faiss_index_${query_id}"
+    tag  "query_faiss_index"
 
-    label params.use_gpu ? 'gpu' : 'medium_memory'
-    maxForks = 1
+    label params.faiss_use_gpu ? 'gpu' : 'medium_memory'
 
-    publishDir "${params.outdir}/queries_results/${query_id}", mode: 'copy'
+    publishDir "${params.outdir}", mode: 'copy', pattern: 'seeds.tsv'
 
     conda "${moduleDir}/environment.yml"
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginflow-query-faiss-index:latest' :
-        'nicoaira/ginflow-query-faiss-index:latest' }"
 
     input:
-    path embeddings
     path faiss_idx
-    path faiss_map
-    val query_id
+    path database_vectors
+    path database_metadata
+    path query_vectors
+    path query_metadata
 
     output:
-    tuple val(query_id), path("distances.tsv"), emit: distances
+    path "seeds.tsv", emit: seeds
+    path "query_stats.json", optional: true, emit: query_stats
 
     script:
-    def gpuFlag = params.use_gpu ? '--use-gpu' : ''
+    def metric = params.faiss_metric ?: 'ip'
+    def gpuFlag = params.faiss_use_gpu ? '--use-gpu' : ''
+    def nprobe = params.faiss_nprobe ? "--nprobe ${params.faiss_nprobe}" : ''
     """
     python3 ${baseDir}/bin/query_faiss_index.py \
-      --input ${embeddings} \
+      --index ${faiss_idx} \
+      --database-vectors ${database_vectors} \
+      --database-metadata ${database_metadata} \
+      --query-vectors ${query_vectors} \
+      --query-metadata ${query_metadata} \
       --id-column ${params.id_column} \
-      --query ${query_id} \
-      --index-path ${faiss_idx} \
-      --mapping-path ${faiss_map} \
-      --top-k ${params.faiss_k} \
-      --output distances.tsv ${gpuFlag}
+      --top-k ${params.faiss_k ?: 50} \
+      --similarity-threshold ${params.seed_similarity_threshold ?: 0.7} \
+      --metric ${metric} \
+      --output seeds.tsv \
+      --stats-json query_stats.json \
+      ${gpuFlag} \
+      ${nprobe}
     """
 }

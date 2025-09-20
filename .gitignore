@@ -8,3 +8,5 @@ containers/sifs/*
 sif_push.sh
 analyze_resources.py
 rebuild_containers.sh
+smoke_results/*
+*.pyc

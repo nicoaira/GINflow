@@ -3,7 +3,7 @@ channels:
   - pytorch
   - conda-forge
 dependencies:
-  - python=3.12
+  - python=3.11
   - pandas>=2.2
-  - numpy>=1.26
-  - faiss-gpu>=1.7
+  - numpy>=1.26,<2.0
+  - faiss-cpu>=1.7,<1.8

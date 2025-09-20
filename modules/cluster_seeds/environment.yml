@@ -1,9 +1,6 @@
-name: query_faiss_index
+name: cluster_seeds
 channels:
-  - pytorch
   - conda-forge
 dependencies:
   - python=3.12
   - pandas>=2.2
-  - numpy>=1.26
-  - faiss-cpu>=1.7

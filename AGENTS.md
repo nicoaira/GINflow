@@ -3,42 +3,38 @@
 GINflow – Automated Agent & Contributor Guide
 
 Purpose
-GINflow is a Nextflow pipeline for computing similarity between RNA transcript secondary structures. It ingests a table of transcript metadata / structures, produces fixed-length embeddings, builds a FAISS index, performs nearest-neighbour queries, aggregates pairwise scores, and generates plots plus HTML reports.
+GINflow is now a BLAST-style Nextflow pipeline for local similarity searches across RNA secondary structures. It consumes a transcript table, generates ginfinity node embeddings, derives sliding-window vectors, indexes the database windows with FAISS, seeds/query windows, clusters hits, runs banded affine-gap Smith–Waterman alignments, and emits a TSV of top-scoring high-scoring pairs (HSPs).
 
 High-Level Workflow
-1. Input parsing: Load tabular transcript data (TSV/CSV) with an ID column (default transcript_id) and a structure column.
-2. Window generation (generate_windows): Optionally splits long structures into fixed-size windows (param split_size) and masks low-confidence positions (mask_threshold).
-3. Embedding inference (generate_embeddings): Runs a model to produce numeric embeddings (GPU optional via -profile gpu). Batch size controlled by inference_batch_size and num_workers.
-4. FAISS index build (build_faiss_index): Creates a vector index plus mapping files.
-5. Query phase (query_faiss_index): Looks up nearest neighbours (faiss_k) for provided queries (queries file) or all items.
-6. Distance sorting & filtering (sort_distances, filter_top_contigs): Orders neighbour lists and trims to top_n.
-7. Scoring (aggregate_score, merge_query_results): Computes per-pair scores and aggregated metrics using alpha*, beta*, gamma, percentile parameters.
-8. Visualization (plot_distances, plot_score, draw_contig_svgs, draw_unagg_svgs): Generates distributions, per-contig SVGs (configurable with draw_contig_svgs / run_unaggregated_report), and summary figures.
-9. Reporting (generate_aggregated_report, generate_unaggregated_report): Produces HTML reports (pairs tables, metrics, plots) in outdir/reports.
+1. **Metadata extraction** (`extract_meta_map`): capture ID, sequence, and structure columns for downstream reporting.
+2. **Node embeddings** (`generate_node_embeddings`): call `ginfinity-generate-node-embeddings` (CPU/GPU) to obtain per-node vectors.
+3. **Window vectors** (`generate_window_vectors`): concatenate `k` consecutive node embeddings (after batching/merging `split_size` chunks), normalise, and split into database vs query windows based on the ID list.
+4. **FAISS index** (`build_faiss_index`): construct the configurable FAISS backend (Flat, IVF, IVFPQ, OPQ+IVFPQ, or HNSW) over database windows.
+5. **Seeding** (`query_faiss_index`): search query windows, keep neighbours ≥ `seed_similarity_threshold`, and record diagonals.
+6. **Diagonal clustering** (`cluster_seeds`): enforce the two-hit rule by requiring ≥ `cluster_min_seeds` within `cluster_span` nt on the same diagonal.
+7. **Alignment** (`align_candidates`): gather clustered regions, sample background μ/σ, run banded Smith–Waterman with affine gaps, and summarise alignment statistics plus sequence/structure snippets.
+8. **Outputs**: copy intermediate artefacts (embeddings, windows, seeds, clusters) and final `alignments.tsv` into `outdir/` alongside standard Nextflow reports.
 
 Key Modules (modules/)
-- generate_windows: Sequence/structure segmentation & masking.
-- generate_embeddings: Vector representation generation (CPU/GPU).
-- build_faiss_index: FAISS index + mapping TSV.
-- query_faiss_index: K-NN retrieval.
-- sort_distances / merge_query_results: Post-processing of raw distances.
-- filter_top_contigs: Selects top_n candidates per query.
-- aggregate_score: Applies scoring formula and parameterized weighting.
-- plot_distances / plot_score: Histogram and score distribution plotting.
-- draw_contig_svgs / draw_unagg_svgs: Structure SVG rendering.
-- generate_aggregated_report / generate_unaggregated_report: HTML report writers.
+- `generate_node_embeddings`: ginfinity wrapper producing node-level embeddings.
+- `generate_window_vectors`: sliding-window concatenation and metadata emission.
+- `build_faiss_index`: new configurable FAISS index builder (Flat/IP/L2, IVF, IVFPQ, OPQ+IVFPQ, HNSW).
+- `query_faiss_index`: batch query over FAISS, cosine filtering, and seed TSV generation.
+- `cluster_seeds`: diagonal clustering with two-hit rule and span gating.
+- `align_candidates`: background sampling, banded SW, alignment metrics & TSV export.
+- Legacy plotting/aggregation/report modules remain in the repository but are no longer wired into `workflows/rna_similarity.nf` (kept for future reporting work).
 
 Containers
 containers/ holds Dockerfiles (one per functional group) and pre-built Singularity .sif images (containers/sifs/). Profiles docker or singularity activate the corresponding runtime. The sif_push.sh script can upload built images to a registry; ensure environment vars (if any) are set before use.
 
 Configuration & Parameters (nextflow.config)
-Adjust params { ... } for defaults; override on the CLI or with profiles:
-- Input & Output: --input <file>, --outdir <dir>, --header, --id_column, --keep_cols.
-- Structure handling: --subgraphs, --L, --keep_paired_neighbors, --structure_column_name, --mask_threshold.
-- Embeddings: --num_workers, --inference_batch_size, --use_gpu (or -profile gpu), --gpu_type (t4|a100).
-- FAISS / Query: --faiss_k, --top_n, --queries, --embeddings_tsv, --faiss_index.
-- Aggregation: --alpha1 --alpha2 --beta1 --beta2 --gamma --percentile.
-- Plot/Report toggles: --plot_distances_distribution, --plot_score_distribution, --draw_contig_svgs, --run_aggregated_report, --run_unaggregated_report.
+Important params (all overridable on the CLI):
+- **Input / metadata**: `--input`, `--queries`, `--outdir`, `--header`, `--split_size`, `--id_column`, `--structure_column_name`, `--sequence_column`, `--keep_cols`.
+- **Embeddings**: `--node_embeddings_tsv` (reuse cache), `--ginfinity_model_path`, `--num_workers`, `--inference_batch_size`, `--use_gpu` (ginfinity only).
+- **Window vectors**: `--window_size`, `--window_stride`.
+- **FAISS**: `--index_type`, `--faiss_metric`, `--faiss_nlist`, `--faiss_pq_m`, `--faiss_pq_bits`, `--faiss_opq_m`, `--faiss_hnsw_m`, `--faiss_hnsw_efc`, `--faiss_k`, `--faiss_nprobe`, `--faiss_use_gpu`.
+- **Seeding & clustering**: `--seed_similarity_threshold`, `--cluster_span`, `--cluster_min_seeds`.
+- **Alignment**: `--alignment_gamma`, `--band_width`, `--alignment_padding`, `--gap_open`, `--gap_extend`, `--xdrop`, `--score_min`, `--score_max`, `--background_samples`, `--random_seed`, `--top_n`.
 
 Profiles
 - test: Small synthetic dataset (tests/data/) for fast validation.
@@ -48,20 +44,24 @@ Profiles
 - local: Forces local executor.
 
 Testing (Quick Start)
-Run the bundled test workflow (produces test_results/):
+Smoke run (CPU-only) that exercises the new BLAST workflow end-to-end:
 
-nextflow run main.nf -profile test,docker,gpu
+```
+nextflow run main.nf -profile smoke,docker
+```
 
-(If no GPU available, omit ,gpu.)
+Use `-profile test,<stack>` for a slightly larger dataset. Add `,gpu` to accelerate ginfinity embedding (faiss/align remain CPU-bound).
 
 Artifacts
-- Embeddings: <outdir>/embeddings.tsv
-- FAISS index: <outdir>/faiss_index/*.index plus mapping TSV.
-- Distances / Scores: pairs_scores*.tsv, distances.sorted.tsv
-- Reports & Plots: <outdir>/reports/, plots/, drawings/
+- `node_embeddings.tsv` – ginfinity outputs (copied to `outdir/`).
+- `database_windows.{npy,tsv}` / `query_windows.{npy,tsv}` – sliding-window vectors + metadata.
+- `faiss_index/faiss.index` + `faiss_mapping.tsv` + `faiss_index_stats.json` – index artefacts.
+- `seeds.tsv`, `clusters.tsv`, `cluster_members.tsv` – seed/cluster diagnostics.
+- `alignments.tsv` – final ranked HSP list (includes coordinates, scores, cosine averages, gaps, sequences/structures).
+- Standard Nextflow trace/report/timeline/dag under `outdir/reports/`.
 
-Scoring Parameters
-The score combines structure-aware weighting (alpha1, alpha2) and distance shaping (beta1, beta2, gamma) and is further summarized via percentile selection. Tune these cautiously; re-run only downstream scoring & reporting if embeddings and raw distances unchanged (consider adding process-level publishDir reuse to avoid recompute).
+Scoring Details
+`align_candidates.py` samples random node pairs (`--background_samples`) to estimate μ₀/σ₀, computes z-scores for cosine similarities, scales by `--alignment_gamma`, clamps to [`--score_min`, `--score_max`], and feeds the resulting matrix into a banded affine-gap Smith–Waterman implementation. Gap costs are `--gap_open` / `--gap_extend`, the band width is `--band_width`, padding defaults to `--alignment_padding`, and the extension halts once the best score drops by more than `--xdrop`.
 
 Agent / Automation Guidance
 When building autonomous agents (e.g. LLM-based assistants) to extend or maintain GINflow:
@@ -70,11 +70,12 @@ When building autonomous agents (e.g. LLM-based assistants) to extend or maintai
 3. Incremental Runs: Detect existing outputs (embeddings.tsv, faiss_index/) and skip regenerate unless upstream params changed.
 4. GPU Selection: If params.use_gpu true and gpu_type changed, force rebuild or re-pull GPU-specific containers if they differ.
 5. Resource Tuning: For SLURM, adjust labels rather than editing core process definitions (e.g. add withLabel selectors for new memory tiers).
-6. Caching: Leverage Nextflow resume (-resume) but also surface a summary of cache hit/miss per process in agent logs.
-7. Validation Hooks: After query_faiss_index ensure each query has <= faiss_k neighbors; after aggregate_score ensure no NaN; halt with explicit diagnostics.
-8. Extensibility: New similarity metrics should slot in after query_faiss_index and before aggregate_score via an inserted module consuming distances TSV.
-9. Reporting: Keep HTML generation side-effect free (read-only on inputs, pure write to reports/). Agents adding new plots should append, not overwrite existing ones.
-10. Provenance: Embed params.json snapshot (automatic: consider writing a small module exporting params to outdir/params_snapshot.json for full reproducibility).
+6. Batching: Tune `--split_size` to control rows per embedding job; smaller batches increase concurrency but generate more intermediate files (header rows are mandatory for batching).
+7. Caching: Leverage Nextflow resume (-resume) but also surface a summary of cache hit/miss per process in agent logs.
+8. Validation Hooks: After `query_faiss_index` ensure each query emits ≤ `faiss_k` seeds and report when none survive the similarity threshold; after `align_candidates` flag NaNs/Infs and ensure `alignments.tsv` is non-empty before completion.
+9. Extensibility: Additional post-alignment scoring or visualisation steps should slot in after `align_candidates`, consuming its TSV (or the upstream seeds/clusters files) without mutating existing artefacts.
+10. Reporting: Keep HTML generation side-effect free (read-only on inputs, pure write to reports/). Agents adding new plots should append, not overwrite existing ones.
+11. Provenance: Embed params.json snapshot (automatic: consider writing a small module exporting params to outdir/params_snapshot.json for full reproducibility).
 
 Suggested Agent Tasks
 - add_param_snapshot: Module to dump effective params.

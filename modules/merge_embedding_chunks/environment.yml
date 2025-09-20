@@ -1,0 +1,5 @@
+name: merge_embedding_chunks
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12

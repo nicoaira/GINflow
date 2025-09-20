@@ -1,117 +1,219 @@
 #!/usr/bin/env python3
+"""Build configurable FAISS indices for window vectors."""
+from __future__ import annotations
+
 import argparse
-import os
+import json
 import sys
+from pathlib import Path
+
 import numpy as np
-import pandas as pd
-import faiss
 
-# Maximum index memory usage (bytes)
-MAX_INDEX_BYTES = 16 * 1024**3
 
-def parse_args():
-    p = argparse.ArgumentParser(
-        description="Build a FAISS index from embeddings.tsv, using memmap + chunked adds"
-    )
-    p.add_argument('--input',        required=True,
-                   help="Path to embeddings.tsv (must contain 'embedding_vector', 'window_start','window_end','seq_len')")
-    p.add_argument('--id-column',    required=True,
-                   help="Name of the transcript/window ID column")
-    p.add_argument('--query',        required=True,
-                   help="ID value to treat as “query” (will be excluded from DB)")
-    p.add_argument('--index-path',   required=True,
-                   help="Where to write the FAISS index file")
-    p.add_argument('--mapping-path', required=True,
-                   help="Where to write the DB metadata (with seq_len)")
-    p.add_argument('--num-workers', type=int, default=1,
-                   help="Number of workers for parallel operations")
-
-    return p.parse_args()
-
-def infer_size_and_dim(tsv_path, vec_col='embedding_vector'):
-    """Read one line to discover D, then count total rows for N."""
-    with open(tsv_path, 'r') as f:
-        header = f.readline().rstrip('\n').split('\t')
-        sample = f.readline().rstrip('\n').split('\t')
-        vec_str = sample[ header.index(vec_col) ]
-        D = len(vec_str.split(','))
-    # count total data lines
-    with open(tsv_path, 'r') as f:
-        N = sum(1 for _ in f) -1
-    return N, D
-
-def main():
-    args = parse_args()
-
-    faiss.omp_set_num_threads(args.num_workers)
-
-    # 1) figure out N,D
-    N, D = infer_size_and_dim(args.input)
-    est_index_bytes = N * D * 4
-    print(f"Found {N:,} vectors of dimension {D} → index will be ~{est_index_bytes/1024**3:.1f} GiB")
-    if est_index_bytes > MAX_INDEX_BYTES:
-        print("Warning: estimated index size exceeds 16 GiB; you may run out of RAM.")
-
-    # 2) build a disk‐backed memmap
-    memmap_path = args.index_path + '.memmap.npy'
-    print(f"Creating memmap at {memmap_path}")
-    mm = np.memmap(memmap_path, dtype='float32', mode='w+',
-                   shape=(N, D))
-
-    # 3) read in chunks, fill memmap & collect metadata
-    meta_cols = [ args.id_column, 'window_start','window_end','seq_len','embedding_vector' ]
-    reader = pd.read_csv(
-        args.input,
-        sep='\t',
-        usecols=meta_cols,
-        dtype={args.id_column:str},
-        chunksize=10_000
-    )
-
-    idx = 0
-    id_list, ws_list, we_list, sl_list = [], [], [], []
-    for chunk in reader:
-        M = len(chunk)
-        # parse embedding strings → float32 array
-        emb_mat = np.stack(
-            chunk['embedding_vector']
-                 .str.split(',')
-                 .map(lambda xs: np.array(xs, dtype=np.float32))
+def _ensure_numpy_faiss_compat() -> None:
+    version_parts = tuple(int(part) for part in np.__version__.split('.')[:2])
+    if version_parts >= (2, 0):
+        raise SystemExit(
+            "Detected NumPy "
+            f"{np.__version__}"
+            " – FAISS Python wheels bundled with the pipeline target NumPy < 2. "
+            "Re-run with the 'conda' or 'docker' profile, or install numpy<2 in the active environment."
         )
-        mm[idx:idx+M] = emb_mat
-        # store metadata
-        id_list .extend(chunk[args.id_column].tolist())
-        ws_list .extend(chunk['window_start'].tolist())
-        we_list .extend(chunk['window_end'].tolist())
-        sl_list .extend(chunk['seq_len'].tolist())
-        idx += M
-        print(f"  loaded {idx}/{N:,}")
 
-    # flush to disk
-    mm.flush()
 
-    # 4) write mapping table (so index row i → mapping.iloc[i])
-    map_df = pd.DataFrame({
-        args.id_column: id_list,
-        'window_start': ws_list,
-        'window_end':   we_list,
-        'seq_len':      sl_list
-    })
-    map_df.to_csv(args.mapping_path, sep='\t', index=False)
-    print(f"Wrote mapping to {args.mapping_path}")
+_ensure_numpy_faiss_compat()
 
-    # 5) build the FAISS index *incrementally*, chunk by chunk
-    print("Building FAISS index in chunks …")
-    index = faiss.IndexFlatL2(D)
-    reader2 = np.memmap(memmap_path, dtype='float32', mode='r', shape=(N, D))
-    for i in range(0, N, 10_000):
-        j = min(N, i+10_000)
-        index.add(reader2[i:j])
-        print(f"  added rows {i}-{j-1}")
+import faiss
+import pandas as pd
 
-    # 6) save
-    faiss.write_index(index, args.index_path)
-    print(f"FAISS index saved to {args.index_path}")
 
-if __name__ == '__main__':
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build a FAISS index over window vectors")
+    parser.add_argument("--vectors", required=True, help="Path to .npy array with database window vectors")
+    parser.add_argument("--metadata", required=True, help="TSV mapping rows to transcript/position metadata")
+    parser.add_argument("--index-type", default="flat_ip",
+                        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw"],
+                        help="FAISS index variant to construct")
+    parser.add_argument("--metric", default="ip", choices=["ip", "l2"],
+                        help="Distance metric for the index (inner-product or L2)")
+    parser.add_argument("--nlist", type=int, default=1024, help="Number of coarse clusters for IVF-based indices")
+    parser.add_argument("--pq-m", type=int, default=32, help="Number of subquantizers for (I)VFPQ indices")
+    parser.add_argument("--pq-bits", type=int, default=8, help="Bits per subquantizer for (I)VFPQ indices")
+    parser.add_argument("--opq-m", type=int, default=64, help="OPQ matrix size for opq_ivfpq")
+    parser.add_argument("--hnsw-m", type=int, default=32, help="Connectivity parameter for HNSW")
+    parser.add_argument("--hnsw-efc", type=int, default=200, help="efConstruction for HNSW")
+    parser.add_argument("--output-index", required=True, help="Destination path for the FAISS index")
+    parser.add_argument("--output-mapping", required=True, help="Destination path for the metadata TSV copy")
+    parser.add_argument("--stats-json", default=None, help="Optional JSON file with index metadata")
+    parser.add_argument("--use-gpu", action="store_true", help="Move the index build to GPU when available")
+    parser.add_argument(
+        "--fallback-index-type",
+        default="ivfpq",
+        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "none"],
+        help="Index type to retry with if a flat index runs out of memory (use 'none' to disable)",
+    )
+    parser.add_argument(
+        "--add-batch-size",
+        type=int,
+        default=0,
+        help="Number of vectors to add per FAISS add() call; 0 loads everything at once",
+    )
+    parser.add_argument(
+        "--train-size",
+        type=int,
+        default=250_000,
+        help="Maximum number of vectors to sample for IVF/IVFPQ training (0 uses all vectors)",
+    )
+    parser.add_argument(
+        "--train-seed",
+        type=int,
+        default=0,
+        help="RNG seed for selecting the training subset",
+    )
+    return parser.parse_args()
+
+
+def load_vectors(path: str) -> np.ndarray:
+    vectors = np.load(path, mmap_mode='r')
+    if vectors.ndim != 2:
+        raise SystemExit(f"Expected 2D array in {path}, found shape {vectors.shape}")
+    if vectors.dtype != np.float32:
+        vectors = vectors.astype(np.float32)
+    return vectors
+
+
+def metric_id(metric: str) -> int:
+    if metric == "ip":
+        return faiss.METRIC_INNER_PRODUCT
+    return faiss.METRIC_L2
+
+
+def ensure_unit_norm(vectors: np.ndarray) -> None:
+    """Warn if vectors are not approximately unit-length (for cosine/IP searches)."""
+    norms = np.linalg.norm(vectors[: min(len(vectors), 1000)], axis=1)
+    avg = float(norms.mean()) if len(norms) else 0.0
+    if not np.isclose(avg, 1.0, atol=1e-2):
+        print(f"WARNING: average vector norm ≈ {avg:.3f}; cosine/IP assumptions may be violated", file=sys.stderr)
+
+
+def maybe_to_gpu(index: faiss.Index, use_gpu: bool) -> faiss.Index:
+    if not use_gpu:
+        return index
+    if not hasattr(faiss, "StandardGpuResources"):
+        print("WARNING: FAISS build lacks GPU support; continuing on CPU", file=sys.stderr)
+        return index
+    res = faiss.StandardGpuResources()
+    return faiss.index_cpu_to_gpu(res, 0, index)
+
+
+def select_training_vectors(vectors: np.ndarray, limit: int, seed: int) -> np.ndarray:
+    if limit <= 0 or len(vectors) <= limit:
+        return np.asarray(vectors, dtype=np.float32)
+    rng = np.random.default_rng(seed)
+    idx = np.sort(rng.choice(len(vectors), size=limit, replace=False))
+    return np.asarray(vectors[idx], dtype=np.float32)
+
+
+def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.Index, str]:
+    dim = vectors.shape[1]
+    metric = metric_id(args.metric)
+
+    if args.metric == "ip":
+        ensure_unit_norm(vectors)
+
+    train_vectors = None
+    requires_training = args.index_type in {"ivf", "ivfpq", "opq_ivfpq"}
+    if requires_training:
+        train_vectors = select_training_vectors(vectors, args.train_size, args.train_seed)
+        if len(train_vectors) == 0:
+            raise SystemExit("Training set empty – cannot build trained index")
+
+    if args.index_type == "flat_ip":
+        index = faiss.IndexFlatIP(dim)
+    elif args.index_type == "flat_l2":
+        index = faiss.IndexFlatL2(dim)
+    elif args.index_type == "ivf":
+        quantizer = faiss.IndexFlatIP(dim) if args.metric == "ip" else faiss.IndexFlatL2(dim)
+        index = faiss.IndexIVFFlat(quantizer, dim, args.nlist, metric)
+        index.train(train_vectors)
+    elif args.index_type == "ivfpq":
+        quantizer = faiss.IndexFlatIP(dim) if args.metric == "ip" else faiss.IndexFlatL2(dim)
+        index = faiss.IndexIVFPQ(quantizer, dim, args.nlist, args.pq_m, args.pq_bits, metric)
+        index.train(train_vectors)
+    elif args.index_type == "opq_ivfpq":
+        opq = faiss.OPQMatrix(dim, args.opq_m)
+        quantizer = faiss.IndexFlatIP(dim) if args.metric == "ip" else faiss.IndexFlatL2(dim)
+        base = faiss.IndexIVFPQ(quantizer, dim, args.nlist, args.pq_m, args.pq_bits, metric)
+        index = faiss.IndexPreTransform(opq, base)
+        index.train(train_vectors)
+    elif args.index_type == "hnsw":
+        index = faiss.IndexHNSWFlat(dim, args.hnsw_m)
+        index.metric_type = metric
+        index.hnsw.efConstruction = args.hnsw_efc
+    else:  # pragma: no cover - guarded by argparse choices
+        raise SystemExit(f"Unsupported index type: {args.index_type}")
+
+    cpu_index = index
+    index = maybe_to_gpu(index, args.use_gpu)
+    try:
+        add_vectors(index, vectors, args.add_batch_size)
+    except MemoryError as err:
+        if args.index_type in {"flat_ip", "flat_l2"} and args.fallback_index_type != "none":
+            print(
+                f"WARNING: flat index ran out of memory; retrying with {args.fallback_index_type}",
+                file=sys.stderr,
+            )
+            fallback_args = argparse.Namespace(**vars(args))
+            fallback_args.index_type = args.fallback_index_type
+            fallback_args.fallback_index_type = "none"
+            return build_index(fallback_args, vectors)
+        raise err
+    if index is not cpu_index:
+        index = faiss.index_gpu_to_cpu(index)
+    return index, args.index_type
+
+
+def add_vectors(index: faiss.Index, vectors: np.ndarray, batch_size: int) -> None:
+    """Add vectors to the index in RAM-friendly chunks."""
+    total = vectors.shape[0]
+    if batch_size <= 0:
+        index.add(np.asarray(vectors, dtype=np.float32))
+        return
+
+    for start in range(0, total, batch_size):
+        end = min(start + batch_size, total)
+        chunk = np.asarray(vectors[start:end], dtype=np.float32)
+        index.add(chunk)
+
+
+def main() -> None:
+    args = parse_args()
+    vectors = load_vectors(args.vectors)
+    metadata = Path(args.metadata)
+    if not metadata.exists():
+        raise SystemExit(f"Metadata file {metadata} not found")
+
+    if vectors.shape[0] == 0:
+        raise SystemExit("No database windows available – aborting index build")
+
+    index, effective_type = build_index(args, vectors)
+    faiss.write_index(index, args.output_index)
+
+    # Copy metadata alongside the index for downstream lookups.
+    metadata_df = pd.read_csv(metadata, sep='\t')
+    metadata_df.to_csv(args.output_mapping, sep='\t', index=False)
+
+    stats = {
+        "index_type": effective_type,
+        "metric": args.metric,
+        "vectors": int(vectors.shape[0]),
+        "dimension": int(vectors.shape[1]),
+    }
+    if args.stats_json:
+        Path(args.stats_json).write_text(json.dumps(stats, indent=2) + "\n")
+
+    print(json.dumps(stats, indent=2))
+
+
+if __name__ == "__main__":
     main()
