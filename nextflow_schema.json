@@ -8,6 +8,12 @@
     "model_path": {"type": "string", "description": "Path to the pretrained model file"},
     "structure_column_name": {"type": "string"},
     "structure_column_num": {"type": ["integer", "null"]},
+    "low_complexity_mask": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Mask windows whose dot-bracket strings have a higher unpaired fraction than this threshold (0-1)."
+    },
     "id_column": {"type": "string"},
     "device": {"type": "string", "enum": ["cpu", "gpu" ]},
     "num_workers": {"type": "integer", "minimum": 1},

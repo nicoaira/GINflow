@@ -7,7 +7,7 @@ GINflow is a Nextflow pipeline for computing similarity between RNA transcript s
 
 High-Level Workflow
 1. Input parsing: Load tabular transcript data (TSV/CSV) with an ID column (default transcript_id) and a structure column.
-2. Window generation (generate_windows): Optionally splits long structures into fixed-size windows (param split_size) and masks low-confidence positions (mask_threshold).
+2. Window generation (generate_windows): Optionally splits long structures into fixed-size windows (param split_size), masks low-confidence positions (mask_threshold), and prunes low-complexity windows via low_complexity_mask.
 3. Embedding inference (generate_embeddings): Runs a model to produce numeric embeddings (GPU optional via -profile gpu). Batch size controlled by inference_batch_size and num_workers.
 4. FAISS index build (build_faiss_index): Creates a vector index plus mapping files.
 5. Query phase (query_faiss_index): Looks up nearest neighbours (faiss_k) for provided queries (queries file) or all items.
@@ -34,7 +34,7 @@ containers/ holds Dockerfiles (one per functional group) and pre-built Singulari
 Configuration & Parameters (nextflow.config)
 Adjust params { ... } for defaults; override on the CLI or with profiles:
 - Input & Output: --input <file>, --outdir <dir>, --header, --id_column, --keep_cols.
-- Structure handling: --subgraphs, --L, --keep_paired_neighbors, --structure_column_name, --mask_threshold.
+- Structure handling: --subgraphs, --L, --keep_paired_neighbors, --structure_column_name, --mask_threshold, --low_complexity_mask.
 - Embeddings: --num_workers, --inference_batch_size, --use_gpu (or -profile gpu), --gpu_type (t4|a100).
 - FAISS / Query: --faiss_k, --top_n, --queries, --embeddings_tsv, --faiss_index.
 - Aggregation: --alpha1 --alpha2 --beta1 --beta2 --gamma --percentile --aggregate_contigs.

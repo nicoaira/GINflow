@@ -173,6 +173,7 @@ nextflow run main.nf -profile test,conda
 |-----------|---------|-------------|
 | `--subgraphs` | `true` | Enable windowing mode |
 | `--L` | `30` | Window length for subgraph analysis |
+| `--low_complexity_mask` | `0.65` | Drop windows whose dot-bracket strings are more than 65% unpaired ('.') |
 | `--faiss_k` | `1000` | Number of nearest neighbors to retrieve |
 | `--top_n` | `10` | Number of top pairs in final report |
 

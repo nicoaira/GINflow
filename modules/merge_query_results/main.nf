@@ -8,11 +8,6 @@ process MERGE_QUERY_RESULTS {
 
     publishDir "${params.outdir}", mode: 'copy'
 
-    conda "${moduleDir}/environment.yml"
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/amancevice-pandas-2.2.2:latest' :
-        'amancevice/pandas:2.2.2' }"
-
     input:
     // Collect all per-query result files as values. Using `val` avoids Nextflow
     // staging (and renaming) the files in the work directory, which previously
@@ -31,23 +26,51 @@ process MERGE_QUERY_RESULTS {
     path "pairs_scores_all_contigs.aggregated.merged.tsv", emit: scores_agg
 
     script:
+    def merge_plan = [
+        [distances.collect { it.toString() }, 'distances.merged.sorted.tsv'],
+        [scores_contigs.collect { it.toString() }, 'pairs_scores_all_contigs.merged.tsv'],
+        [scores_windows.collect { it.toString() }, 'pairs_scores_all_contigs.windows.merged.tsv'],
+        [scores_agg.collect { it.toString() }, 'pairs_scores_all_contigs.aggregated.merged.tsv']
+    ]
+    def merge_json = groovy.json.JsonOutput.toJson(merge_plan)
+
     """
     python3 - <<'PY'
-import pandas as pd
+import csv
+import json
+from pathlib import Path
 
-dist_files = ${groovy.json.JsonOutput.toJson(distances.collect { it.toString() })}
-score_files = ${groovy.json.JsonOutput.toJson(scores_contigs.collect { it.toString() })}
-win_files   = ${groovy.json.JsonOutput.toJson(scores_windows.collect { it.toString() })}
-agg_files   = ${groovy.json.JsonOutput.toJson(scores_agg.collect { it.toString() })}
+merge_plan = json.loads('''${merge_json}''')
 
-def merge(files, out):
-    dfs = [pd.read_csv(f, sep='\t') for f in files]
-    pd.concat(dfs, ignore_index=True).to_csv(out, sep='\t', index=False)
+def merge(files, out_path):
+    files = [Path(p) for p in sorted(files)]
+    if not files:
+        return
 
-merge(dist_files, 'distances.merged.sorted.tsv')
-merge(score_files, 'pairs_scores_all_contigs.merged.tsv')
-merge(win_files,  'pairs_scores_all_contigs.windows.merged.tsv')
-merge(agg_files,  'pairs_scores_all_contigs.aggregated.merged.tsv')
+    header = None
+    with Path(out_path).open('w', encoding='utf-8', newline='') as out_fh:
+        writer = None
+        for path in files:
+            if not path.exists():
+                raise FileNotFoundError(f"Missing result file: {path}")
+            with path.open('r', encoding='utf-8') as in_fh:
+                reader = csv.reader(in_fh, delimiter='\t')
+                try:
+                    file_header = next(reader)
+                except StopIteration:
+                    continue
+                if header is None:
+                    header = file_header
+                    writer = csv.writer(out_fh, delimiter='\t', lineterminator=chr(10))
+                    writer.writerow(header)
+                elif file_header != header:
+                    raise ValueError(f"Header mismatch in {path}: {file_header} != {header}")
+                for row in reader:
+                    if row:
+                        writer.writerow(row)
+
+for files, output in merge_plan:
+    merge(files, output)
 PY
     """
 }

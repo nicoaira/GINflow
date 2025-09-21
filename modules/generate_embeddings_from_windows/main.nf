@@ -1,21 +1,21 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-process GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL {
-    tag { "embeddings_null_windows_batch_${ids.size()} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
+process GENERATE_EMBEDDINGS_FROM_WINDOWS {
+    tag { "embeddings ${metadata_tsv_file.baseName} device=${params.use_gpu ? 'gpu' : 'cpu'}" }
 
     label params.use_gpu ? 'gpu' : 'cpu'
-
+    maxForks = 2
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
         'oras://quay.io/nicoaira/ginfinity:latest' :
         'nicoaira/ginfinity:latest' }"
 
     input:
-    tuple val(ids), path(graphs_pt), path(metadata_tsv)
+    tuple path(graphs_pt_file), path(metadata_tsv_file)
 
     output:
-    tuple val(ids), path("embeddings.tsv"), emit: embeddings_for_query
+    path "embeddings.tsv", emit: batch_embeddings
 
     script:
     def DEVICE = params.use_gpu ? 'cuda' : 'cpu'
@@ -33,11 +33,11 @@ process GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL {
     def common_args = common_args_lines.collect { "      ${it}" }.join(" \\\n")
 
     """
-    echo "===== GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL: batch size=${ids.size()} device=${DEVICE} ====="
+    echo "===== GENERATE_EMBEDDINGS_FROM_WINDOWS: using device=${DEVICE} ====="
     STATUS=\$(python - <<'PY'
 from pathlib import Path
 
-meta_path = Path('${metadata_tsv}')
+meta_path = Path('${metadata_tsv_file}')
 out_path = Path('embeddings.tsv')
 
 header_line = ''
@@ -57,7 +57,7 @@ if has_windows:
     print('RUN_EMBED')
     raise SystemExit(0)
 
-header = [item for item in header_line.strip().split('\t') if item]
+header = [item for item in header_line.strip().split('\\t') if item]
 if not header:
     header = ['window_id', '${params.id_column}', 'window_start', 'window_end']
 if 'embedding_vector' not in header:
@@ -68,7 +68,7 @@ if 'embedding_vector' not in header:
     header = header[:idx] + ['embedding_vector'] + header[idx:]
 
 with out_path.open('w', newline='') as out_handle:
-    out_handle.write('\t'.join(header) + '\\n')
+    out_handle.write('\\t'.join(header) + '\\n')
 
 print('SKIP_EMBED')
 PY
@@ -79,13 +79,13 @@ import torch
 print('TORCH_CUDA_IS_AVAILABLE=' + str(torch.cuda.is_available()))
 PY
         ginfinity-embed \\
-          --graph-pt ${graphs_pt} \\
-          --meta-tsv ${metadata_tsv} \\
+          --graph-pt ${graphs_pt_file} \\
+          --meta-tsv ${metadata_tsv_file} \\
           --keep-cols ${params.id_column},window_start,window_end \\
           --device ${DEVICE} \\
           ${common_args}
     else
-        echo "===== GENERATE_EMBEDDINGS_FROM_WINDOWS_NULL: no windows after masking; emitted empty embeddings.tsv ====="
+        echo "===== GENERATE_EMBEDDINGS_FROM_WINDOWS: no windows after masking; emitted empty embeddings.tsv ====="
     fi
     """.stripIndent()
 }

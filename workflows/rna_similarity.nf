@@ -7,6 +7,7 @@ nextflow.enable.dsl=2
 include { GENERATE_WINDOWS } from '../modules/generate_windows/main'
 include { EXTRACT_META_MAP } from '../modules/extract_meta_map/main'
 include { GENERATE_EMBEDDINGS } from '../modules/generate_embeddings/main'
+include { GENERATE_EMBEDDINGS_FROM_WINDOWS } from '../modules/generate_embeddings_from_windows/main'
 include { BUILD_FAISS_INDEX } from '../modules/build_faiss_index/main'
 include { QUERY_FAISS_INDEX } from '../modules/query_faiss_index/main'
 include { SORT_DISTANCES } from '../modules/sort_distances/main'
@@ -134,7 +135,7 @@ workflow rna_similarity {
             // Each GENERATE_WINDOWS task processes one batch and outputs window files
             // GENERATE_EMBEDDINGS should start as soon as each window file is ready
             def window_files = GENERATE_WINDOWS(batch_files_ch).window_files
-            gen = GENERATE_EMBEDDINGS(window_files)
+            gen = GENERATE_EMBEDDINGS_FROM_WINDOWS(window_files)
         } else {
             // Direct processing of batch files without windowing
             gen = GENERATE_EMBEDDINGS(batch_files_ch)

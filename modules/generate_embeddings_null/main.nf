@@ -21,12 +21,16 @@ process GENERATE_EMBEDDINGS_NULL {
     def DEVICE = params.use_gpu ? 'cuda' : 'cpu'
     def OUTFILE = "embeddings.tsv"
 
-    def common_args = """ \\
-      --id-column ${params.id_column} \\
-      --output ${OUTFILE} \\
-      --num-workers ${params.num_workers} \\
-      --batch-size ${params.inference_batch_size}
-    """
+    def common_args_lines = [
+        "--id-column ${params.id_column}",
+        "--output ${OUTFILE}",
+        "--num-workers ${params.num_workers}",
+        "--batch-size ${params.inference_batch_size}"
+    ]
+    if (params.ginfinity_model_path) {
+        common_args_lines << "--model-path ${params.ginfinity_model_path}"
+    }
+    def common_args = common_args_lines.collect { "      ${it}" }.join(" \\\n")
 
     """
     echo "===== GENERATE_EMBEDDINGS_NULL: ${new_id} using device=${DEVICE} ====="
