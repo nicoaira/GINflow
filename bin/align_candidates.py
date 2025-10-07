@@ -7,7 +7,7 @@ import json
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -48,6 +48,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--random-seed", type=int, default=42, help="Random seed for background sampling")
     parser.add_argument("--gamma", type=float, default=1.5, help="Scaling factor for similarity scores")
     parser.add_argument("--band-width", type=int, default=96, help="Diagonal band width for SW (in nucleotides)")
+    parser.add_argument(
+        "--band-buffer",
+        type=int,
+        default=32,
+        help="Additional allowance (nt) added to the observed diagonal span when adapting the band width",
+    )
+    parser.add_argument(
+        "--band-max-width",
+        type=int,
+        default=0,
+        help="Maximum permitted band width after adaptation; 0 leaves it unbounded",
+    )
     parser.add_argument("--xdrop", type=float, default=50.0, help="Drop threshold for terminating extension")
     parser.add_argument("--gap-open", type=float, default=12.0, help="Gap opening penalty")
     parser.add_argument("--gap-extend", type=float, default=2.0, help="Gap extension penalty")
@@ -57,6 +69,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-n", type=int, default=50, help="Report at most this many alignments globally")
     parser.add_argument("--output", required=True, help="Output TSV for alignment summaries")
     parser.add_argument("--stats-json", default=None, help="Optional JSON stats path")
+    parser.add_argument("--dp-output", default=None, help="Optional JSONL file capturing DP traces for reported alignments")
+    parser.add_argument("--alignment-text", default=None, help="Optional plain-text alignment dump (BLAST-style)")
     return parser.parse_args()
 
 
@@ -303,6 +317,9 @@ def main() -> None:
     results: List[dict] = []
 
     grouped_members = members_df.groupby("cluster_id")
+    dp_records: List[dict] = []
+    collect_trace = args.dp_output is not None
+
     for cluster in clusters_df.to_dict("records"):
         cid = cluster["cluster_id"]
         if cid not in grouped_members.groups:
@@ -310,7 +327,11 @@ def main() -> None:
         seeds = grouped_members.get_group(cid)
         query_id = str(seeds["query_transcript"].iloc[0])
         target_id = str(seeds["target_transcript"].iloc[0])
-        diag = int(round(seeds["diagonal"].median()))
+        diag_values = seeds["diagonal"].astype(int)
+        diag_median = int(np.median(diag_values))
+        diag_min = int(diag_values.min())
+        diag_max = int(diag_values.max())
+        diag_span = diag_max - diag_min
 
         query_vecs = embeddings.get(query_id)
         target_vecs = embeddings.get(target_id)
@@ -324,7 +345,17 @@ def main() -> None:
 
         query_slice = query_vecs[q_start:q_end]
         target_slice = target_vecs[t_start:t_end]
-        diag_offset = diag + q_start - t_start
+        diag_offset = diag_median + q_start - t_start
+
+        effective_band = args.band_width
+        adaptive_target = diag_span + args.band_buffer
+        if adaptive_target % 2 != 0:
+            adaptive_target += 1
+        if adaptive_target > effective_band:
+            effective_band = adaptive_target
+        if args.band_max_width and args.band_max_width > 0:
+            effective_band = min(effective_band, args.band_max_width)
+        effective_band = max(1, effective_band)
 
         score, path = smith_waterman(
             query_slice,
@@ -332,7 +363,7 @@ def main() -> None:
             mu0,
             sigma0,
             args.gamma,
-            args.band_width,
+            effective_band,
             diag_offset,
             args.gap_open,
             args.gap_extend,
@@ -343,12 +374,13 @@ def main() -> None:
         if not path or score <= 0:
             continue
 
-        alignment_info = summarise_alignment(
+        alignment_info, trace = summarise_alignment(
             path,
             query_slice,
             target_slice,
             q_start,
             t_start,
+            collect_trace=collect_trace,
         )
 
         result = AlignmentResult(
@@ -367,10 +399,82 @@ def main() -> None:
             seed_count=int(cluster["seed_count"]),
             max_seed_similarity=float(cluster["max_similarity"]),
         )
-        results.append(attach_metadata(result, meta_map, seq_col, struct_col))
+        enriched = attach_metadata(result, meta_map, seq_col, struct_col)
+
+        if enriched.get("query_structure") and enriched.get("target_structure"):
+            q_alignment, t_alignment, alignment_mask = build_alignment_strings(
+                path,
+                enriched.get("query_structure"),
+                enriched.get("target_structure"),
+                q_start,
+                t_start,
+            )
+            if q_alignment:
+                enriched["aligned_query_structure"] = q_alignment
+            if t_alignment:
+                enriched["aligned_target_structure"] = t_alignment
+            if alignment_mask:
+                enriched["alignment_mask"] = alignment_mask
+            enriched["alignment_content"] = "structure"
+        elif enriched.get("query_sequence") and enriched.get("target_sequence"):
+            q_alignment, t_alignment, alignment_mask = build_alignment_strings(
+                path,
+                enriched.get("query_sequence"),
+                enriched.get("target_sequence"),
+                q_start,
+                t_start,
+            )
+            if q_alignment:
+                enriched["aligned_query_sequence"] = q_alignment
+            if t_alignment:
+                enriched["aligned_target_sequence"] = t_alignment
+            if alignment_mask:
+                enriched["alignment_mask"] = alignment_mask
+            enriched["alignment_content"] = "sequence"
+        enriched.update(
+            {
+                "diagonal_median": diag_median,
+                "diagonal_min": diag_min,
+                "diagonal_max": diag_max,
+                "diagonal_span": diag_span,
+                "band_width": effective_band,
+            }
+        )
+        results.append(enriched)
+
+        if collect_trace and trace is not None:
+            dp_records.append(
+                {
+                    "query_id": query_id,
+                    "target_id": target_id,
+                    "cluster_id": cid,
+                    "score": float(score),
+                    "alignment_start": {
+                        "query": alignment_info["query_start"],
+                        "target": alignment_info["target_start"],
+                    },
+                    "alignment_end": {
+                        "query": alignment_info["query_end"],
+                        "target": alignment_info["target_end"],
+                    },
+                    "diagonal": {
+                        "median": diag_median,
+                        "min": diag_min,
+                        "max": diag_max,
+                        "span": diag_span,
+                        "offset": diag_offset,
+                    },
+                    "band_width": effective_band,
+                    "trace": trace,
+                }
+            )
 
     if not results:
         pd.DataFrame().to_csv(args.output, sep="\t", index=False)
+        if args.dp_output:
+            Path(args.dp_output).write_text("")
+        if args.alignment_text:
+            Path(args.alignment_text).write_text("")
         if args.stats_json:
             Path(args.stats_json).write_text(json.dumps({"alignments": 0}, indent=2) + "\n")
         return
@@ -384,6 +488,16 @@ def main() -> None:
         Path(args.stats_json).write_text(json.dumps(stats, indent=2) + "\n")
     print(json.dumps(stats, indent=2))
 
+    if args.dp_output:
+        with Path(args.dp_output).open("w", encoding="utf-8") as handle:
+            for record in dp_records:
+                handle.write(json.dumps(record) + "\n")
+        if not dp_records:
+            Path(args.dp_output).touch()
+
+    if args.alignment_text:
+        write_alignment_text(Path(args.alignment_text), results_df)
+
 
 def summarise_alignment(
     path: List[Tuple[str, int, int]],
@@ -391,7 +505,8 @@ def summarise_alignment(
     target: np.ndarray,
     q_offset: int,
     t_offset: int,
-) -> dict:
+    collect_trace: bool = False,
+) -> Tuple[dict, Optional[List[dict]]]:
     q_cursor = q_offset
     t_cursor = t_offset
     query_positions: List[int] = []
@@ -402,11 +517,19 @@ def summarise_alignment(
     in_gap_q = False
     in_gap_t = False
 
+    trace: Optional[List[dict]] = [] if collect_trace else None
+
     for state, i, j in path:
         if state == "M":
             query_positions.append(q_cursor)
             target_positions.append(t_cursor)
             cosines.append(float(np.dot(query[q_cursor - q_offset], target[t_cursor - t_offset])))
+            if trace is not None:
+                trace.append({
+                    "state": "M",
+                    "query_pos": q_cursor,
+                    "target_pos": t_cursor,
+                })
             q_cursor += 1
             t_cursor += 1
             in_gap_q = False
@@ -416,6 +539,12 @@ def summarise_alignment(
                 gap_opens += 1
                 in_gap_q = True
             gap_bases += 1
+            if trace is not None:
+                trace.append({
+                    "state": "X",
+                    "query_pos": q_cursor,
+                    "target_pos": t_cursor,
+                })
             t_cursor += 1
             in_gap_t = False
         elif state == "Y":  # gap in target (query advances)
@@ -423,11 +552,17 @@ def summarise_alignment(
                 gap_opens += 1
                 in_gap_t = True
             gap_bases += 1
+            if trace is not None:
+                trace.append({
+                    "state": "Y",
+                    "query_pos": q_cursor,
+                    "target_pos": t_cursor,
+                })
             q_cursor += 1
             in_gap_q = False
 
     if not query_positions or not target_positions:
-        return {
+        summary = {
             "query_start": q_offset,
             "query_end": q_offset,
             "target_start": t_offset,
@@ -437,8 +572,9 @@ def summarise_alignment(
             "gap_opens": gap_opens,
             "gap_bases": gap_bases,
         }
+        return summary, trace
 
-    return {
+    summary = {
         "query_start": int(min(query_positions)),
         "query_end": int(max(query_positions) + 1),
         "target_start": int(min(target_positions)),
@@ -448,6 +584,91 @@ def summarise_alignment(
         "gap_opens": gap_opens,
         "gap_bases": gap_bases,
     }
+    return summary, trace
+
+
+def build_alignment_strings(
+    path: List[Tuple[str, int, int]],
+    query_sequence: Optional[str],
+    target_sequence: Optional[str],
+    q_offset: int,
+    t_offset: int,
+) -> Tuple[str, str, str]:
+    if not path:
+        return "", "", ""
+
+    q_chars: List[str] = []
+    t_chars: List[str] = []
+    mask_chars: List[str] = []
+
+    q_idx = q_offset
+    t_idx = t_offset
+
+    q_len = len(query_sequence) if query_sequence else 0
+    t_len = len(target_sequence) if target_sequence else 0
+
+    def safe_get(seq: Optional[str], idx: int, length: int) -> str:
+        if seq is None or idx < 0 or idx >= length:
+            return "N"
+        return seq[idx]
+
+    for state, _, _ in path:
+        if state == "M":
+            q_chars.append(safe_get(query_sequence, q_idx, q_len))
+            t_chars.append(safe_get(target_sequence, t_idx, t_len))
+            mask_chars.append("|")
+            q_idx += 1
+            t_idx += 1
+        elif state == "X":  # gap in query
+            q_chars.append("-")
+            t_chars.append(safe_get(target_sequence, t_idx, t_len))
+            mask_chars.append(" ")
+            t_idx += 1
+        elif state == "Y":  # gap in target
+            q_chars.append(safe_get(query_sequence, q_idx, q_len))
+            t_chars.append("-")
+            mask_chars.append(" ")
+            q_idx += 1
+
+    return "".join(q_chars), "".join(t_chars), "".join(mask_chars)
+
+
+def write_alignment_text(output_path: Path, df: pd.DataFrame) -> None:
+    lines: List[str] = []
+    for idx, row in enumerate(df.to_dict("records"), start=1):
+        content = row.get("alignment_content")
+        if content == "structure":
+            q_aln = row.get("aligned_query_structure")
+            t_aln = row.get("aligned_target_structure")
+        elif content == "sequence":
+            q_aln = row.get("aligned_query_sequence")
+            t_aln = row.get("aligned_target_sequence")
+        else:
+            q_aln = row.get("aligned_query_structure") or row.get("aligned_query_sequence")
+            t_aln = row.get("aligned_target_structure") or row.get("aligned_target_sequence")
+            if row.get("aligned_query_structure") and row.get("aligned_target_structure"):
+                content = "structure"
+            elif row.get("aligned_query_sequence") and row.get("aligned_target_sequence"):
+                content = "sequence"
+        mask = row.get("alignment_mask")
+        if not q_aln or not t_aln:
+            continue
+        lines.append(f"Alignment {idx}: {row['query_id']} vs {row['target_id']} (cluster {row['cluster_id']})")
+        lines.append(
+            f"  Score: {row['score']:.3f}\tAvgCosine: {row['avg_cosine']:.3f}\tLen: {row['alignment_length']}\tGaps: {row['gap_opens']}/{row['gap_bases']}"
+        )
+        if content:
+            lines.append(f"  Content: {content.capitalize()}")
+        lines.append(
+            f"  Query  {row['query_start']:>6}  {q_aln}  {row['query_end']:>6}"
+        )
+        if mask:
+            lines.append(f"         {'':>6}  {mask}")
+        lines.append(
+            f"  Target {row['target_start']:>6}  {t_aln}  {row['target_end']:>6}"
+        )
+        lines.append("")
+    output_path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ process ALIGN_CANDIDATES {
 
     label 'high_cpu'
 
-    publishDir "${params.outdir}", mode: 'copy', pattern: 'alignments.tsv'
+    publishDir "${params.outdir}", mode: 'copy', pattern: 'alignment*'
 
     conda "${moduleDir}/environment.yml"
 
@@ -19,6 +19,8 @@ process ALIGN_CANDIDATES {
     output:
     path 'alignments.tsv', emit: alignments
     path 'alignment_stats.json', optional: true, emit: alignment_stats
+    path 'alignment_dp.jsonl', optional: true, emit: alignment_dp
+    path 'alignment_pairs.txt', optional: true, emit: alignment_text
 
     script:
     def argsSeq = params.sequence_column ? "--sequence-column ${params.sequence_column}" : ''
@@ -36,6 +38,8 @@ process ALIGN_CANDIDATES {
         --random-seed ${params.random_seed ?: 42} \
         --gamma ${params.alignment_gamma ?: 1.5} \
         --band-width ${params.band_width ?: 96} \
+        --band-buffer ${params.band_buffer ?: 32} \
+        --band-max-width ${params.band_max_width ?: 0} \
         --xdrop ${params.xdrop ?: 50} \
         --gap-open ${params.gap_open ?: 12} \
         --gap-extend ${params.gap_extend ?: 2} \
@@ -45,6 +49,8 @@ process ALIGN_CANDIDATES {
         --top-n ${params.top_n ?: 50} \
         --output alignments.tsv \
         --stats-json alignment_stats.json \
+        --dp-output alignment_dp.jsonl \
+        --alignment-text alignment_pairs.txt \
         ${argsSeq} \
         ${argsStruct}
     """

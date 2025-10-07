@@ -21,6 +21,8 @@ process CLUSTER_SEEDS {
     script:
     def span = params.cluster_span ?: 80
     def minSeeds = params.cluster_min_seeds ?: 2
+    def diagTol = params.cluster_diagonal_tolerance ?: 12
+    def maxDiagSpan = params.cluster_max_diagonal_span ?: 96
     """
     python3 ${baseDir}/bin/cluster_seeds.py \
         --seeds ${seeds} \
@@ -28,6 +30,8 @@ process CLUSTER_SEEDS {
         --output-members cluster_members.tsv \
         --cluster-span ${span} \
         --min-seeds ${minSeeds} \
+        --diagonal-tolerance ${diagTol} \
+        --max-diagonal-span ${maxDiagSpan} \
         --stats-json cluster_stats.json
     """
 }

@@ -11,16 +11,16 @@ High-Level Workflow
 3. **Window vectors** (`generate_window_vectors`): concatenate `k` consecutive node embeddings (after batching/merging `split_size` chunks), normalise, and split into database vs query windows based on the ID list.
 4. **FAISS index** (`build_faiss_index`): construct the configurable FAISS backend (Flat, IVF, IVFPQ, OPQ+IVFPQ, or HNSW) over database windows.
 5. **Seeding** (`query_faiss_index`): search query windows, keep neighbours ≥ `seed_similarity_threshold`, and record diagonals.
-6. **Diagonal clustering** (`cluster_seeds`): enforce the two-hit rule by requiring ≥ `cluster_min_seeds` within `cluster_span` nt on the same diagonal.
-7. **Alignment** (`align_candidates`): gather clustered regions, sample background μ/σ, run banded Smith–Waterman with affine gaps, and summarise alignment statistics plus sequence/structure snippets.
-8. **Outputs**: copy intermediate artefacts (embeddings, windows, seeds, clusters) and final `alignments.tsv` into `outdir/` alongside standard Nextflow reports.
+6. **Diagonal clustering** (`cluster_seeds`): enforce the two-hit rule by keeping ≥ `cluster_min_seeds` within `cluster_span` nt while allowing small diagonal drift (`cluster_diagonal_tolerance`, `cluster_max_diagonal_span`).
+7. **Alignment** (`align_candidates`): gather clustered regions, sample background μ/σ, run banded Smith–Waterman with affine gaps, emit DP traces, and summarise alignment statistics plus sequence/structure snippets.
+8. **Outputs**: copy intermediate artefacts (embeddings, windows, seeds, clusters) and final `alignments.tsv`/`alignment_dp.jsonl` into `outdir/` alongside standard Nextflow reports.
 
 Key Modules (modules/)
 - `generate_node_embeddings`: ginfinity wrapper producing node-level embeddings.
 - `generate_window_vectors`: sliding-window concatenation and metadata emission.
 - `build_faiss_index`: new configurable FAISS index builder (Flat/IP/L2, IVF, IVFPQ, OPQ+IVFPQ, HNSW).
 - `query_faiss_index`: batch query over FAISS, cosine filtering, and seed TSV generation.
-- `cluster_seeds`: diagonal clustering with two-hit rule and span gating.
+- `cluster_seeds`: diagonal clustering with tolerance-controlled drift and span gating.
 - `align_candidates`: background sampling, banded SW, alignment metrics & TSV export.
 - Legacy plotting/aggregation/report modules remain in the repository but are no longer wired into `workflows/rna_similarity.nf` (kept for future reporting work).
 
@@ -33,8 +33,8 @@ Important params (all overridable on the CLI):
 - **Embeddings**: `--node_embeddings_tsv` (reuse cache), `--ginfinity_model_path`, `--num_workers`, `--inference_batch_size`, `--use_gpu` (ginfinity only).
 - **Window vectors**: `--window_size`, `--window_stride`.
 - **FAISS**: `--index_type`, `--faiss_metric`, `--faiss_nlist`, `--faiss_pq_m`, `--faiss_pq_bits`, `--faiss_opq_m`, `--faiss_hnsw_m`, `--faiss_hnsw_efc`, `--faiss_k`, `--faiss_nprobe`, `--faiss_use_gpu`.
-- **Seeding & clustering**: `--seed_similarity_threshold`, `--cluster_span`, `--cluster_min_seeds`.
-- **Alignment**: `--alignment_gamma`, `--band_width`, `--alignment_padding`, `--gap_open`, `--gap_extend`, `--xdrop`, `--score_min`, `--score_max`, `--background_samples`, `--random_seed`, `--top_n`.
+- **Seeding & clustering**: `--seed_similarity_threshold`, `--cluster_span`, `--cluster_min_seeds`, `--cluster_diagonal_tolerance`, `--cluster_max_diagonal_span`.
+- **Alignment**: `--alignment_gamma`, `--band_width`, `--band_buffer`, `--band_max_width`, `--alignment_padding`, `--gap_open`, `--gap_extend`, `--xdrop`, `--score_min`, `--score_max`, `--background_samples`, `--random_seed`, `--top_n`.
 
 Profiles
 - test: Small synthetic dataset (tests/data/) for fast validation.
@@ -57,11 +57,13 @@ Artifacts
 - `database_windows.{npy,tsv}` / `query_windows.{npy,tsv}` – sliding-window vectors + metadata.
 - `faiss_index/faiss.index` + `faiss_mapping.tsv` + `faiss_index_stats.json` – index artefacts.
 - `seeds.tsv`, `clusters.tsv`, `cluster_members.tsv` – seed/cluster diagnostics.
-- `alignments.tsv` – final ranked HSP list (includes coordinates, scores, cosine averages, gaps, sequences/structures).
+- `alignments.tsv` – final ranked HSP list (includes coordinates, scores, cosine averages, gaps, sequences/structures, and gapped alignment strings).
+- `alignment_dp.jsonl` – per-alignment DP trace (JSONL) for downstream audit or visualisation.
+- `alignment_pairs.txt` – BLAST-style text dump of gapped alignments.
 - Standard Nextflow trace/report/timeline/dag under `outdir/reports/`.
 
 Scoring Details
-`align_candidates.py` samples random node pairs (`--background_samples`) to estimate μ₀/σ₀, computes z-scores for cosine similarities, scales by `--alignment_gamma`, clamps to [`--score_min`, `--score_max`], and feeds the resulting matrix into a banded affine-gap Smith–Waterman implementation. Gap costs are `--gap_open` / `--gap_extend`, the band width is `--band_width`, padding defaults to `--alignment_padding`, and the extension halts once the best score drops by more than `--xdrop`.
+`align_candidates.py` samples random node pairs (`--background_samples`) to estimate μ₀/σ₀, computes z-scores for cosine similarities, scales by `--alignment_gamma`, clamps to [`--score_min`, `--score_max`], and feeds the resulting matrix into a banded affine-gap Smith–Waterman implementation. Gap costs are `--gap_open` / `--gap_extend`; the minimum band width is `--band_width`, which expands by the observed diagonal span plus `--band_buffer` (capped by `--band_max_width` if set); padding defaults to `--alignment_padding`, and the extension halts once the best score drops by more than `--xdrop`.
 
 Agent / Automation Guidance
 When building autonomous agents (e.g. LLM-based assistants) to extend or maintain GINflow:

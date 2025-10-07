@@ -35,11 +35,15 @@
     "faiss_use_gpu": {"type": "boolean", "description": "Query FAISS index on GPU"},
     "faiss_nprobe": {"type": ["integer", "null"], "minimum": 1, "description": "Override nprobe for IVF indices"},
 
-    "cluster_span": {"type": "integer", "minimum": 1, "description": "Maximum separation (nt) between seeds on same diagonal"},
+    "cluster_span": {"type": "integer", "minimum": 1, "description": "Maximum separation (nt) between neighbouring seeds"},
     "cluster_min_seeds": {"type": "integer", "minimum": 1, "description": "Minimum seeds required to keep a cluster"},
+    "cluster_diagonal_tolerance": {"type": "integer", "minimum": 0, "description": "Permitted offset (nt) beyond current diagonal range when adding a seed"},
+    "cluster_max_diagonal_span": {"type": "integer", "minimum": 0, "description": "Maximum diagonal spread (nt) allowed within a cluster; 0 disables the cap"},
 
     "alignment_gamma": {"type": "number", "description": "Scaling factor for z-scored cosine similarities"},
-    "band_width": {"type": "integer", "minimum": 1, "description": "Banded Smith–Waterman width"},
+    "band_width": {"type": "integer", "minimum": 1, "description": "Minimum Smith–Waterman band width"},
+    "band_buffer": {"type": "integer", "minimum": 0, "description": "Additional slack added to the observed diagonal span when adapting the band"},
+    "band_max_width": {"type": "integer", "minimum": 0, "description": "Hard cap on the Smith–Waterman band width after adaptation; 0 means unlimited"},
     "xdrop": {"type": "number", "minimum": 0.0, "description": "X-drop threshold"},
     "gap_open": {"type": "number", "description": "Gap opening penalty"},
     "gap_extend": {"type": "number", "description": "Gap extension penalty"},
