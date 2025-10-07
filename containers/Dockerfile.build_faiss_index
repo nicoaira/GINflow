@@ -8,7 +8,7 @@ RUN conda env create -f /tmp/environment.yml && \
     conda clean -afy
 
 # Activate environment by default
-ENV PATH /opt/conda/envs/build_faiss_index/bin:$PATH
+ENV PATH=/opt/conda/envs/build_faiss_index/bin:$PATH
 
 # Set working directory
 WORKDIR /app

@@ -9,6 +9,9 @@ process QUERY_FAISS_INDEX {
     publishDir "${params.outdir}", mode: 'copy', pattern: 'seeds.tsv'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-query-faiss-index:latest' :
+        'nicoaira/ginflow-query-faiss-index:latest' }"
 
     input:
     path faiss_idx

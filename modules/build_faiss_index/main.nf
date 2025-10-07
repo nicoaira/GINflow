@@ -9,6 +9,9 @@ process BUILD_FAISS_INDEX {
     publishDir "${params.outdir}/faiss_index", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-build-faiss-index:latest' :
+        'docker.io/nicoaira/ginflow-build-faiss-index:latest' }"    
 
     input:
     tuple path(vectors), path(metadata)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import math
 from pathlib import Path
 from typing import Dict, Iterable, Tuple
@@ -47,16 +48,34 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_index(path: str, use_gpu: bool, nprobe: int | None = None) -> faiss.Index:
+    """Load a FAISS index, optionally moving to GPU.
+
+    If GPU transfer fails (e.g., out of memory), falls back to CPU and continues.
+    """
     index = faiss.read_index(path)
+
+    # Set nprobe on CPU index first (covers CPU fallback path as well)
     if nprobe is not None and hasattr(index, "nprobe"):
         index.nprobe = nprobe
+
     if not use_gpu:
         return index
+
+    # Guard against CPU-only FAISS builds
     if not hasattr(faiss, "StandardGpuResources"):
-        print("WARNING: FAISS build lacks GPU support; continuing on CPU")
+        print("WARNING: FAISS build lacks GPU support; continuing on CPU", file=sys.stderr)
         return index
-    res = faiss.StandardGpuResources()
-    return faiss.index_cpu_to_gpu(res, 0, index)
+
+    # Attempt to clone index to GPU; on failure, warn and continue on CPU
+    try:
+        res = faiss.StandardGpuResources()
+        gpu_index = faiss.index_cpu_to_gpu(res, 0, index)
+        if nprobe is not None and hasattr(gpu_index, "nprobe"):
+            gpu_index.nprobe = nprobe
+        return gpu_index
+    except Exception as e:
+        print(f"WARNING: Failed to move FAISS index to GPU ({e}). Falling back to CPU.", file=sys.stderr)
+        return index
 
 
 def cosine_from_metric(metric: str, distances: np.ndarray) -> np.ndarray:
