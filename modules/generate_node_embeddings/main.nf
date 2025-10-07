@@ -6,10 +6,6 @@ process GENERATE_NODE_EMBEDDINGS {
 
     label params.use_gpu ? 'gpu' : 'high_cpu'
 
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginfinity:latest' :
-        'nicoaira/ginfinity:latest' }"
-
     maxForks = 2
 
     input:
