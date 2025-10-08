@@ -27,6 +27,11 @@ import faiss
 import pandas as pd
 
 
+def log(message: str) -> None:
+    """Emit progress logs to stderr without affecting JSON output."""
+    print(message, file=sys.stderr, flush=True)
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build a FAISS index over window vectors")
     parser.add_argument("--vectors", required=True, help="Path to .npy array with database window vectors")
@@ -127,6 +132,10 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         train_vectors = select_training_vectors(vectors, args.train_size, args.train_seed)
         if len(train_vectors) == 0:
             raise SystemExit("Training set empty – cannot build trained index")
+        log(
+            f"Training {args.index_type} index using {len(train_vectors)} vectors "
+            f"(limit {args.train_size or 'all'})"
+        )
 
     if args.index_type == "flat_ip":
         index = faiss.IndexFlatIP(dim)
@@ -159,10 +168,7 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         add_vectors(index, vectors, args.add_batch_size)
     except MemoryError as err:
         if args.index_type in {"flat_ip", "flat_l2"} and args.fallback_index_type != "none":
-            print(
-                f"WARNING: flat index ran out of memory; retrying with {args.fallback_index_type}",
-                file=sys.stderr,
-            )
+            log(f"WARNING: flat index ran out of memory; retrying with {args.fallback_index_type}")
             fallback_args = argparse.Namespace(**vars(args))
             fallback_args.index_type = args.fallback_index_type
             fallback_args.fallback_index_type = "none"
@@ -177,29 +183,48 @@ def add_vectors(index: faiss.Index, vectors: np.ndarray, batch_size: int) -> Non
     """Add vectors to the index in RAM-friendly chunks."""
     total = vectors.shape[0]
     if batch_size <= 0:
+        log(f"Adding all {total} vectors in a single batch")
         index.add(np.asarray(vectors, dtype=np.float32))
+        log("Finished adding vectors to index")
         return
 
+    batches = (total + batch_size - 1) // batch_size
+    log(f"Adding {total} vectors in {batches} batches (batch size {batch_size})")
+    processed = 0
     for start in range(0, total, batch_size):
         end = min(start + batch_size, total)
         chunk = np.asarray(vectors[start:end], dtype=np.float32)
         index.add(chunk)
+        processed = end
+        log(f"  Added batch {(start // batch_size) + 1}/{batches} ({processed}/{total} vectors)")
+    log("Finished adding vectors to index")
 
 
 def main() -> None:
     args = parse_args()
+    log("Starting FAISS index build")
+    log(f"Loading vectors from {args.vectors}")
     vectors = load_vectors(args.vectors)
     metadata = Path(args.metadata)
     if not metadata.exists():
         raise SystemExit(f"Metadata file {metadata} not found")
+    log(f"Loaded {vectors.shape[0]} vectors (dimension {vectors.shape[1]})")
+    log(f"Reading metadata from {metadata}")
 
     if vectors.shape[0] == 0:
         raise SystemExit("No database windows available – aborting index build")
 
+    log(
+        "Building FAISS index with parameters: "
+        f"type={args.index_type}, metric={args.metric}, use_gpu={args.use_gpu}"
+    )
     index, effective_type = build_index(args, vectors)
+    log(f"Constructed {effective_type} index; writing outputs")
+    log(f"Writing FAISS index to {args.output_index}")
     faiss.write_index(index, args.output_index)
 
     # Copy metadata alongside the index for downstream lookups.
+    log(f"Copying metadata to {args.output_mapping}")
     metadata_df = pd.read_csv(metadata, sep='\t')
     metadata_df.to_csv(args.output_mapping, sep='\t', index=False)
 
@@ -210,8 +235,10 @@ def main() -> None:
         "dimension": int(vectors.shape[1]),
     }
     if args.stats_json:
+        log(f"Writing index statistics to {args.stats_json}")
         Path(args.stats_json).write_text(json.dumps(stats, indent=2) + "\n")
 
+    log("FAISS index build complete")
     print(json.dumps(stats, indent=2))
 
 
