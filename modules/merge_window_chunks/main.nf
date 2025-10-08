@@ -6,8 +6,6 @@ process MERGE_WINDOW_CHUNKS {
 
     label 'high_cpu'
 
-    publishDir "${params.outdir}", mode: 'copy'
-
     conda "${moduleDir}/environment.yml"
 
     input:
