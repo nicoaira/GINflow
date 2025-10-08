@@ -4,7 +4,7 @@ This document explains how GINflow’s alignment phase works and describes every
 
 - Inputs: clustered seeds, node embeddings, and transcript metadata
 - Core steps: background estimation → region selection → banded affine‑gap SW with X‑drop → result summarisation
-- Outputs: `alignments.tsv`, `alignment_dp.jsonl` (optional), `alignment_pairs.txt` (optional)
+- Outputs: `alignments.tsv`, `alignment_dp.jsonl` (optional), `alignment_pairs.txt` (optional), `alignment_plots/` (optional)
 
 ## Inputs
 
@@ -81,6 +81,7 @@ Tuning Tips (Seeding & Clustering)
   - `alignments.tsv`: top results globally (sorted by `score`, limited by `--top-n`).
   - `alignment_dp.jsonl` (optional): DP trace for each reported alignment (compact per‑step records).
   - `alignment_pairs.txt` (optional): BLAST‑style gapped alignment text for quick inspection.
+  - `alignment_plots/` (optional): PNG heatmaps of banded scoring matrices when `--plot-scoring-matrices` is enabled.
 
 ## Parameters and Effects
 
@@ -118,6 +119,9 @@ Names map from Nextflow params to `align_candidates.py` CLI flags.
 
 - `--top_n` → `--top-n` (int, default 50)
   Maximum number of alignments reported globally (after sorting by `score`).
+
+- `--plot_scoring_matrices` (boolean, default false)
+  When enabled, renders PNG heatmaps of the banded Smith–Waterman scoring matrices for the reported alignments into `alignment_plots/`, showing the full query/target windows with colour restricted to the evaluated band.
 
 - Column/field selectors (strings)
   - `--id_column` (default `transcript_id`): transcript identifier column in embeddings/meta tables.

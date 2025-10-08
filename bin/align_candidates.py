@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -13,6 +12,20 @@ import numpy as np
 import pandas as pd
 
 NEG_INF = -1e9
+
+
+def safe_filename(text: str) -> str:
+    """Return a filesystem-safe representation of the given text."""
+    return "".join(char if char.isalnum() or char in {"-", "_"} else "_" for char in text)
+
+
+def prepare_matplotlib():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt
 
 
 @dataclass
@@ -71,6 +84,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--stats-json", default=None, help="Optional JSON stats path")
     parser.add_argument("--dp-output", default=None, help="Optional JSONL file capturing DP traces for reported alignments")
     parser.add_argument("--alignment-text", default=None, help="Optional plain-text alignment dump (BLAST-style)")
+    parser.add_argument(
+        "--plot-scoring-matrices",
+        action="store_true",
+        help="Plot the banded scoring matrices for the reported alignments",
+    )
+    parser.add_argument("--plot-dir", default=None, help="Directory for scoring matrix plots")
     return parser.parse_args()
 
 
@@ -126,10 +145,11 @@ def smith_waterman(
     xdrop: float,
     clamp_min: float,
     clamp_max: float,
-) -> Tuple[float, List[Tuple[str, int, int]]]:
+    store_matrix: bool = False,
+) -> Tuple[float, List[Tuple[str, int, int]], Optional[np.ndarray]]:
     m, n = len(query), len(target)
     if m == 0 or n == 0:
-        return 0.0, []
+        return 0.0, [], None
 
     band_half = band // 2
 
@@ -143,6 +163,12 @@ def smith_waterman(
     trace_M: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]] = {}
     trace_X: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]] = {}
     trace_Y: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]] = {}
+
+    matrix_scores: Optional[np.ndarray] = None
+    if store_matrix:
+        matrix_scores = np.full((m + 1, n + 1), np.nan, dtype=np.float32)
+        matrix_scores[0, :] = 0.0
+        matrix_scores[:, 0] = 0.0
 
     best_score = 0.0
     best_state = ("M", 0, 0)
@@ -199,6 +225,8 @@ def smith_waterman(
                 trace_Y[(i, j)] = ("Y", i - 1, j)
 
             cell_best = max(match_val, X_curr[j], Y_curr[j])
+            if matrix_scores is not None:
+                matrix_scores[i, j] = cell_best
             if cell_best > best_score:
                 if cell_best == match_val:
                     best_state = ("M", i, j)
@@ -219,7 +247,7 @@ def smith_waterman(
         M_prev[0] = 0.0
 
     path = traceback(best_state, trace_M, trace_X, trace_Y)
-    return best_score, path
+    return best_score, path, matrix_scores
 
 
 def traceback(
@@ -315,6 +343,8 @@ def main() -> None:
     seq_col, struct_col = infer_columns(meta_df, args.sequence_column, args.structure_column)
 
     results: List[dict] = []
+    plot_enabled = args.plot_scoring_matrices
+    plot_jobs: Dict[Tuple[str, str, int], dict] = {}
 
     grouped_members = members_df.groupby("cluster_id")
     dp_records: List[dict] = []
@@ -357,7 +387,7 @@ def main() -> None:
             effective_band = min(effective_band, args.band_max_width)
         effective_band = max(1, effective_band)
 
-        score, path = smith_waterman(
+        score, path, _ = smith_waterman(
             query_slice,
             target_slice,
             mu0,
@@ -441,6 +471,21 @@ def main() -> None:
             }
         )
         results.append(enriched)
+        if plot_enabled:
+            plot_jobs[(query_id, target_id, int(cid))] = {
+                "query_start": q_start,
+                "query_end": q_end,
+                "target_start": t_start,
+                "target_end": t_end,
+                "query_len": len(query_vecs),
+                "target_len": len(target_vecs),
+                "band_width": effective_band,
+                "diag_offset": diag_offset,
+                "diag_median": diag_median,
+                "diag_span": diag_span,
+                "diag_min": diag_min,
+                "diag_max": diag_max,
+            }
 
         if collect_trace and trace is not None:
             dp_records.append(
@@ -483,7 +528,61 @@ def main() -> None:
     results_df = results_df.sort_values("score", ascending=False).head(args.top_n)
     results_df.to_csv(args.output, sep="\t", index=False)
 
+    plot_count = 0
+    if plot_enabled and not results_df.empty:
+        plot_dir = Path(args.plot_dir) if args.plot_dir else Path("alignment_plots")
+        plot_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            plt = prepare_matplotlib()
+        except ImportError as exc:  # pragma: no cover - dependency should be present in env
+            raise SystemExit(
+                "matplotlib is required for --plot-scoring-matrices; ensure the environment includes matplotlib"
+            ) from exc
+        for rank, row in enumerate(results_df.to_dict("records"), start=1):
+            query_id = str(row["query_id"])
+            target_id = str(row["target_id"])
+            cluster_id = int(row["cluster_id"])
+            info = plot_jobs.get((query_id, target_id, cluster_id))
+            if not info:
+                continue
+            q_slice = embeddings[query_id][info["query_start"] : info["query_end"]]
+            t_slice = embeddings[target_id][info["target_start"] : info["target_end"]]
+            _, path_plot, matrix = smith_waterman(
+                q_slice,
+                t_slice,
+                mu0,
+                sigma0,
+                args.gamma,
+                info["band_width"],
+                info["diag_offset"],
+                args.gap_open,
+                args.gap_extend,
+                args.xdrop,
+                args.score_min,
+                args.score_max,
+                store_matrix=True,
+            )
+            if matrix is None or matrix.size == 0:
+                continue
+            metadata = {
+                "rank": rank,
+                "score": float(row["score"]),
+                "query_id": query_id,
+                "target_id": target_id,
+                "cluster_id": cluster_id,
+            }
+            base_name = (
+                f"rank_{rank:02d}_{safe_filename(query_id)}_vs_{safe_filename(target_id)}"
+                f"_cluster_{cluster_id}_score_{metadata['score']:.2f}"
+            )
+            base_name = safe_filename(base_name)
+            output_path = plot_dir / f"{base_name}.png"
+            plot_scoring_matrix(matrix, path_plot, info, metadata, output_path, plt)
+            plot_count += 1
+
     stats = {"alignments": int(len(results_df)), "mu0": mu0, "sigma0": sigma0}
+    if plot_enabled:
+        stats["plots"] = int(plot_count)
     if args.stats_json:
         Path(args.stats_json).write_text(json.dumps(stats, indent=2) + "\n")
     print(json.dumps(stats, indent=2))
@@ -631,6 +730,101 @@ def build_alignment_strings(
             q_idx += 1
 
     return "".join(q_chars), "".join(t_chars), "".join(mask_chars)
+
+
+def plot_scoring_matrix(
+    matrix: np.ndarray,
+    path: List[Tuple[str, int, int]],
+    info: Dict[str, int],
+    metadata: Dict[str, object],
+    output_path: Path,
+    plt,
+) -> None:
+    if matrix.shape[0] <= 1 or matrix.shape[1] <= 1:
+        return
+    band_matrix = matrix[1:, 1:]
+    if band_matrix.size == 0:
+        return
+
+    query_len = int(info.get("query_len", band_matrix.shape[0]))
+    target_len = int(info.get("target_len", band_matrix.shape[1]))
+    if query_len <= 0 or target_len <= 0:
+        return
+
+    full_matrix = np.full((query_len, target_len), np.nan, dtype=np.float32)
+    query_start = max(0, min(int(info["query_start"]), query_len))
+    query_end = max(query_start, min(int(info["query_end"]), query_len))
+    target_start = max(0, min(int(info["target_start"]), target_len))
+    target_end = max(target_start, min(int(info["target_end"]), target_len))
+
+    slice_h = min(band_matrix.shape[0], query_end - query_start)
+    slice_w = min(band_matrix.shape[1], target_end - target_start)
+    if slice_h > 0 and slice_w > 0:
+        full_matrix[query_start : query_start + slice_h, target_start : target_start + slice_w] = band_matrix[:slice_h, :slice_w]
+
+    masked = np.ma.masked_invalid(full_matrix)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    im = ax.imshow(masked, origin="lower", aspect="auto", cmap="viridis")
+    colorbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    colorbar.set_label("SW score", fontsize=9)
+
+    if path and slice_h > 0 and slice_w > 0:
+        y_coords = [query_start + i - 1 for _, i, _ in path if i > 0]
+        x_coords = [target_start + j - 1 for _, _, j in path if j > 0]
+        if x_coords and y_coords and len(x_coords) == len(y_coords):
+            ax.plot(x_coords, y_coords, color="red", linewidth=1.0, alpha=0.85)
+
+    x_ticks = [0] + ([target_len - 1] if target_len > 1 else [])
+    y_ticks = [0] + ([query_len - 1] if query_len > 1 else [])
+    ax.set_xticks(x_ticks)
+    ax.set_xticklabels(x_ticks)
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_ticks)
+
+    if slice_h > 0 and slice_w > 0:
+        from matplotlib.patches import Rectangle
+
+        rect = Rectangle(
+            (target_start - 0.5, query_start - 0.5),
+            slice_w,
+            slice_h,
+            linewidth=1.0,
+            edgecolor="white",
+            facecolor="none",
+            linestyle="--",
+            alpha=0.7,
+        )
+        ax.add_patch(rect)
+
+    ax.set_xlabel("Target window index")
+    ax.set_ylabel("Query window index")
+    ax.set_title(
+        f"Rank {metadata['rank']}: {metadata['query_id']} vs {metadata['target_id']} (cluster {metadata['cluster_id']})"
+    )
+
+    diag_span = info.get("diag_span")
+    diag_median = info.get("diag_median")
+    subtitle = f"Score {metadata['score']:.3f}"
+    band_width = info.get("band_width")
+    subtitle += f" | Q[{query_start},{query_end}) vs T[{target_start},{target_end})"
+    if diag_median is not None and diag_span is not None:
+        subtitle += f" | Diagonal μ {diag_median}, span {diag_span}"
+    if band_width is not None:
+        subtitle += f" | Band {band_width}"
+    ax.text(
+        0.02,
+        0.98,
+        subtitle,
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=9,
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.6, "edgecolor": "none"},
+    )
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=200)
+    plt.close(fig)
 
 
 def write_alignment_text(output_path: Path, df: pd.DataFrame) -> None:

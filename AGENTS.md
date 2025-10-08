@@ -34,7 +34,7 @@ Important params (all overridable on the CLI):
 - **Window vectors**: `--window_size`, `--window_stride`.
 - **FAISS**: `--index_type`, `--faiss_metric`, `--faiss_nlist`, `--faiss_pq_m`, `--faiss_pq_bits`, `--faiss_opq_m`, `--faiss_hnsw_m`, `--faiss_hnsw_efc`, `--faiss_k`, `--faiss_nprobe`, `--faiss_use_gpu`.
 - **Seeding & clustering**: `--seed_similarity_threshold`, `--cluster_span`, `--cluster_min_seeds`, `--cluster_diagonal_tolerance`, `--cluster_max_diagonal_span`.
-- **Alignment**: `--alignment_gamma`, `--band_width`, `--band_buffer`, `--band_max_width`, `--alignment_padding`, `--gap_open`, `--gap_extend`, `--xdrop`, `--score_min`, `--score_max`, `--background_samples`, `--random_seed`, `--top_n`.
+- **Alignment**: `--alignment_gamma`, `--band_width`, `--band_buffer`, `--band_max_width`, `--alignment_padding`, `--gap_open`, `--gap_extend`, `--xdrop`, `--score_min`, `--score_max`, `--background_samples`, `--random_seed`, `--top_n`, `--plot_scoring_matrices`.
 
 Profiles
 - test: Small synthetic dataset (tests/data/) for fast validation.
@@ -60,6 +60,7 @@ Artifacts
 - `alignments.tsv` – final ranked HSP list (includes coordinates, scores, cosine averages, gaps, sequences/structures, and gapped alignment strings).
 - `alignment_dp.jsonl` – per-alignment DP trace (JSONL) for downstream audit or visualisation.
 - `alignment_pairs.txt` – BLAST-style text dump of gapped alignments.
+- `alignment_plots/` – PNG heatmaps of banded scoring matrices (full query/target axes with the evaluated band highlighted) when `--plot_scoring_matrices` is enabled.
 - Standard Nextflow trace/report/timeline/dag under `outdir/reports/`.
 
 Scoring Details

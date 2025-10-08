@@ -21,10 +21,12 @@ process ALIGN_CANDIDATES {
     path 'alignment_stats.json', optional: true, emit: alignment_stats
     path 'alignment_dp.jsonl', optional: true, emit: alignment_dp
     path 'alignment_pairs.txt', optional: true, emit: alignment_text
+    path 'alignment_plots', optional: true, emit: alignment_plots
 
     script:
     def argsSeq = params.sequence_column ? "--sequence-column ${params.sequence_column}" : ''
     def argsStruct = params.structure_column_name ? "--structure-column ${params.structure_column_name}" : ''
+    def plotArgs = params.plot_scoring_matrices ? "--plot-scoring-matrices --plot-dir alignment_plots" : ''
     """
     python3 ${baseDir}/bin/align_candidates.py \
         --cluster-members ${cluster_members} \
@@ -52,6 +54,7 @@ process ALIGN_CANDIDATES {
         --dp-output alignment_dp.jsonl \
         --alignment-text alignment_pairs.txt \
         ${argsSeq} \
-        ${argsStruct}
+        ${argsStruct} \
+        ${plotArgs}
     """
 }
