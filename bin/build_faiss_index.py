@@ -26,6 +26,12 @@ _ensure_numpy_faiss_compat()
 import faiss
 import pandas as pd
 
+GPU_MEMORY_ERRORS: tuple[type[BaseException], ...] = ()
+if hasattr(faiss, "GpuMemoryException"):
+    GPU_MEMORY_ERRORS = GPU_MEMORY_ERRORS + (faiss.GpuMemoryException,)
+
+OOM_EXCEPTIONS: tuple[type[BaseException], ...] = (MemoryError,) + GPU_MEMORY_ERRORS
+
 
 def log(message: str) -> None:
     """Emit progress logs to stderr without affecting JSON output."""
@@ -166,9 +172,14 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
     index = maybe_to_gpu(index, args.use_gpu)
     try:
         add_vectors(index, vectors, args.add_batch_size)
-    except MemoryError as err:
+    except OOM_EXCEPTIONS as err:
         if args.index_type in {"flat_ip", "flat_l2"} and args.fallback_index_type != "none":
-            log(f"WARNING: flat index ran out of memory; retrying with {args.fallback_index_type}")
+            is_gpu_index = index is not cpu_index
+            is_gpu_oom = isinstance(err, GPU_MEMORY_ERRORS) or (is_gpu_index and args.use_gpu)
+            resource = "GPU VRAM" if is_gpu_oom else "host RAM"
+            log(
+                f"WARNING: flat index ran out of {resource}; retrying with {args.fallback_index_type}"
+            )
             fallback_args = argparse.Namespace(**vars(args))
             fallback_args.index_type = args.fallback_index_type
             fallback_args.fallback_index_type = "none"
