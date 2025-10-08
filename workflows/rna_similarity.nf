@@ -34,20 +34,15 @@ workflow rna_similarity {
 
     // Generate or reuse node embeddings (batching via splitCsv for scalability)
     def chunked_embeddings_ch
-    def embedding_chunks_for_merge_ch
+    def embeddings_for_align
     if (params.node_embeddings_tsv) {
-        def provided_embeddings = Channel.fromPath(params.node_embeddings_tsv)
-            .map { path -> tuple('batch_000000', path) }
+        def provided_embeddings = file(params.node_embeddings_tsv)
+        if (!provided_embeddings.exists()) {
+            error "Provided --node_embeddings_tsv not found: ${provided_embeddings}"
+        }
 
-        provided_embeddings
-            .multiMap { tuple ->
-                windows: tuple
-                merge: tuple
-            }
-            .set { embedding_split }
-
-        chunked_embeddings_ch = embedding_split.windows
-        embedding_chunks_for_merge_ch = embedding_split.merge
+        chunked_embeddings_ch = Channel.of(tuple('batch_000000', provided_embeddings))
+        embeddings_for_align = Channel.of(provided_embeddings)
     } else {
         if (!params.header) {
             error "Batched node embedding generation requires --header true to reconstruct TSV chunks"
@@ -79,13 +74,12 @@ workflow rna_similarity {
             .set { embedding_split }
 
         chunked_embeddings_ch = embedding_split.windows
-        embedding_chunks_for_merge_ch = embedding_split.merge
+        def embedding_chunks_for_merge_ch = embedding_split.merge
+        def embedding_chunk_list = embedding_chunks_for_merge_ch.collect(flat: false)
+        def merged_embeddings = MERGE_EMBEDDING_CHUNKS(embedding_chunk_list)
+
+        embeddings_for_align = merged_embeddings.node_embeddings
     }
-
-    def embedding_chunk_list = embedding_chunks_for_merge_ch.collect(flat: false)
-    def merged_embeddings = MERGE_EMBEDDING_CHUNKS(embedding_chunk_list)
-
-    def embeddings_for_align = merged_embeddings.node_embeddings
 
     def window_inputs = chunked_embeddings_ch.map { chunk_id, embeddings_path ->
         tuple(chunk_id, embeddings_path, queries_file)
