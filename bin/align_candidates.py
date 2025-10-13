@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 import argparse
+import heapq
 import json
+from collections import defaultdict
 from dataclasses import dataclass
+from itertools import count
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
 
 NEG_INF = -1e9
+
+TRACE_STOP = 0
+TRACE_FROM_M = 1
+TRACE_FROM_X = 2
+TRACE_FROM_Y = 3
+TRACE_GAP_FROM_M = 0
+TRACE_GAP_FROM_SELF = 1
+
+EMBEDDING_CHUNK_SIZE = 200_000
 
 
 def safe_filename(text: str) -> str:
@@ -44,6 +56,14 @@ class AlignmentResult:
     gap_bases: int
     seed_count: int
     max_seed_similarity: float
+
+
+@dataclass
+class AlignmentBundle:
+    score: float
+    record: dict
+    plot_info: Optional[dict]
+    dp_record: Optional[dict]
 
 
 def parse_args() -> argparse.Namespace:
@@ -93,18 +113,60 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_embeddings(path: str, id_col: str, node_idx_col: str, emb_col: str) -> Dict[str, np.ndarray]:
-    df = pd.read_csv(path, sep="\t", dtype={id_col: str})
-    required = {id_col, node_idx_col, emb_col}
-    missing = required - set(df.columns)
-    if missing:
-        raise SystemExit(f"Embeddings file missing columns: {', '.join(sorted(missing))}")
-    df = df.rename(columns={node_idx_col: "node_index", emb_col: "embedding_vector"})
+def load_embeddings(
+    path: str,
+    id_col: str,
+    node_idx_col: str,
+    emb_col: str,
+    required_ids: Optional[Set[str]] = None,
+    chunk_size: int = EMBEDDING_CHUNK_SIZE,
+) -> Dict[str, np.ndarray]:
+    usecols = [id_col, node_idx_col, emb_col]
+    read_kwargs = {
+        "sep": "\t",
+        "dtype": {id_col: str, node_idx_col: np.int64, emb_col: str},
+        "usecols": usecols,
+    }
+    try:
+        iterator = pd.read_csv(path, chunksize=chunk_size, **read_kwargs)
+    except ValueError as exc:
+        raise SystemExit(f"Failed to read embeddings from {path}: {exc}") from exc
+
+    collected: Dict[str, List[Tuple[int, np.ndarray]]] = defaultdict(list)
+    for chunk in iterator:
+        if required_ids:
+            mask = chunk[id_col].isin(required_ids)
+            if not mask.any():
+                continue
+            chunk = chunk.loc[mask]
+        ids = chunk[id_col].astype(str)
+        node_indices = chunk[node_idx_col].astype(np.int64)
+        vectors = chunk[emb_col].astype(str)
+        for tid, node_idx, vec_text in zip(ids, node_indices, vectors):
+            if not vec_text:
+                continue
+            vec = np.fromstring(vec_text, sep=",", dtype=np.float32)
+            if vec.size == 0:
+                continue
+            collected[tid].append((int(node_idx), vec))
+
+    if not collected and required_ids:
+        raise SystemExit("No embeddings found for the requested transcript IDs")
+
     embeddings: Dict[str, np.ndarray] = {}
-    for tid, group in df.groupby(id_col):
-        ordered = group.sort_values("node_index")
-        vectors = np.stack(ordered["embedding_vector"].astype(str).str.split(',').map(lambda xs: np.asarray(xs, dtype=np.float32)))
-        embeddings[tid] = vectors
+    for tid, entries in collected.items():
+        if not entries:
+            continue
+        entries.sort(key=lambda item: item[0])
+        stacked = np.vstack([vec for _, vec in entries]).astype(np.float32, copy=False)
+        embeddings[tid] = stacked
+
+    if required_ids:
+        missing = required_ids - embeddings.keys()
+        if missing:
+            preview = ", ".join(sorted(missing)[:10])
+            raise SystemExit(f"Embeddings file missing vectors for {len(missing)} transcripts (e.g. {preview})")
+
     return embeddings
 
 
@@ -151,6 +213,7 @@ def smith_waterman(
     if m == 0 or n == 0:
         return 0.0, [], None
 
+    band = max(1, int(band))
     band_half = band // 2
 
     M_prev = np.zeros(n + 1, dtype=np.float32)
@@ -160,9 +223,12 @@ def smith_waterman(
     X_curr = np.full(n + 1, NEG_INF, dtype=np.float32)
     Y_curr = np.full(n + 1, NEG_INF, dtype=np.float32)
 
-    trace_M: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]] = {}
-    trace_X: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]] = {}
-    trace_Y: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]] = {}
+    band_capacity = min(n, band + 1) + 2
+    trace_M = np.zeros((m + 1, band_capacity), dtype=np.uint8)
+    trace_X = np.zeros((m + 1, band_capacity), dtype=np.uint8)
+    trace_Y = np.zeros((m + 1, band_capacity), dtype=np.uint8)
+    row_offsets = np.zeros(m + 1, dtype=np.int32)
+    row_lengths = np.zeros(m + 1, dtype=np.int32)
 
     matrix_scores: Optional[np.ndarray] = None
     if store_matrix:
@@ -184,11 +250,20 @@ def smith_waterman(
         j_start = max(1, center - band_half)
         j_end = min(n, center + band_half)
         if j_start > j_end:
+            row_offsets[i] = 1
+            row_lengths[i] = 0
             continue
+
+        row_offsets[i] = j_start
+        span = j_end - j_start + 1
+        row_lengths[i] = span
 
         for j in range(j_start, j_end + 1):
             i_global = i - 1
             j_global = j - 1
+            local_idx = j - j_start
+            if local_idx < 0 or local_idx >= band_capacity:
+                continue
             dot = float(np.dot(query[i_global], target[j_global]))
             score = compute_score(dot, mu, sigma, gamma, clamp_min, clamp_max)
 
@@ -202,27 +277,36 @@ def smith_waterman(
             base_val, base_ptr = max(candidates, key=lambda item: item[0])
             match_val = base_val + score
             M_curr[j] = match_val
-            trace_M[(i, j)] = base_ptr
+            if base_ptr is None:
+                trace_M[i, local_idx] = TRACE_STOP
+            else:
+                prev_state = base_ptr[0]
+                if prev_state == "M":
+                    trace_M[i, local_idx] = TRACE_FROM_M
+                elif prev_state == "X":
+                    trace_M[i, local_idx] = TRACE_FROM_X
+                else:
+                    trace_M[i, local_idx] = TRACE_FROM_Y
 
             # Gap in query (insertion in target)
             left_m = M_curr[j - 1] - gap_open
             left_x = X_curr[j - 1] - gap_extend
             if left_m >= left_x:
                 X_curr[j] = left_m
-                trace_X[(i, j)] = ("M", i, j - 1)
+                trace_X[i, local_idx] = TRACE_GAP_FROM_M
             else:
                 X_curr[j] = left_x
-                trace_X[(i, j)] = ("X", i, j - 1)
+                trace_X[i, local_idx] = TRACE_GAP_FROM_SELF
 
             # Gap in target (deletion)
             up_m = M_prev[j] - gap_open
             up_y = Y_prev[j] - gap_extend
             if up_m >= up_y:
                 Y_curr[j] = up_m
-                trace_Y[(i, j)] = ("M", i - 1, j)
+                trace_Y[i, local_idx] = TRACE_GAP_FROM_M
             else:
                 Y_curr[j] = up_y
-                trace_Y[(i, j)] = ("Y", i - 1, j)
+                trace_Y[i, local_idx] = TRACE_GAP_FROM_SELF
 
             cell_best = max(match_val, X_curr[j], Y_curr[j])
             if matrix_scores is not None:
@@ -246,37 +330,65 @@ def smith_waterman(
         Y_prev, Y_curr = Y_curr, Y_prev
         M_prev[0] = 0.0
 
-    path = traceback(best_state, trace_M, trace_X, trace_Y)
+    path = traceback(best_state, trace_M, trace_X, trace_Y, row_offsets, row_lengths)
     return best_score, path, matrix_scores
 
 
 def traceback(
     best_state: Tuple[str, int, int],
-    trace_M: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]],
-    trace_X: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]],
-    trace_Y: Dict[Tuple[int, int], Optional[Tuple[str, int, int]]],
+    trace_M: np.ndarray,
+    trace_X: np.ndarray,
+    trace_Y: np.ndarray,
+    row_offsets: np.ndarray,
+    row_lengths: np.ndarray,
 ) -> List[Tuple[str, int, int]]:
     state, i, j = best_state
     if i <= 0 or j <= 0:
         return []
     path: List[Tuple[str, int, int]] = []
-    while state in {"M", "X", "Y"} and i >= 0 and j >= 0:
+    while state in {"M", "X", "Y"} and i > 0 and j > 0:
+        local_offset = row_offsets[i]
+        local_len = row_lengths[i]
+        local_idx = j - local_offset
+        if local_idx < 0 or local_idx >= local_len or local_idx >= trace_M.shape[1]:
+            break
         path.append((state, i, j))
         if state == "M":
-            ptr = trace_M.get((i, j))
-            if ptr is None:
+            code = trace_M[i, local_idx]
+            if code == TRACE_STOP:
                 break
-            state, i, j = ptr
+            if code == TRACE_FROM_M:
+                state = "M"
+            elif code == TRACE_FROM_X:
+                state = "X"
+            elif code == TRACE_FROM_Y:
+                state = "Y"
+            else:
+                break
+            i -= 1
+            j -= 1
         elif state == "X":
-            ptr = trace_X.get((i, j))
-            if ptr is None:
+            code = trace_X[i, local_idx]
+            if j <= 0:
                 break
-            state, i, j = ptr
+            j -= 1
+            if code == TRACE_GAP_FROM_M:
+                state = "M"
+            elif code == TRACE_GAP_FROM_SELF:
+                state = "X"
+            else:
+                break
         else:  # Y
-            ptr = trace_Y.get((i, j))
-            if ptr is None:
+            code = trace_Y[i, local_idx]
+            if i <= 0:
                 break
-            state, i, j = ptr
+            i -= 1
+            if code == TRACE_GAP_FROM_M:
+                state = "M"
+            elif code == TRACE_GAP_FROM_SELF:
+                state = "Y"
+            else:
+                break
     path.reverse()
     return path
 
@@ -330,11 +442,52 @@ def main() -> None:
     members_df = pd.read_csv(args.cluster_members, sep="\t")
     if clusters_df.empty or members_df.empty:
         pd.DataFrame().to_csv(args.output, sep="\t", index=False)
+        if args.dp_output:
+            Path(args.dp_output).write_text("")
+        if args.alignment_text:
+            Path(args.alignment_text).write_text("")
         if args.stats_json:
             Path(args.stats_json).write_text(json.dumps({"alignments": 0}, indent=2) + "\n")
         return
 
-    embeddings = load_embeddings(args.embeddings, args.id_column, args.node_index_column, args.embedding_column)
+    required_cluster_cols = {"cluster_id", "seed_count", "max_similarity"}
+    missing_cluster_cols = required_cluster_cols - set(clusters_df.columns)
+    if missing_cluster_cols:
+        raise SystemExit(
+            f"Cluster summaries file missing columns: {', '.join(sorted(missing_cluster_cols))}"
+        )
+
+    member_cols_order = [
+        "cluster_id",
+        "query_transcript",
+        "target_transcript",
+        "diagonal",
+        "query_window_start",
+        "query_window_end",
+        "target_window_start",
+        "target_window_end",
+    ]
+    missing_member_cols = set(member_cols_order) - set(members_df.columns)
+    if missing_member_cols:
+        raise SystemExit(
+            f"Cluster members file missing columns: {', '.join(sorted(missing_member_cols))}"
+        )
+    members_df = members_df.loc[:, member_cols_order]
+
+    members_df["query_transcript"] = members_df["query_transcript"].astype(str)
+    members_df["target_transcript"] = members_df["target_transcript"].astype(str)
+
+    query_ids = {tid for tid in members_df["query_transcript"] if tid and tid.lower() != "nan"}
+    target_ids = {tid for tid in members_df["target_transcript"] if tid and tid.lower() != "nan"}
+    required_ids = query_ids | target_ids
+
+    embeddings = load_embeddings(
+        args.embeddings,
+        args.id_column,
+        args.node_index_column,
+        args.embedding_column,
+        required_ids=required_ids if required_ids else None,
+    )
     mu0, sigma0 = sample_background(embeddings, args.background_samples, args.random_seed)
 
     meta_df = pd.read_csv(args.meta, sep="\t", dtype={args.id_column: str})
@@ -342,16 +495,20 @@ def main() -> None:
     meta_map = meta_df.set_index(args.id_column).to_dict(orient="index")
     seq_col, struct_col = infer_columns(meta_df, args.sequence_column, args.structure_column)
 
-    results: List[dict] = []
     plot_enabled = args.plot_scoring_matrices
-    plot_jobs: Dict[Tuple[str, str, int], dict] = {}
-
-    grouped_members = members_df.groupby("cluster_id")
-    dp_records: List[dict] = []
     collect_trace = args.dp_output is not None
+    top_n = args.top_n
+    store_results = top_n != 0
+    use_heap = store_results and top_n > 0
 
-    for cluster in clusters_df.to_dict("records"):
-        cid = cluster["cluster_id"]
+    result_heap: List[Tuple[float, int, AlignmentBundle]] = []
+    unlimited_results: List[AlignmentBundle] = []
+    heap_counter = count()
+
+    grouped_members = members_df.groupby("cluster_id", sort=False)
+
+    for cluster in clusters_df.itertuples(index=False):
+        cid = getattr(cluster, "cluster_id")
         if cid not in grouped_members.groups:
             continue
         seeds = grouped_members.get_group(cid)
@@ -416,7 +573,7 @@ def main() -> None:
         result = AlignmentResult(
             query_id=query_id,
             target_id=target_id,
-            cluster_id=cid,
+            cluster_id=int(cid),
             score=float(score),
             query_start=alignment_info["query_start"],
             query_end=alignment_info["query_end"],
@@ -426,8 +583,8 @@ def main() -> None:
             avg_cosine=alignment_info["avg_cosine"],
             gap_opens=alignment_info["gap_opens"],
             gap_bases=alignment_info["gap_bases"],
-            seed_count=int(cluster["seed_count"]),
-            max_seed_similarity=float(cluster["max_similarity"]),
+            seed_count=int(getattr(cluster, "seed_count")),
+            max_seed_similarity=float(getattr(cluster, "max_similarity")),
         )
         enriched = attach_metadata(result, meta_map, seq_col, struct_col)
 
@@ -470,9 +627,9 @@ def main() -> None:
                 "band_width": effective_band,
             }
         )
-        results.append(enriched)
+        plot_info = None
         if plot_enabled:
-            plot_jobs[(query_id, target_id, int(cid))] = {
+            plot_info = {
                 "query_start": q_start,
                 "query_end": q_end,
                 "target_start": t_start,
@@ -487,34 +644,50 @@ def main() -> None:
                 "diag_max": diag_max,
             }
 
+        dp_record = None
         if collect_trace and trace is not None:
-            dp_records.append(
-                {
-                    "query_id": query_id,
-                    "target_id": target_id,
-                    "cluster_id": cid,
-                    "score": float(score),
-                    "alignment_start": {
-                        "query": alignment_info["query_start"],
-                        "target": alignment_info["target_start"],
-                    },
-                    "alignment_end": {
-                        "query": alignment_info["query_end"],
-                        "target": alignment_info["target_end"],
-                    },
-                    "diagonal": {
-                        "median": diag_median,
-                        "min": diag_min,
-                        "max": diag_max,
-                        "span": diag_span,
-                        "offset": diag_offset,
-                    },
-                    "band_width": effective_band,
-                    "trace": trace,
-                }
-            )
+            dp_record = {
+                "query_id": query_id,
+                "target_id": target_id,
+                "cluster_id": int(cid),
+                "score": float(score),
+                "alignment_start": {
+                    "query": alignment_info["query_start"],
+                    "target": alignment_info["target_start"],
+                },
+                "alignment_end": {
+                    "query": alignment_info["query_end"],
+                    "target": alignment_info["target_end"],
+                },
+                "diagonal": {
+                    "median": diag_median,
+                    "min": diag_min,
+                    "max": diag_max,
+                    "span": diag_span,
+                    "offset": diag_offset,
+                },
+                "band_width": effective_band,
+                "trace": trace,
+            }
 
-    if not results:
+        bundle = AlignmentBundle(
+            score=float(score),
+            record=enriched,
+            plot_info=plot_info,
+            dp_record=dp_record,
+        )
+
+        if not store_results:
+            continue
+
+        if use_heap:
+            heapq.heappush(result_heap, (bundle.score, next(heap_counter), bundle))
+            if len(result_heap) > top_n:
+                heapq.heappop(result_heap)
+        else:
+            unlimited_results.append(bundle)
+
+    if not store_results:
         pd.DataFrame().to_csv(args.output, sep="\t", index=False)
         if args.dp_output:
             Path(args.dp_output).write_text("")
@@ -524,8 +697,30 @@ def main() -> None:
             Path(args.stats_json).write_text(json.dumps({"alignments": 0}, indent=2) + "\n")
         return
 
-    results_df = pd.DataFrame(results)
-    results_df = results_df.sort_values("score", ascending=False).head(args.top_n)
+    if use_heap:
+        selected_bundles = [entry[2] for entry in sorted(result_heap, key=lambda item: item[0], reverse=True)]
+    else:
+        selected_bundles = sorted(unlimited_results, key=lambda item: item.score, reverse=True)
+        if top_n < 0:
+            drop = abs(top_n)
+            if drop >= len(selected_bundles):
+                selected_bundles = []
+            else:
+                selected_bundles = selected_bundles[:-drop]
+
+    if not selected_bundles:
+        pd.DataFrame().to_csv(args.output, sep="\t", index=False)
+        if args.dp_output:
+            Path(args.dp_output).write_text("")
+        if args.alignment_text:
+            Path(args.alignment_text).write_text("")
+        if args.stats_json:
+            Path(args.stats_json).write_text(json.dumps({"alignments": 0}, indent=2) + "\n")
+        return
+
+    records = [bundle.record for bundle in selected_bundles]
+    results_df = pd.DataFrame(records)
+    results_df = results_df.sort_values("score", ascending=False)
     results_df.to_csv(args.output, sep="\t", index=False)
 
     plot_count = 0
@@ -538,13 +733,13 @@ def main() -> None:
             raise SystemExit(
                 "matplotlib is required for --plot-scoring-matrices; ensure the environment includes matplotlib"
             ) from exc
-        for rank, row in enumerate(results_df.to_dict("records"), start=1):
-            query_id = str(row["query_id"])
-            target_id = str(row["target_id"])
-            cluster_id = int(row["cluster_id"])
-            info = plot_jobs.get((query_id, target_id, cluster_id))
+        for rank, bundle in enumerate(selected_bundles, start=1):
+            info = bundle.plot_info
             if not info:
                 continue
+            row = bundle.record
+            query_id = str(row["query_id"])
+            target_id = str(row["target_id"])
             q_slice = embeddings[query_id][info["query_start"] : info["query_end"]]
             t_slice = embeddings[target_id][info["target_start"] : info["target_end"]]
             _, path_plot, matrix = smith_waterman(
@@ -569,11 +764,11 @@ def main() -> None:
                 "score": float(row["score"]),
                 "query_id": query_id,
                 "target_id": target_id,
-                "cluster_id": cluster_id,
+                "cluster_id": int(row["cluster_id"]),
             }
             base_name = (
                 f"rank_{rank:02d}_{safe_filename(query_id)}_vs_{safe_filename(target_id)}"
-                f"_cluster_{cluster_id}_score_{metadata['score']:.2f}"
+                f"_cluster_{int(row['cluster_id'])}_score_{metadata['score']:.2f}"
             )
             base_name = safe_filename(base_name)
             output_path = plot_dir / f"{base_name}.png"
@@ -588,10 +783,13 @@ def main() -> None:
     print(json.dumps(stats, indent=2))
 
     if args.dp_output:
+        wrote_trace = False
         with Path(args.dp_output).open("w", encoding="utf-8") as handle:
-            for record in dp_records:
-                handle.write(json.dumps(record) + "\n")
-        if not dp_records:
+            for bundle in selected_bundles:
+                if bundle.dp_record:
+                    handle.write(json.dumps(bundle.dp_record) + "\n")
+                    wrote_trace = True
+        if not wrote_trace:
             Path(args.dp_output).touch()
 
     if args.alignment_text:
