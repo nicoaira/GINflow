@@ -31,7 +31,6 @@ process BUILD_FAISS_INDEX {
     def hnswM     = params.faiss_hnsw_m ?: 32
     def hnswEfc   = params.faiss_hnsw_efc ?: 200
     def gpuFlag   = params.faiss_use_gpu ? '--use-gpu' : ''
-    def nprobe    = params.faiss_nprobe ? "--nprobe ${params.faiss_nprobe}" : ''
     def addBatch  = params.faiss_add_batch_size ? "--add-batch-size ${params.faiss_add_batch_size}" : ''
     """
     python3 ${baseDir}/bin/build_faiss_index.py \
@@ -49,7 +48,6 @@ process BUILD_FAISS_INDEX {
       --output-mapping faiss_mapping.tsv \
       --stats-json faiss_index_stats.json \
       ${gpuFlag} \
-      ${nprobe} \
       ${addBatch}
     """
 }
