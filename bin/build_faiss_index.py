@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -139,7 +140,7 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         if len(train_vectors) == 0:
             raise SystemExit("Training set empty – cannot build trained index")
         log(
-            f"Training {args.index_type} index using {len(train_vectors)} vectors "
+            f"Prepared {len(train_vectors)} training vectors "
             f"(limit {args.train_size or 'all'})"
         )
 
@@ -150,17 +151,14 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
     elif args.index_type == "ivf":
         quantizer = faiss.IndexFlatIP(dim) if args.metric == "ip" else faiss.IndexFlatL2(dim)
         index = faiss.IndexIVFFlat(quantizer, dim, args.nlist, metric)
-        index.train(train_vectors)
     elif args.index_type == "ivfpq":
         quantizer = faiss.IndexFlatIP(dim) if args.metric == "ip" else faiss.IndexFlatL2(dim)
         index = faiss.IndexIVFPQ(quantizer, dim, args.nlist, args.pq_m, args.pq_bits, metric)
-        index.train(train_vectors)
     elif args.index_type == "opq_ivfpq":
         opq = faiss.OPQMatrix(dim, args.opq_m)
         quantizer = faiss.IndexFlatIP(dim) if args.metric == "ip" else faiss.IndexFlatL2(dim)
         base = faiss.IndexIVFPQ(quantizer, dim, args.nlist, args.pq_m, args.pq_bits, metric)
         index = faiss.IndexPreTransform(opq, base)
-        index.train(train_vectors)
     elif args.index_type == "hnsw":
         index = faiss.IndexHNSWFlat(dim, args.hnsw_m)
         index.metric_type = metric
@@ -170,6 +168,18 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
 
     cpu_index = index
     index = maybe_to_gpu(index, args.use_gpu)
+    if requires_training:
+        device = "GPU" if index is not cpu_index and args.use_gpu else "CPU"
+        log(
+            f"Training {args.index_type} index on {device} "
+            f"with {len(train_vectors)} vectors"
+        )
+        train_start = time.perf_counter()
+        index.train(train_vectors)
+        train_elapsed = time.perf_counter() - train_start
+        log(
+            f"Finished training {args.index_type} index in {train_elapsed:.2f}s"
+        )
     try:
         add_vectors(index, vectors, args.add_batch_size)
     except OOM_EXCEPTIONS as err:
