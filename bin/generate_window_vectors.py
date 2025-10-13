@@ -154,8 +154,8 @@ def main() -> None:
             length = len(group)
             if length < args.window_size:
                 continue
-            vectors = parse_embedding_string(group['embedding_vector'])
             is_query = transcript_id in query_ids
+            vectors = parse_embedding_string(group['embedding_vector'])
             metadata_handle = query_meta_handle if is_query else db_meta_handle
             for window_idx, (start, block) in enumerate(iter_windows(vectors, window=args.window_size, stride=args.stride)):
                 flat = flatten_and_normalize(block, args.normalize).astype(np.float32, copy=False)
@@ -173,9 +173,8 @@ def main() -> None:
                     if query_vectors is not None:
                         query_vectors[query_index] = flat
                     query_index += 1
-                else:
-                    if db_vectors is not None:
-                        db_vectors[db_index] = flat
+                elif db_vectors is not None:
+                    db_vectors[db_index] = flat
                     db_index += 1
 
     if db_vectors is not None:
