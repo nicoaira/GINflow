@@ -13,13 +13,16 @@ Two outputs are produced under ``--output-dir``:
 The numpy arrays contain float32 window vectors (each row normalized to unit
 length). The TSV files provide metadata for each window so downstream modules
 can map FAISS hits back to transcripts and positions.
+
+When ``--max-unpaired-fraction`` is provided the script skips windows whose
+dot-bracket structure is dominated by unpaired (``'.'``) characters.
 """
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
-from typing import Iterator, Tuple
+from typing import Dict, Iterator, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -39,6 +42,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-normalize", dest="normalize", action="store_false")
     parser.set_defaults(normalize=True)
     parser.add_argument("--query-column", default="id", help="Column in --queries identifying query RNAs")
+    parser.add_argument("--meta-map", default=None, help="TSV containing transcript metadata (structures) emitted by extract_meta_map")
+    parser.add_argument("--structure-column", default="secondary_structure", help="Structure column name inside --meta-map")
+    parser.add_argument(
+        "--max-unpaired-fraction",
+        type=float,
+        default=None,
+        help="Skip windows where the dot-bracket structure has this unpaired ('.') fraction or higher",
+    )
     parser.add_argument("--metadata-json", default=None, help="Optional path to write window statistics as JSON")
     parser.add_argument("--chunk-id", default=None, help="Optional chunk identifier for chunked execution")
     return parser.parse_args()
@@ -53,6 +64,33 @@ def load_query_ids(path: str, column: str) -> set[str]:
     return set(df[column].dropna().astype(str))
 
 
+def load_structure_map(path: Optional[str], id_col: str, structure_col: Optional[str]) -> Dict[str, str]:
+    """Load transcript structures from the metadata map."""
+    if path is None:
+        return {}
+    if not Path(path).exists():
+        raise SystemExit(f"Meta map not found: {path}")
+
+    df = pd.read_csv(path, sep="\t", dtype=str)
+    if id_col not in df.columns:
+        raise SystemExit(f"Meta map {path} missing required id column '{id_col}'")
+    if not structure_col:
+        raise SystemExit("Structure column name must be provided when filtering unpaired windows")
+    if structure_col not in df.columns:
+        raise SystemExit(
+            f"Meta map {path} missing structure column '{structure_col}'. "
+            "Ensure --structure-column matches the input table."
+        )
+
+    subset = (
+        df[[id_col, structure_col]]
+        .dropna(subset=[id_col])
+        .astype({id_col: str})
+    )
+    subset[structure_col] = subset[structure_col].fillna("").astype(str).str.strip()
+    return dict(zip(subset[id_col], subset[structure_col]))
+
+
 def parse_embedding_string(series: pd.Series) -> np.ndarray:
     """Convert a Series of comma-delimited embedding strings into a 2D float array."""
     return np.stack(series.astype(str).str.split(',').map(lambda xs: np.asarray(xs, dtype=np.float32)))
@@ -63,6 +101,12 @@ def iter_windows(vecs: np.ndarray, window: int, stride: int) -> Iterator[Tuple[i
     for start in range(0, max(0, limit), stride):
         end = start + window
         yield start, vecs[start:end]
+
+
+def iter_window_starts(length: int, window: int, stride: int) -> Iterator[int]:
+    limit = length - window + 1
+    for start in range(0, max(0, limit), stride):
+        yield start
 
 
 def flatten_and_normalize(block: np.ndarray, normalize: bool) -> np.ndarray:
@@ -80,6 +124,26 @@ def count_windows(length: int, window_size: int, stride: int) -> int:
     if limit <= 0:
         return 0
     return ((limit - 1) // stride) + 1
+
+
+def window_passes_filter(
+    structure: Optional[str],
+    start: int,
+    window_size: int,
+    threshold: Optional[float],
+) -> bool:
+    if threshold is None:
+        return True
+    if not structure:
+        return True
+    end = start + window_size
+    if end > len(structure):
+        return True
+    window_structure = structure[start:end]
+    if not window_structure:
+        return True
+    dot_fraction = window_structure.count('.') / len(window_structure)
+    return dot_fraction < threshold
 
 
 def main() -> None:
@@ -117,14 +181,46 @@ def main() -> None:
     meta_columns = [args.id_column, 'window_index', 'window_start', 'window_end', 'window_size', 'transcript_length']
     group_lengths = embeddings.groupby(args.id_column, sort=True)['node_index'].count()
 
+    threshold = args.max_unpaired_fraction
+    if threshold is not None and not (0.0 <= threshold <= 1.0):
+        raise SystemExit("--max-unpaired-fraction must be between 0 and 1")
+    if threshold is not None and not args.meta_map:
+        raise SystemExit("--meta-map is required when --max-unpaired-fraction is specified")
+
+    structure_map: Dict[str, str] = {}
+    if threshold is not None:
+        structure_map = load_structure_map(args.meta_map, args.id_column, args.structure_column)
+
+    kept_counts: Dict[str, int] = {}
     db_total = 0
     query_total = 0
+    db_possible = 0
+    query_possible = 0
+    db_filtered = 0
+    query_filtered = 0
+
     for transcript_id, length in group_lengths.items():
-        window_count = count_windows(int(length), args.window_size, args.stride)
+        length = int(length)
+        possible = count_windows(length, args.window_size, args.stride)
+        structure = structure_map.get(transcript_id) if threshold is not None else None
+        kept = possible
+
+        if threshold is not None and possible > 0:
+            kept = 0
+            for start in iter_window_starts(length, args.window_size, args.stride):
+                if window_passes_filter(structure, start, args.window_size, threshold):
+                    kept += 1
+        kept_counts[transcript_id] = kept
+        filtered_out = possible - kept
+
         if transcript_id in query_ids:
-            query_total += window_count
+            query_possible += possible
+            query_total += kept
+            query_filtered += filtered_out
         else:
-            db_total += window_count
+            db_possible += possible
+            db_total += kept
+            db_filtered += filtered_out
     db_path = outdir / 'database_windows.npy'
     query_path = outdir / 'query_windows.npy'
 
@@ -152,12 +248,16 @@ def main() -> None:
         for transcript_id, group in embeddings.groupby(args.id_column, sort=True):
             group = group.sort_values('node_index')
             length = len(group)
-            if length < args.window_size:
+            kept = kept_counts.get(transcript_id, 0)
+            if length < args.window_size or kept == 0:
                 continue
             is_query = transcript_id in query_ids
+            structure = structure_map.get(transcript_id) if threshold is not None else None
             vectors = parse_embedding_string(group['embedding_vector'])
             metadata_handle = query_meta_handle if is_query else db_meta_handle
             for window_idx, (start, block) in enumerate(iter_windows(vectors, window=args.window_size, stride=args.stride)):
+                if not window_passes_filter(structure, start, args.window_size, threshold):
+                    continue
                 flat = flatten_and_normalize(block, args.normalize).astype(np.float32, copy=False)
                 meta = {
                     args.id_column: transcript_id,
@@ -192,6 +292,11 @@ def main() -> None:
     stats = {
         'database_windows': db_index,
         'query_windows': query_index,
+        'database_windows_possible': db_possible,
+        'query_windows_possible': query_possible,
+        'database_windows_filtered': db_filtered,
+        'query_windows_filtered': query_filtered,
+        'max_unpaired_fraction': threshold,
         'window_size': args.window_size,
         'stride': args.stride,
         'queries': len(query_ids),

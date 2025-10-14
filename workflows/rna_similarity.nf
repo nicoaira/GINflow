@@ -30,7 +30,15 @@ workflow rna_similarity {
 
     // Extract metadata for later reporting
     def meta = EXTRACT_META_MAP(input_file)
-    def meta_ch = meta.meta_map
+    meta.meta_map
+        .multiMap { path ->
+            windows: path
+            align: path
+        }
+        .set { meta_split }
+
+    def meta_for_windows = meta_split.windows
+    def meta_ch = meta_split.align
 
     // Generate or reuse node embeddings (batching via splitCsv for scalability)
     def chunked_embeddings_ch
@@ -86,7 +94,7 @@ workflow rna_similarity {
     }
 
     // Build sliding window vectors for database and query sets per chunk
-    def window_chunks = GENERATE_WINDOW_VECTORS(window_inputs)
+    def window_chunks = GENERATE_WINDOW_VECTORS(window_inputs, meta_for_windows)
 
     def window_chunk_list = window_chunks.window_chunk.collect(flat: false)
 

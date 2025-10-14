@@ -6,7 +6,7 @@ GINflow is a Nextflow pipeline for BLAST-style search over RNA secondary structu
 
 1. **Node embeddings** – run `ginfinity-generate-node-embeddings` on the full transcript table (CPU or GPU).
 2. **Window vectors** – slide a configurable window across each transcript, concatenate node embeddings, and L2-normalise the resulting vectors.
-3. **Index build** – load all database windows into a FAISS index (Flat, IVF, IVFPQ, OPQ+IVFPQ, or HNSW).
+3. **Index build** – load all database windows into a FAISS index (Flat, IVF, IVFPQ, OPQ+IVFPQ, HNSW, or HNSWSQ8).
 4. **Seeding** – query each window from the designated query set, retain neighbours above a cosine threshold, and record their implied diagonals.
 5. **Diagonal clustering** – enforce a two-hit rule by grouping seeds that fall within a user-defined span while permitting limited diagonal drift.
 6. **Local alignment** – inflate each cluster into a candidate region and run a banded Smith–Waterman alignment that adapts to the observed diagonal spread. Scores are derived from z-scored cosine similarities using background μ/σ estimates.
@@ -15,7 +15,7 @@ GINflow is a Nextflow pipeline for BLAST-style search over RNA secondary structu
 ## Key Features
 
 - **BLAST-like workflow** tailored to structure-aware node embeddings.
-- **Configurable FAISS backends** with support for Flat, IVF, IVFPQ, OPQ+IVFPQ, and HNSW indices.
+- **Configurable FAISS backends** with support for Flat, IVF, IVFPQ, OPQ+IVFPQ, HNSW, and HNSWSQ8 indices.
 - **Deterministic seeding** via cosine similarity thresholds and drift-aware diagonal clustering.
 - **Banded Smith–Waterman** with affine gaps, X-drop termination, and user-tunable scoring clamps.
 - **Background-aware scoring** using μ/σ derived from random node pairs.
@@ -43,7 +43,7 @@ graph TD
 1. **Prepare inputs** – a single TSV/CSV containing query and database transcripts plus a separate CSV/TSV listing query IDs (`--queries`).
 2. **Generate node embeddings** – ginfinity runs over `split_size` batches (via `splitCsv`) so embedding jobs parallelise cleanly; add `-profile gpu` or `--use_gpu true` to enable CUDA.
 3. **Window vectorisation** – sliding windows (`--window_size`, `--window_stride`) produce normalised vectors and metadata for both query and database sets.
-4. **FAISS index** – configurable via `--index_type`, `--faiss_metric`, `--faiss_nlist`, etc. Indices and metadata are cached under `outdir/faiss_index/`.
+4. **FAISS index** – configurable via `--index_type`, `--faiss_metric`, `--faiss_nlist`, etc. Indices and metadata are cached under `outdir/faiss_index/`. For HNSW/HNSWSQ8 backends, use `--faiss_hnsw_m`, `--faiss_hnsw_efc`, and `--faiss_hnsw_efs` to balance accuracy vs. speed.
 5. **Seeding** – nearest neighbours are fetched for each query window (`--faiss_k`) and filtered by `--seed_similarity_threshold` to minimise noise.
 6. **Clustering** – seeds are grouped when ≥2 occur within `--cluster_span` nt and their diagonals remain within the configured tolerance (`--cluster_diagonal_tolerance`, `--cluster_max_diagonal_span`).
 7. **Alignment** – each cluster is expanded with `--alignment_padding`, scored with γ-scaled cosine similarities, and aligned with a band that adapts to the diagonal spread (`--band_width`, `--band_buffer`, `--band_max_width`) plus affine gaps (`--gap_open`, `--gap_extend`) and X-drop `--xdrop`. The TSV now includes explicit gapped alignment strings alongside DP traces for downstream inspection.
@@ -136,10 +136,13 @@ nextflow run main.nf -profile slurm,singularity,smoke
 | `--sequence_column` | _auto_ | Optional explicit sequence column for reporting |
 | `--node_embeddings_tsv` | `null` | Reuse existing ginfinity node embeddings |
 | `--window_size` | `11` | Sliding window size (nodes) |
+| `--max_unpaired_fraction` | `null` | Skip windows where the dot-bracket structure has this unpaired (`.`) fraction or higher |
 | `--seed_similarity_threshold` | `0.7` | Cosine similarity cut-off for seeds |
 | `--index_type` | `flat_ip` | FAISS index backend |
 | `--faiss_metric` | `ip` | FAISS metric (`ip` or `l2`) |
 | `--faiss_k` | `50` | Neighbours retrieved per query window |
+| `--faiss_hnsw_m` / `--faiss_hnsw_efc` / `--faiss_hnsw_efs` | `32` / `200` / `auto` | HNSW connectivity, construction effort, and search breadth (default efSearch = max(2×`faiss_k`, 64)) |
+| `--faiss_exact_rescore` | `auto` | When enabled (default for HNSW/HNSWSQ8), recomputes similarities with the original float32 vectors before applying the seed filter |
 | `--cluster_span` | `80` | Max nt distance between neighbouring clustered seeds |
 | `--cluster_diagonal_tolerance` | `12` | Extra nt allowed beyond current diagonal bounds when adding a seed |
 | `--cluster_max_diagonal_span` | `96` | Max diagonal spread within a cluster (0 disables the cap) |

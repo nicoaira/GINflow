@@ -21,10 +21,16 @@
 
     "window_size": {"type": "integer", "minimum": 1, "description": "Sliding window length (number of nodes)"},
     "window_stride": {"type": "integer", "minimum": 1, "description": "Stride between windows"},
+    "max_unpaired_fraction": {
+      "type": ["number", "null"],
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Filter windows whose dot-bracket structure has this unpaired fraction or higher"
+    },
 
     "faiss_k": {"type": "integer", "minimum": 1, "description": "Top-K neighbours retrieved per query window"},
     "seed_similarity_threshold": {"type": "number", "minimum": -1.0, "maximum": 1.0, "description": "Minimum cosine similarity to keep a seed"},
-    "index_type": {"type": "string", "enum": ["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw"], "description": "FAISS index variant"},
+    "index_type": {"type": "string", "enum": ["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "hnswsq8"], "description": "FAISS index variant"},
     "faiss_metric": {"type": "string", "enum": ["ip", "l2"], "description": "Metric used by FAISS"},
     "faiss_nlist": {"type": "integer", "minimum": 1, "description": "Number of coarse clusters for IVF indices"},
     "faiss_pq_m": {"type": "integer", "minimum": 1, "description": "Sub-quantizers for IVFPQ"},
@@ -32,6 +38,8 @@
     "faiss_opq_m": {"type": "integer", "minimum": 1, "description": "OPQ matrix size when using opq_ivfpq"},
     "faiss_hnsw_m": {"type": "integer", "minimum": 2, "description": "HNSW connectivity parameter"},
     "faiss_hnsw_efc": {"type": "integer", "minimum": 1, "description": "HNSW efConstruction"},
+    "faiss_hnsw_efs": {"type": ["integer", "null"], "minimum": 1, "description": "HNSW efSearch parameter"},
+    "faiss_exact_rescore": {"type": ["boolean", "null"], "description": "Recompute similarities using float32 vectors before filtering"},
     "faiss_use_gpu": {"type": "boolean", "description": "Query FAISS index on GPU"},
     "faiss_nprobe": {"type": ["integer", "null"], "minimum": 1, "description": "Override nprobe for IVF indices"},
 

@@ -28,6 +28,10 @@ process QUERY_FAISS_INDEX {
     def metric = params.faiss_metric ?: 'ip'
     def gpuFlag = params.faiss_use_gpu ? '--use-gpu' : ''
     def nprobe = params.faiss_nprobe ? "--nprobe ${params.faiss_nprobe}" : ''
+    def hnswEfs = params.faiss_hnsw_efs ? "--hnsw-ef-search ${params.faiss_hnsw_efs}" : ''
+    def rescoreDefault = params.index_type in ['hnsw', 'hnswsq8']
+    def rescoreEffective = params.faiss_exact_rescore != null ? params.faiss_exact_rescore : rescoreDefault
+    def exactRescore = rescoreEffective ? '--exact-rescore' : ''
     """
     python3 ${baseDir}/bin/query_faiss_index.py \
       --index ${faiss_idx} \
@@ -39,9 +43,11 @@ process QUERY_FAISS_INDEX {
       --top-k ${params.faiss_k ?: 50} \
       --similarity-threshold ${params.seed_similarity_threshold ?: 0.7} \
       --metric ${metric} \
-      --output seeds.tsv \
-      --stats-json query_stats.json \
       ${gpuFlag} \
-      ${nprobe}
+      ${nprobe} \
+      ${hnswEfs} \
+      ${exactRescore} \
+      --output seeds.tsv \
+      --stats-json query_stats.json
     """
 }

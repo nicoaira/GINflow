@@ -10,6 +10,7 @@ process GENERATE_WINDOW_VECTORS {
 
     input:
     tuple val(chunk_id), path(node_embeddings), path(queries)
+    each path(meta_map)
 
     output:
     tuple val(chunk_id), path('database_windows.npy'), path('database_windows.tsv'), path('query_windows.npy'), path('query_windows.tsv'), path('window_stats.json'), emit: window_chunk
@@ -19,15 +20,18 @@ process GENERATE_WINDOW_VECTORS {
     def output_dir = 'windows'
     def queryColArg = params.query_column ? "--query-column ${params.query_column}" : null
     def chunkArg = chunk_id ? "--chunk-id ${chunk_id}" : null
+    def structureArg = params.structure_column_name ? "--structure-column ${params.structure_column_name}" : null
+    def maxUnpairedArg = params.max_unpaired_fraction != null ? "--max-unpaired-fraction ${params.max_unpaired_fraction}" : null
     def cliArgs = [
         "--embeddings ${node_embeddings}",
         "--queries ${queries}",
+        "--meta-map ${meta_map}",
         "--id-column ${params.id_column}",
         "--window-size ${params.window_size ?: 11}",
         "--stride ${stride}",
         "--output-dir ${output_dir}",
         "--metadata-json window_stats.json"
-    ] + [queryColArg, chunkArg].findAll { it }
+    ] + [queryColArg, chunkArg, structureArg, maxUnpairedArg].findAll { it }
     def cliBlock = cliArgs.collect { "        ${it}" }.join(' \\\n')
     """
     mkdir -p ${output_dir}

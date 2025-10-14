@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vectors", required=True, help="Path to .npy array with database window vectors")
     parser.add_argument("--metadata", required=True, help="TSV mapping rows to transcript/position metadata")
     parser.add_argument("--index-type", default="flat_ip",
-                        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw"],
+                        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "hnswsq8"],
                         help="FAISS index variant to construct")
     parser.add_argument("--metric", default="ip", choices=["ip", "l2"],
                         help="Distance metric for the index (inner-product or L2)")
@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--fallback-index-type",
         default="ivfpq",
-        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "none"],
+        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "hnswsq8", "none"],
         help="Index type to retry with if a flat index runs out of memory (use 'none' to disable)",
     )
     parser.add_argument(
@@ -108,6 +108,13 @@ def ensure_unit_norm(vectors: np.ndarray) -> None:
         print(f"WARNING: average vector norm ≈ {avg:.3f}; cosine/IP assumptions may be violated", file=sys.stderr)
 
 
+def _base_index_for_gpu_options(index: faiss.Index) -> faiss.Index:
+    """Return the underlying FAISS index when wrapped in pre/post transforms."""
+    if hasattr(faiss, "IndexPreTransform") and isinstance(index, faiss.IndexPreTransform):
+        return faiss.downcast_index(index.index)
+    return index
+
+
 def maybe_to_gpu(index: faiss.Index, use_gpu: bool) -> faiss.Index:
     if not use_gpu:
         return index
@@ -115,7 +122,26 @@ def maybe_to_gpu(index: faiss.Index, use_gpu: bool) -> faiss.Index:
         print("WARNING: FAISS build lacks GPU support; continuing on CPU", file=sys.stderr)
         return index
     res = faiss.StandardGpuResources()
-    return faiss.index_cpu_to_gpu(res, 0, index)
+    options = None
+    if hasattr(faiss, "GpuClonerOptions"):
+        options = faiss.GpuClonerOptions()
+        base_index = _base_index_for_gpu_options(index)
+        if hasattr(faiss, "IndexIVFPQ") and isinstance(base_index, faiss.IndexIVFPQ):
+            if hasattr(options, "useFloat16LookupTables"):
+                options.useFloat16LookupTables = True
+    try:
+        if options is not None:
+            return faiss.index_cpu_to_gpu(res, 0, index, options)
+        return faiss.index_cpu_to_gpu(res, 0, index)
+    except RuntimeError as err:
+        message = str(err)
+        if "shared memory" in message and "requires" in message:
+            print(
+                "WARNING: GPU index initialisation failed due to shared memory limits; continuing on CPU",
+                file=sys.stderr,
+            )
+            return index
+        raise
 
 
 def select_training_vectors(vectors: np.ndarray, limit: int, seed: int) -> np.ndarray:
@@ -134,7 +160,7 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         ensure_unit_norm(vectors)
 
     train_vectors = None
-    requires_training = args.index_type in {"ivf", "ivfpq", "opq_ivfpq"}
+    requires_training = args.index_type in {"ivf", "ivfpq", "opq_ivfpq", "hnswsq8"}
     if requires_training:
         train_vectors = select_training_vectors(vectors, args.train_size, args.train_seed)
         if len(train_vectors) == 0:
@@ -161,6 +187,14 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         index = faiss.IndexPreTransform(opq, base)
     elif args.index_type == "hnsw":
         index = faiss.IndexHNSWFlat(dim, args.hnsw_m)
+        index.metric_type = metric
+        index.hnsw.efConstruction = args.hnsw_efc
+    elif args.index_type == "hnswsq8":
+        if not hasattr(faiss, "IndexHNSWSQ"):
+            raise SystemExit("FAISS build lacks IndexHNSWSQ required for hnswsq8")
+        if not hasattr(faiss, "ScalarQuantizer"):
+            raise SystemExit("FAISS build lacks ScalarQuantizer support required for hnswsq8")
+        index = faiss.IndexHNSWSQ(dim, faiss.ScalarQuantizer.QT_8bit, args.hnsw_m)
         index.metric_type = metric
         index.hnsw.efConstruction = args.hnsw_efc
     else:  # pragma: no cover - guarded by argparse choices

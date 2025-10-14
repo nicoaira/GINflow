@@ -9,7 +9,7 @@ High-Level Workflow
 1. **Metadata extraction** (`extract_meta_map`): capture ID, sequence, and structure columns for downstream reporting.
 2. **Node embeddings** (`generate_node_embeddings`): call `ginfinity-generate-node-embeddings` (CPU/GPU) to obtain per-node vectors.
 3. **Window vectors** (`generate_window_vectors`): concatenate `k` consecutive node embeddings (after batching/merging `split_size` chunks), normalise, and split into database vs query windows based on the ID list.
-4. **FAISS index** (`build_faiss_index`): construct the configurable FAISS backend (Flat, IVF, IVFPQ, OPQ+IVFPQ, or HNSW) over database windows.
+4. **FAISS index** (`build_faiss_index`): construct the configurable FAISS backend (Flat, IVF, IVFPQ, OPQ+IVFPQ, HNSW, or HNSWSQ8) over database windows.
 5. **Seeding** (`query_faiss_index`): search query windows, keep neighbours ≥ `seed_similarity_threshold`, and record diagonals.
 6. **Diagonal clustering** (`cluster_seeds`): enforce the two-hit rule by keeping ≥ `cluster_min_seeds` within `cluster_span` nt while allowing small diagonal drift (`cluster_diagonal_tolerance`, `cluster_max_diagonal_span`).
 7. **Alignment** (`align_candidates`): gather clustered regions, sample background μ/σ, run banded Smith–Waterman with affine gaps, emit DP traces, and summarise alignment statistics plus sequence/structure snippets.
@@ -18,7 +18,7 @@ High-Level Workflow
 Key Modules (modules/)
 - `generate_node_embeddings`: ginfinity wrapper producing node-level embeddings.
 - `generate_window_vectors`: sliding-window concatenation and metadata emission.
-- `build_faiss_index`: new configurable FAISS index builder (Flat/IP/L2, IVF, IVFPQ, OPQ+IVFPQ, HNSW).
+- `build_faiss_index`: new configurable FAISS index builder (Flat/IP/L2, IVF, IVFPQ, OPQ+IVFPQ, HNSW, HNSWSQ8).
 - `query_faiss_index`: batch query over FAISS, cosine filtering, and seed TSV generation.
 - `cluster_seeds`: diagonal clustering with tolerance-controlled drift and span gating.
 - `align_candidates`: background sampling, banded SW, alignment metrics & TSV export.
@@ -31,8 +31,8 @@ Configuration & Parameters (nextflow.config)
 Important params (all overridable on the CLI):
 - **Input / metadata**: `--input`, `--queries`, `--outdir`, `--header`, `--split_size`, `--id_column`, `--structure_column_name`, `--sequence_column`, `--keep_cols`.
 - **Embeddings**: `--node_embeddings_tsv` (reuse cache), `--ginfinity_model_path`, `--num_workers`, `--inference_batch_size`, `--use_gpu` (ginfinity only).
-- **Window vectors**: `--window_size`, `--window_stride`.
-- **FAISS**: `--index_type`, `--faiss_metric`, `--faiss_nlist`, `--faiss_pq_m`, `--faiss_pq_bits`, `--faiss_opq_m`, `--faiss_hnsw_m`, `--faiss_hnsw_efc`, `--faiss_k`, `--faiss_nprobe`, `--faiss_use_gpu`.
+- **Window vectors**: `--window_size`, `--window_stride`, `--max_unpaired_fraction`.
+- **FAISS**: `--index_type`, `--faiss_metric`, `--faiss_nlist`, `--faiss_pq_m`, `--faiss_pq_bits`, `--faiss_opq_m`, `--faiss_hnsw_m`, `--faiss_hnsw_efc`, `--faiss_hnsw_efs`, `--faiss_exact_rescore`, `--faiss_k`, `--faiss_nprobe`, `--faiss_use_gpu`.
 - **Seeding & clustering**: `--seed_similarity_threshold`, `--cluster_span`, `--cluster_min_seeds`, `--cluster_diagonal_tolerance`, `--cluster_max_diagonal_span`.
 - **Alignment**: `--alignment_gamma`, `--band_width`, `--band_buffer`, `--band_max_width`, `--alignment_padding`, `--gap_open`, `--gap_extend`, `--xdrop`, `--score_min`, `--score_max`, `--background_samples`, `--random_seed`, `--top_n`, `--plot_scoring_matrices`.
 
