@@ -44,7 +44,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--vectors", required=True, help="Path to .npy array with database window vectors")
     parser.add_argument("--metadata", required=True, help="TSV mapping rows to transcript/position metadata")
     parser.add_argument("--index-type", default="flat_ip",
-                        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "hnswsq8"],
+                        choices=["flat_ip", "flat_l2", "ivf", "ivfpq", "opq_ivfpq", "hnsw", "hnswsq8", "hnswpq"],
                         help="FAISS index variant to construct")
     parser.add_argument("--metric", default="ip", choices=["ip", "l2"],
                         help="Distance metric for the index (inner-product or L2)")
@@ -160,7 +160,7 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         ensure_unit_norm(vectors)
 
     train_vectors = None
-    requires_training = args.index_type in {"ivf", "ivfpq", "opq_ivfpq", "hnswsq8"}
+    requires_training = args.index_type in {"ivf", "ivfpq", "opq_ivfpq", "hnswsq8", "hnswpq"}
     if requires_training:
         train_vectors = select_training_vectors(vectors, args.train_size, args.train_seed)
         if len(train_vectors) == 0:
@@ -195,6 +195,12 @@ def build_index(args: argparse.Namespace, vectors: np.ndarray) -> tuple[faiss.In
         if not hasattr(faiss, "ScalarQuantizer"):
             raise SystemExit("FAISS build lacks ScalarQuantizer support required for hnswsq8")
         index = faiss.IndexHNSWSQ(dim, faiss.ScalarQuantizer.QT_8bit, args.hnsw_m)
+        index.metric_type = metric
+        index.hnsw.efConstruction = args.hnsw_efc
+    elif args.index_type == "hnswpq":
+        if not hasattr(faiss, "IndexHNSWPQ"):
+            raise SystemExit("FAISS build lacks IndexHNSWPQ required for hnswpq")
+        index = faiss.IndexHNSWPQ(dim, args.pq_m, args.hnsw_m)
         index.metric_type = metric
         index.hnsw.efConstruction = args.hnsw_efc
     else:  # pragma: no cover - guarded by argparse choices

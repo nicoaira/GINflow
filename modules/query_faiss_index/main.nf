@@ -29,7 +29,7 @@ process QUERY_FAISS_INDEX {
     def gpuFlag = params.faiss_use_gpu ? '--use-gpu' : ''
     def nprobe = params.faiss_nprobe ? "--nprobe ${params.faiss_nprobe}" : ''
     def hnswEfs = params.faiss_hnsw_efs ? "--hnsw-ef-search ${params.faiss_hnsw_efs}" : ''
-    def rescoreDefault = params.index_type in ['hnsw', 'hnswsq8']
+    def rescoreDefault = params.index_type in ['hnsw', 'hnswsq8', 'hnswpq', 'ivfpq', 'opq_ivfpq']
     def rescoreEffective = params.faiss_exact_rescore != null ? params.faiss_exact_rescore : rescoreDefault
     def exactRescore = rescoreEffective ? '--exact-rescore' : ''
     """
