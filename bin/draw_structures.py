@@ -42,8 +42,8 @@ def parse_args():
     p.add_argument('--outdir',         required=True,  help='Output directory')
     p.add_argument('--id-column',      default='exon_id',
                        help='Name of the original ID column (without _1/_2).')
-    p.add_argument('--pair-type',      choices=['window', 'contig'], default='window',
-                       help='Type of pairs in TSV: "window" (window_start_1/window_end_1) or "contig" (contig_start_1/contig_end_1)')
+    p.add_argument('--pair-type',      choices=['window', 'contig', 'alignment'], default='window',
+                       help='Type of pairs in TSV: "window" (window_start_1/window_end_1), "contig" (contig_start_1/contig_end_1), or "alignment" (query_start/target_start from alignment output)')
     p.add_argument('--width',    type=float, default=500,  help='SVG width')
     p.add_argument('--height',   type=float, default=500,  help='SVG height')
     p.add_argument('--highlight-colour', default="#FFD700",
@@ -210,6 +210,11 @@ def process_pair(i, row):
         w1e_list = _parse_int_list(row.get('query_contig_end')     or row.get('contig_end_1')   or None)
         w2s_list = _parse_int_list(row.get('subject_contig_start') or row.get('contig_start_2') or None)
         w2e_list = _parse_int_list(row.get('subject_contig_end')   or row.get('contig_end_2')   or None)
+    elif ARGS.pair_type == 'alignment':
+        w1s_list = _parse_int_list(row.get('query_start') or None)
+        w1e_list = _parse_int_list(row.get('query_end') or None)
+        w2s_list = _parse_int_list(row.get('target_start') or None)
+        w2e_list = _parse_int_list(row.get('target_end') or None)
     else:  # window
         w1s_list = _parse_int_list(row.get('query_window_start')   or row.get('window_start_1') or None)
         w1e_list = _parse_int_list(row.get('query_window_end')     or row.get('window_end_1')   or None)

@@ -1,12 +1,12 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-process GENERATE_AGGREGATED_REPORT {
-    tag "gen_agg_report_${query_id}"
+process GENERATE_REPORT {
+    tag "generate_report"
 
     label 'lightweight'
 
-    publishDir "${params.outdir}/queries_results/${query_id}", mode: 'copy'
+    publishDir "${params.outdir}/reports", mode: 'copy'
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -14,17 +14,17 @@ process GENERATE_AGGREGATED_REPORT {
         'nicoaira/ginflow-generate-report:latest' }"
 
     input:
-    tuple val(query_id), path(top_contigs_tsv), path(contig_individual)
+    tuple path(alignments_tsv), path(alignment_individual)
 
     output:
-    path "pairs_contigs_report.html"
+    path "alignments_report.html"
 
     script:
     """
     python3 ${baseDir}/bin/generate_report.py \
-      --pairs ${top_contigs_tsv} \
-      --svg-dir ${contig_individual} \
+      --pairs ${alignments_tsv} \
+      --svg-dir ${alignment_individual} \
       --id-column ${params.id_column} \
-      --output pairs_contigs_report.html
+      --output alignments_report.html
     """
 }

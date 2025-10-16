@@ -61,7 +61,10 @@
     "score_min": {"type": "number", "description": "Lower clamp for per-position scores"},
     "score_max": {"type": "number", "description": "Upper clamp for per-position scores"},
     "top_n": {"type": "integer", "minimum": 1, "description": "Maximum alignments reported"},
-    "plot_scoring_matrices": {"type": "boolean", "description": "Plot banded scoring matrices for the reported alignments"}
+    "plot_scoring_matrices": {"type": "boolean", "description": "Plot banded scoring matrices for the reported alignments"},
+    
+    "enable_drawings": {"type": "boolean", "description": "Generate SVG structure visualizations for alignments"},
+    "enable_report": {"type": "boolean", "description": "Generate HTML report with embedded visualizations"}
   },
   "required": ["input", "queries"]
 }

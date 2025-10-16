@@ -6,7 +6,7 @@ process GENERATE_NODE_EMBEDDINGS {
 
     label params.use_gpu ? 'gpu' : 'high_cpu'
 
-    maxForks = 2
+    maxForks = 5
 
     input:
     tuple val(batch_id), path(input_tsv)

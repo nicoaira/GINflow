@@ -10,6 +10,8 @@ include { BUILD_FAISS_INDEX }         from '../modules/build_faiss_index/main'
 include { QUERY_FAISS_INDEX }         from '../modules/query_faiss_index/main'
 include { CLUSTER_SEEDS }             from '../modules/cluster_seeds/main'
 include { ALIGN_CANDIDATES }          from '../modules/align_candidates/main'
+include { DRAW_ALIGNMENT_SVGS }       from '../modules/draw_alignment_svgs/main'
+include { GENERATE_REPORT }           from '../modules/generate_report/main'
 
 workflow rna_similarity {
     if (!params.input) {
@@ -129,10 +131,23 @@ workflow rna_similarity {
     def clusters = CLUSTER_SEEDS(seeds.seeds)
 
     // Align clustered candidates and produce final report TSV
-    ALIGN_CANDIDATES(
+    def alignments = ALIGN_CANDIDATES(
         clusters.cluster_members,
         clusters.clusters,
         embeddings_for_align,
         meta_ch
     )
+
+    // Conditionally draw SVG visualizations and generate HTML report
+    if (params.enable_drawings || params.enable_report) {
+        // Draw SVG visualizations for alignments
+        def alignment_svgs = DRAW_ALIGNMENT_SVGS(alignments.alignments)
+
+        // Generate HTML report with embedded SVG visualizations
+        if (params.enable_report) {
+            GENERATE_REPORT(
+                alignments.alignments.combine(alignment_svgs.alignment_individual)
+            )
+        }
+    }
 }
