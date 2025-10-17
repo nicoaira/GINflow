@@ -1,9 +1,0 @@
-name: ginfinity-env
-channels:
-  - conda-forge
-dependencies:
-  - python>=3.8
-  - pip
-  - git
-  - pip:
-    - git+https://github.com/nicoaira/GINFINITY.git@v0.2.0#egg=ginfinity

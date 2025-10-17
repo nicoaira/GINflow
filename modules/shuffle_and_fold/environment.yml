@@ -1,8 +1,0 @@
-name: shuffle_and_fold
-channels:
-  - conda-forge
-  - bioconda
-dependencies:
-  - python=3.10
-  - pandas
-  - viennarna

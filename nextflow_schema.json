@@ -64,7 +64,8 @@
     "plot_scoring_matrices": {"type": "boolean", "description": "Plot banded scoring matrices for the reported alignments"},
     
     "enable_drawings": {"type": "boolean", "description": "Generate SVG structure visualizations for alignments"},
-    "enable_report": {"type": "boolean", "description": "Generate HTML report with embedded visualizations"}
+    "enable_report": {"type": "boolean", "description": "Generate HTML report with embedded visualizations"},
+    "drawing_backend": {"type": "string", "enum": ["rnartistcore", "r4rna"], "description": "Visualization backend for drawing RNA structures"}    
   },
   "required": ["input", "queries"]
 }
