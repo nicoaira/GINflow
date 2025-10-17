@@ -16,7 +16,16 @@ HTML_TEMPLATE = """<!doctype html>
   <style>
       body{ font-family: sans-serif; margin:1rem;}
       table.dataTable tbody td{ vertical-align:top; }
-      .svg-cell{ min-width:260px; }
+      .svg-cell{ 
+          min-width:676px; 
+          max-width:676px;
+          text-align: center;
+          vertical-align: middle;
+      }
+      .svg-cell img {
+          display: block;
+          margin: auto;
+      }
       /* Monospace for sequence columns */
       {% for col in sequence_cols %}td.{{col|replace(' ', '_')}}{ font-family: monospace; }
       {% endfor %}
@@ -64,18 +73,27 @@ $(document).ready(function(){
 </html>
 """
 
-def inline_svg(path: pathlib.Path) -> str:
+def inline_svg(path: pathlib.Path, rna_length: int, max_svg_width: int = 700) -> str:
     try:
         text = path.read_text()
         if text.lstrip().startswith('<?xml'):
             text = text.split('?>',1)[1]
         b64 = base64.b64encode(text.encode('utf-8')).decode('ascii')
-        return f'<img src="data:image/svg+xml;base64,{b64}" width="250"/>'
+        
+        # Calculate proportional width based on RNA length
+        # Up to max_svg_width bases: proportional (1 base = 1 pixel, min 100px)
+        # Above max_svg_width bases: fixed at max_svg_width (max width)
+        if rna_length <= max_svg_width:
+            width = max(100, rna_length)  # Minimum 100px for very short RNAs
+        else:
+            width = max_svg_width  # Maximum width for longer RNAs
+        
+        return f'<img src="data:image/svg+xml;base64,{b64}" width="{width}"/>'
     except Exception:
         return f'<span style="color:red">Missing {path.name}</span>'
 
 
-def make_report(pairs_tsv, svg_dir, output_html, id_column):
+def make_report(pairs_tsv, svg_dir, output_html, id_column, max_svg_width=700):
     df = pd.read_csv(pairs_tsv, sep='\t')
     svg_dir = pathlib.Path(svg_dir)
     
@@ -131,11 +149,26 @@ def make_report(pairs_tsv, svg_dir, output_html, id_column):
                row_data.get('id2') or 
                f"RNA_{i}_2")
 
-        # Inlined SVGs
+        # Get RNA lengths from sequence columns for proportional sizing
+        seq1_length = 0
+        seq2_length = 0
+        
+        # Try to find sequence length from various possible column names
+        for seq_col in ['query_sequence', 'sequence_1', 'sequence1']:
+            if seq_col in rec and pd.notna(rec[seq_col]):
+                seq1_length = len(str(rec[seq_col]).strip())
+                break
+        
+        for seq_col in ['target_sequence', 'subject_sequence', 'sequence_2', 'sequence2']:
+            if seq_col in rec and pd.notna(rec[seq_col]):
+                seq2_length = len(str(rec[seq_col]).strip())
+                break
+
+        # Inlined SVGs with proportional sizing
         safe1 = ''.join(c if c.isalnum() else '_' for c in f"{id1}_{i}")
         safe2 = ''.join(c if c.isalnum() else '_' for c in f"{id2}_{i}")
-        row_data["__svg1"] = inline_svg(svg_dir / f"{safe1}.svg")
-        row_data["__svg2"] = inline_svg(svg_dir / f"{safe2}.svg")
+        row_data["__svg1"] = inline_svg(svg_dir / f"{safe1}.svg", seq1_length, max_svg_width)
+        row_data["__svg2"] = inline_svg(svg_dir / f"{safe2}.svg", seq2_length, max_svg_width)
         
         rows.append(row_data)
     
@@ -160,5 +193,7 @@ if __name__ == "__main__":
                         help='Output HTML path')
     parser.add_argument('--id-column', default='exon_id',
                         help='Base name of the original ID column (without _1/_2)')
+    parser.add_argument('--max-svg-width', type=int, default=700,
+                        help='Maximum width for SVG images in pixels (default: 700)')
     args = parser.parse_args()
-    make_report(args.pairs, args.svg_dir, args.output, args.id_column)
+    make_report(args.pairs, args.svg_dir, args.output, args.id_column, args.max_svg_width)
