@@ -1,7 +1,7 @@
 FROM continuumio/miniconda3:latest
 
 # Copy environment file
-COPY modules/generate_aggregated_report/environment.yml /tmp/environment.yml
+COPY modules/generate_report/environment.yml /tmp/environment.yml
 
 # Create conda environment
 RUN conda env create -f /tmp/environment.yml && \
