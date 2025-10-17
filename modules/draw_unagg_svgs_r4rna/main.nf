@@ -1,8 +1,8 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-process DRAW_UNAGG_SVGS {
-    tag "draw_window_svgs_${query_id}"
+process DRAW_UNAGG_SVGS_R4RNA {
+    tag "draw_window_svgs_r4rna_${query_id}"
 
     label 'high_cpu'
 
@@ -10,8 +10,8 @@ process DRAW_UNAGG_SVGS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginflow-draw-structures:latest' :
-        'docker.io/nicoaira/ginflow-draw-structures:latest' }"
+        'oras://quay.io/nicoaira/ginflow-draw-structures-r4rna:latest' :
+        'docker.io/nicoaira/ginflow-draw-structures-r4rna:latest' }"
 
     input:
     tuple val(query_id), path(top_windows_tsv)
@@ -22,11 +22,12 @@ process DRAW_UNAGG_SVGS {
     script:
     """
     mkdir -p individual_svgs
-    python3 ${baseDir}/bin/draw_structures.py \
-      --tsv ${top_windows_tsv} --outdir individual_svgs \
+    python3 ${baseDir}/bin/draw_structures_r4rna.py \
+      --tsv ${top_windows_tsv} \
+      --outdir individual_svgs \
       --pair-type "window" \
       --id-column ${params.id_column} \
-      --width 500 --height 500 --highlight-colour "#00FF99" \
+      --highlight-colour "#FF0000" \
       --num-workers ${task.cpus}
     """
 }

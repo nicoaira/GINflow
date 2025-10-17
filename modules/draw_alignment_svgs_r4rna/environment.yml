@@ -1,0 +1,10 @@
+name: draw_alignment_svgs_r4rna
+channels:
+  - conda-forge
+  - bioconda
+  - r
+dependencies:
+  - python>=3.8
+  - pandas>=2.2,<3.0
+  - r-base>=4.3
+  - r-r4rna

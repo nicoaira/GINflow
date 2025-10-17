@@ -57,7 +57,8 @@ def parse_args():
     return p.parse_args()
 
 def make_highlight(start, end, colour):
-    if not start or not end:
+    # Check for None explicitly, allow 0 as valid coordinate
+    if start is None or end is None:
         return ""
     return f'''        color {{
             value = "{colour}"
@@ -69,6 +70,7 @@ def _parse_int_list(v):
     """Parse an integer or a comma/semicolon-separated list of integers.
     Returns a list of ints. Empty / None -> [].
     Accepts strings like "12,34" or "12; 34" or single ints.
+    Handles 0 as a valid coordinate (0-based indexing).
     """
     if v is None:
         return []
@@ -76,11 +78,11 @@ def _parse_int_list(v):
     if isinstance(v, (int, float)):
         try:
             iv = int(v)
-            return [iv] if iv != 0 else []
+            return [iv]  # 0 is now a valid coordinate
         except Exception:
             return []
     s = str(v).strip()
-    if s == "" or s == "0":
+    if s == "":
         return []
     # normalize separators
     s = s.replace(";", ",").replace("|", ",")
@@ -96,13 +98,14 @@ def _parse_int_list(v):
 
 def make_highlight_blocks(starts_list, ends_list, colour):
     """Build a combined highlight block for multiple ranges.
-    Pairs entries by index; ignores incomplete or zero ranges.
+    Pairs entries by index; ignores incomplete ranges (but allows 0 as valid coordinate).
     """
     blocks = []
     n = min(len(starts_list), len(ends_list))
     for i in range(n):
         s, e = starts_list[i], ends_list[i]
-        if s and e:
+        # Check for None explicitly, allow 0 as valid coordinate
+        if s is not None and e is not None:
             blocks.append(make_highlight(s, e, colour))
     return "".join(blocks)
 

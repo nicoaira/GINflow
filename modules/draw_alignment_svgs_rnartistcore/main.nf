@@ -1,8 +1,8 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-process DRAW_ALIGNMENT_SVGS {
-    tag "draw_alignment_svgs"
+process DRAW_ALIGNMENT_SVGS_RNARTISTCORE {
+    tag "draw_alignment_svgs_rnartistcore"
 
     label 'high_cpu'
 
@@ -10,8 +10,8 @@ process DRAW_ALIGNMENT_SVGS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'oras://quay.io/nicoaira/ginflow-draw-structures:latest' :
-        'docker.io/nicoaira/ginflow-draw-structures:latest' }"
+        'oras://quay.io/nicoaira/ginflow-draw-structures-rnartistcore:latest' :
+        'docker.io/nicoaira/ginflow-draw-structures-rnartistcore:latest' }"
 
     input:
     path alignments_tsv

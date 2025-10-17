@@ -1,17 +1,18 @@
 #!/usr/bin/env nextflow
 nextflow.enable.dsl=2
 
-include { EXTRACT_META_MAP }          from '../modules/extract_meta_map/main'
-include { GENERATE_NODE_EMBEDDINGS }  from '../modules/generate_node_embeddings/main'
-include { GENERATE_WINDOW_VECTORS }   from '../modules/generate_window_vectors/main'
-include { MERGE_EMBEDDING_CHUNKS }    from '../modules/merge_embedding_chunks/main'
-include { MERGE_WINDOW_CHUNKS }       from '../modules/merge_window_chunks/main'
-include { BUILD_FAISS_INDEX }         from '../modules/build_faiss_index/main'
-include { QUERY_FAISS_INDEX }         from '../modules/query_faiss_index/main'
-include { CLUSTER_SEEDS }             from '../modules/cluster_seeds/main'
-include { ALIGN_CANDIDATES }          from '../modules/align_candidates/main'
-include { DRAW_ALIGNMENT_SVGS }       from '../modules/draw_alignment_svgs/main'
-include { GENERATE_REPORT }           from '../modules/generate_report/main'
+include { EXTRACT_META_MAP }                  from '../modules/extract_meta_map/main'
+include { GENERATE_NODE_EMBEDDINGS }          from '../modules/generate_node_embeddings/main'
+include { GENERATE_WINDOW_VECTORS }           from '../modules/generate_window_vectors/main'
+include { MERGE_EMBEDDING_CHUNKS }            from '../modules/merge_embedding_chunks/main'
+include { MERGE_WINDOW_CHUNKS }               from '../modules/merge_window_chunks/main'
+include { BUILD_FAISS_INDEX }                 from '../modules/build_faiss_index/main'
+include { QUERY_FAISS_INDEX }                 from '../modules/query_faiss_index/main'
+include { CLUSTER_SEEDS }                     from '../modules/cluster_seeds/main'
+include { ALIGN_CANDIDATES }                  from '../modules/align_candidates/main'
+include { DRAW_ALIGNMENT_SVGS_RNARTISTCORE }  from '../modules/draw_alignment_svgs_rnartistcore/main'
+include { DRAW_ALIGNMENT_SVGS_R4RNA }         from '../modules/draw_alignment_svgs_r4rna/main'
+include { GENERATE_REPORT }                   from '../modules/generate_report/main'
 
 workflow rna_similarity {
     if (!params.input) {
@@ -140,8 +141,14 @@ workflow rna_similarity {
 
     // Conditionally draw SVG visualizations and generate HTML report
     if (params.enable_drawings || params.enable_report) {
-        // Draw SVG visualizations for alignments
-        def alignment_svgs = DRAW_ALIGNMENT_SVGS(alignments.alignments)
+        // Choose drawing backend based on parameter
+        def alignment_svgs
+        if (params.drawing_backend == 'r4rna') {
+            alignment_svgs = DRAW_ALIGNMENT_SVGS_R4RNA(alignments.alignments)
+        } else {
+            // Default to rnartistcore
+            alignment_svgs = DRAW_ALIGNMENT_SVGS_RNARTISTCORE(alignments.alignments)
+        }
 
         // Generate HTML report with embedded SVG visualizations
         if (params.enable_report) {
