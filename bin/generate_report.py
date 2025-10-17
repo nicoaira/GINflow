@@ -79,6 +79,20 @@ def make_report(pairs_tsv, svg_dir, output_html, id_column):
     df = pd.read_csv(pairs_tsv, sep='\t')
     svg_dir = pathlib.Path(svg_dir)
     
+    # Remove unwanted columns
+    columns_to_remove = [
+        'query_structure_region', 'target_structure_region',
+        'aligned_query_structure', 'aligned_target_structure',
+        'alignment_mask', 'alignment_content',
+        'diagonal_median', 'diagonal_min', 'diagonal_max',
+        'diagonal_span', 'band_width'
+    ]
+    df = df.drop(columns=[col for col in columns_to_remove if col in df.columns], errors='ignore')
+    
+    # Round score to 1 decimal place
+    if 'score' in df.columns:
+        df['score'] = df['score'].round(1)
+    
     # Auto-detect sequence columns (case-insensitive)
     sequence_cols = [col for col in df.columns if 'sequence' in col.lower()]
     
