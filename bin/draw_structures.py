@@ -176,11 +176,11 @@ def process_pair(i, row):
     global ID_COLUMN
     # Prefer new query_/subject_ schema, fall back to _1/_2
     id1 = row.get('query_id')   or row.get(f'{ID_COLUMN}_1') or row.get('id1') or f"RNA_{i}_1"
-    id2 = row.get('subject_id') or row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
+    id2 = row.get('target_id') or row.get('subject_id') or row.get(f'{ID_COLUMN}_2') or row.get('id2') or f"RNA_{i}_2"
 
     # Sequence and structure fields (prefer query_/subject_, fallback to _1/_2)
     seq1 = row.get('query_sequence')   or row.get('sequence_1') or row.get('seq1') or ""
-    seq2 = row.get('subject_sequence') or row.get('sequence_2') or row.get('seq2') or ""
+    seq2 = row.get('target_sequence') or row.get('subject_sequence') or row.get('sequence_2') or row.get('seq2') or ""
     dot1 = (
         row.get('query_secondary_structure') or
         row.get('query_structure') or
@@ -190,6 +190,7 @@ def process_pair(i, row):
         row.get('structure1') or "."*len(seq1)
     )
     dot2 = (
+        row.get('target_structure') or
         row.get('subject_secondary_structure') or
         row.get('subject_structure') or
         row.get('subject_rnafold_dotbracket') or
@@ -202,6 +203,8 @@ def process_pair(i, row):
     seq2 = seq2.replace('T','U').replace('t','u')
 
     if not (validate(seq1,dot1) and validate(seq2,dot2)):
+        if ARGS.debug:
+            print(f"[warning] Validation failed for row {i}: id1={id1}, id2={id2}, len(seq1)={len(seq1)}, len(dot1)={len(dot1)}, len(seq2)={len(seq2)}, len(dot2)={len(dot2)}", file=sys.stderr)
         return
 
     # Use the correct column names based on pair type. Accept multiple comma-separated ranges.
@@ -254,16 +257,27 @@ def process_pair(i, row):
     if ARGS.batch_size > 1:
         return
 
-    # single-run execution
+    # single-run execution with proper error handling
     if ARGS.debug: print(f"[rnartist] {n1}")
-    subprocess.run(['rnartistcore', os.path.join(TMPDIR,f"{n1}.kts")])
+    result1 = subprocess.run(['rnartistcore', os.path.join(TMPDIR,f"{n1}.kts")], 
+                            capture_output=True, text=True, cwd=TMPDIR)
+    if result1.returncode != 0:
+        print(f"[error] rnartistcore failed for {n1}: {result1.stderr}", file=sys.stderr)
+        with LOG_LOCK: LOG_FH.write(f"{n1}\trnartistcore error: {result1.stderr}\n")
+    
     if ARGS.debug: print(f"[rnartist] {n2}")
-    subprocess.run(['rnartistcore', os.path.join(TMPDIR,f"{n2}.kts")])
+    result2 = subprocess.run(['rnartistcore', os.path.join(TMPDIR,f"{n2}.kts")], 
+                            capture_output=True, text=True, cwd=TMPDIR)
+    if result2.returncode != 0:
+        print(f"[error] rnartistcore failed for {n2}: {result2.stderr}", file=sys.stderr)
+        with LOG_LOCK: LOG_FH.write(f"{n2}\trnartistcore error: {result2.stderr}\n")
 
     svg1 = os.path.join(TMPDIR, f"{n1}.svg")
     svg2 = os.path.join(TMPDIR, f"{n2}.svg")
     if not (os.path.exists(svg1) and os.path.exists(svg2)):
         with LOG_LOCK: LOG_FH.write(f"{n1}\n{n2}\n")
+        if ARGS.debug:
+            print(f"[warning] SVG files not found: {svg1}={os.path.exists(svg1)}, {svg2}={os.path.exists(svg2)}", file=sys.stderr)
         return
 
     strip_reactivity_legend(svg1)
@@ -324,11 +338,23 @@ if __name__ == '__main__':
                         lines = lines[1:]
                     fh.write('\n'.join(lines) + '\n\n')
             batch_kts_list.append(batch_kts)
-        # run all batch scripts in parallel
+        
+        # run all batch scripts in parallel with error handling
         if ARGS.debug: print(f"[rnartist batches] running {len(batch_kts_list)} scripts with {ARGS.num_workers} workers")
+        
+        def run_batch_kts(kts_path):
+            result = subprocess.run(['rnartistcore', kts_path], 
+                                  capture_output=True, text=True, cwd=TMPDIR)
+            if result.returncode != 0:
+                print(f"[error] rnartistcore batch failed for {kts_path}: {result.stderr}", file=sys.stderr)
+            return result
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=ARGS.num_workers) as exe:
-            futures = [exe.submit(subprocess.run, ['rnartistcore', kts]) for kts in batch_kts_list]
-            for _ in concurrent.futures.as_completed(futures): pass
+            futures = [exe.submit(run_batch_kts, kts) for kts in batch_kts_list]
+            for future in concurrent.futures.as_completed(futures):
+                result = future.result()
+                if ARGS.debug and result.stdout:
+                    print(f"[batch output] {result.stdout}")
         
         # after batch generation, copy individual SVGs (skip rnartistcore calls)
         for i,row in enumerate(rows,1):
@@ -346,3 +372,7 @@ if __name__ == '__main__':
                 os.makedirs(ARGS.outdir, exist_ok=True)
                 shutil.copy(svg1, os.path.join(ARGS.outdir, f"{n1}.svg"))
                 shutil.copy(svg2, os.path.join(ARGS.outdir, f"{n2}.svg"))
+            else:
+                if ARGS.debug:
+                    print(f"[warning] Batch SVG files not found: {svg1}={os.path.exists(svg1)}, {svg2}={os.path.exists(svg2)}", file=sys.stderr)
+                with LOG_LOCK: LOG_FH.write(f"{n1}\n{n2}\n")
