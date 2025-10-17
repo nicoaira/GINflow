@@ -79,13 +79,6 @@ def make_report(pairs_tsv, svg_dir, output_html, id_column):
     df = pd.read_csv(pairs_tsv, sep='\t')
     svg_dir = pathlib.Path(svg_dir)
     
-    # Dynamic ID columns – prefer new query_/subject_ naming if present
-    if 'query_id' in df.columns and 'subject_id' in df.columns:
-        id1_col, id2_col = 'query_id', 'subject_id'
-    else:
-        id1_col = f"{id_column}_1"
-        id2_col = f"{id_column}_2"
-
     # Auto-detect sequence columns (case-insensitive)
     sequence_cols = [col for col in df.columns if 'sequence' in col.lower()]
     
@@ -110,9 +103,19 @@ def make_report(pairs_tsv, svg_dir, output_html, id_column):
                 processed = '<br>'.join(chunks)
             row_data[col] = processed
         
-        # Extract dynamic IDs
-        id1 = row_data.get(id1_col)
-        id2 = row_data.get(id2_col)
+        # Extract dynamic IDs with the same priority as draw_structures.py
+        # Priority: query_id → {id_column}_1 → id1 → fallback
+        id1 = (row_data.get('query_id') or 
+               row_data.get(f'{id_column}_1') or 
+               row_data.get('id1') or 
+               f"RNA_{i}_1")
+        
+        # Priority: target_id → subject_id → {id_column}_2 → id2 → fallback
+        id2 = (row_data.get('target_id') or 
+               row_data.get('subject_id') or 
+               row_data.get(f'{id_column}_2') or 
+               row_data.get('id2') or 
+               f"RNA_{i}_2")
 
         # Inlined SVGs
         safe1 = ''.join(c if c.isalnum() else '_' for c in f"{id1}_{i}")
