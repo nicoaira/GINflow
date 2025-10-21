@@ -9,6 +9,9 @@ process MERGE_EMBEDDING_CHUNKS {
     publishDir "${params.outdir}", mode: 'copy', pattern: '*'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-merge-embedding-chunks:latest' :
+        'docker.io/nicoaira/ginflow-merge-embedding-chunks:latest' }"
 
     input:
     val chunk_records

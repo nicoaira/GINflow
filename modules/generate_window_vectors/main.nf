@@ -7,6 +7,9 @@ process GENERATE_WINDOW_VECTORS {
     label 'high_cpu'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-generate-window-vectors:latest' :
+        'docker.io/nicoaira/ginflow-generate-window-vectors:latest' }"
 
     input:
     tuple val(chunk_id), path(node_embeddings), path(queries)

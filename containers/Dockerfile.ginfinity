@@ -1,25 +1,22 @@
 FROM continuumio/miniconda3:latest
-
-# Optional: ensure bash for conda activation patterns (not strictly needed here)
 SHELL ["/bin/bash", "-lc"]
 
-# --- Parameters you can set at build time ---
-# Use a commit SHA, tag, or branch name. Example: --build-arg GINFINITY_REF=main
 ARG GINFINITY_REF=main
-# Optional cache buster if you ever want to force rebuilds without changing REF
 ARG CACHE_BUST=1
 
-# Create a new conda environment named 'ginfinity-env' with python 3.10
+# Create a new conda environment
 RUN conda create -y -n ginfinity-env python=3.10 && conda clean -afy
+
+# Install a C++ compiler. This is required by the forgi package.
+RUN conda run -n ginfinity-env conda install -y -c conda-forge gxx_linux-64
 
 # Activate environment by default
 ENV PATH=/opt/conda/envs/ginfinity-env/bin:$PATH
 
-# Install ginfinity from Git (pin to the chosen ref). 
-# -U to upgrade if already present, --no-cache-dir to keep image slim.
+# Install ginfinity from Git
 RUN conda run -n ginfinity-env pip install -U --no-cache-dir \
     "ginfinity @ git+https://github.com/nicoaira/GINFINITY.git@${GINFINITY_REF}#egg=ginfinity" \
-    -f https://data.pyg.org/whl/torch-2.6.0+cu126.html
+    -f https://data.pyg.org/whl/torch-2.8.0+cu129.html
 
 # Set working directory
 WORKDIR /app

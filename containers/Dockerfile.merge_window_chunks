@@ -1,14 +1,15 @@
 FROM continuumio/miniconda3:latest
 
 # Copy environment file
-COPY modules/generate_windows/environment.yml /tmp/environment.yml
+COPY modules/merge_window_chunks/environment.yml /tmp/environment.yml
 
 # Create conda environment
 RUN conda env create -f /tmp/environment.yml && \
     conda clean -afy
 
 # Activate environment by default
-ENV PATH /opt/conda/envs/generate_windows/bin:$PATH
+ENV PATH=/opt/conda/envs/merge_window_chunks/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/conda/envs/merge_window_chunks/lib
 
 # Set working directory
 WORKDIR /app

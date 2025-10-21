@@ -1,14 +1,15 @@
 FROM continuumio/miniconda3:latest
 
 # Copy environment file
-COPY modules/generate_report/environment.yml /tmp/environment.yml
+COPY modules/align_candidates/environment.yml /tmp/environment.yml
 
 # Create conda environment
 RUN conda env create -f /tmp/environment.yml && \
     conda clean -afy
 
 # Activate environment by default
-ENV PATH=/opt/conda/envs/generate_aggregated_report/bin:$PATH
+ENV PATH=/opt/conda/envs/align_candidates/bin:$PATH
+ENV LD_LIBRARY_PATH=/opt/conda/envs/align_candidates/lib
 
 # Set working directory
 WORKDIR /app

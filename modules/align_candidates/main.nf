@@ -9,6 +9,9 @@ process ALIGN_CANDIDATES {
     publishDir "${params.outdir}", mode: 'copy', pattern: 'alignment*'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-align-candidates:latest' :
+        'docker.io/nicoaira/ginflow-align-candidates:latest' }"
 
     input:
     path cluster_members

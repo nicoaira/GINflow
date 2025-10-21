@@ -9,6 +9,9 @@ process CLUSTER_SEEDS {
     publishDir "${params.outdir}", mode: 'copy', pattern: 'seeds*'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-cluster-seeds:latest' :
+        'docker.io/nicoaira/ginflow-cluster-seeds:latest' }"
 
     input:
     path seeds

@@ -8,6 +8,11 @@ process GENERATE_NODE_EMBEDDINGS {
 
     maxForks = 5
 
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginfinity:latest' :
+        'docker.io/nicoaira/ginfinity:latest' }"
+
     input:
     tuple val(batch_id), path(input_tsv)
 

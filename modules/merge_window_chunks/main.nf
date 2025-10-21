@@ -7,6 +7,9 @@ process MERGE_WINDOW_CHUNKS {
     label 'high_cpu'
 
     conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'oras://quay.io/nicoaira/ginflow-merge-window-chunks:latest' :
+        'docker.io/nicoaira/ginflow-merge-window-chunks:latest' }"
 
     input:
     val chunk_records
