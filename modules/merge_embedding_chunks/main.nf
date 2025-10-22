@@ -14,18 +14,14 @@ process MERGE_EMBEDDING_CHUNKS {
         'docker.io/nicoaira/ginflow-merge-embedding-chunks:latest' }"
 
     input:
-    val chunk_records
+    tuple val(chunk_id), path(embedding_file) from chunk_records.collect()
 
     output:
     path 'node_embeddings.tsv', emit: node_embeddings
     path 'embedding_chunks.tsv', emit: embedding_manifest
 
     script:
-    if (!chunk_records) {
-        error 'No embedding chunks provided; cannot merge embeddings'
-    }
-    def manifestLines = chunk_records.collect { item -> "${item[0]}\t${item[1]}" }
-    def manifestContent = manifestLines.join('\n')
+    def manifestContent = chunk_id.zip(embedding_file).collect{ it.join('\t') }.join('\n')
     """
     cat <<'EOF' > embedding_chunks.tsv
 ${manifestContent}
