@@ -1,0 +1,22 @@
+FROM continuumio/miniconda3:latest
+
+# Copy environment file
+COPY modules/fit_gumbel/environment.yml /tmp/environment.yml
+
+# Create conda environment
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy
+
+# Activate environment by default
+ENV PATH=/opt/conda/envs/fit_gumbel/bin:$PATH
+
+# Set working directory
+WORKDIR /app
+
+# Copy pipeline code
+COPY bin/fit_gumbel.py .
+
+# Make script executable
+RUN chmod +x fit_gumbel.py
+
+ENTRYPOINT ["fit_gumbel.py"]

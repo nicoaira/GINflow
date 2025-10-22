@@ -19,6 +19,7 @@ GINflow is a Nextflow pipeline for BLAST-style search over RNA secondary structu
 - **Deterministic seeding** via cosine similarity thresholds and drift-aware diagonal clustering.
 - **Banded Smith–Waterman** with affine gaps, X-drop termination, and user-tunable scoring clamps.
 - **Background-aware scoring** using μ/σ derived from random node pairs.
+- **Automatic E-value calculation** to assess statistical significance, similar to BLAST.
 - **GPU-ready embeddings**through ginfinity profiles, while downstream steps run efficiently on CPUs.
 - **Single TSV output** that captures the top alignments alongside sequence/structure context for downstream analysis or custom reporting.
 
@@ -34,7 +35,8 @@ graph TD
     E --> F
     F --> G[Diagonal clustering]
     G --> H[Banded SW alignment]
-    H --> I[Alignment TSV]
+    H --> J[E-value calculation]
+    J --> I[Alignment TSV]
     B --> H
 ```
 
@@ -47,7 +49,8 @@ graph TD
 5. **Seeding** – nearest neighbours are fetched for each query window (`--faiss_k`) and filtered by `--seed_similarity_threshold` to minimise noise.
 6. **Clustering** – seeds are grouped when ≥2 occur within `--cluster_span` nt and their diagonals remain within the configured tolerance (`--cluster_diagonal_tolerance`, `--cluster_max_diagonal_span`).
 7. **Alignment** – each cluster is expanded with `--alignment_padding`, scored with γ-scaled cosine similarities, and aligned with a band that adapts to the diagonal spread (`--band_width`, `--band_buffer`, `--band_max_width`) plus affine gaps (`--gap_open`, `--gap_extend`) and X-drop `--xdrop`. The TSV now includes explicit gapped alignment strings alongside DP traces for downstream inspection.
-8. **Output** – the `alignments.tsv` file (also copied to `outdir/`) lists the top `--top_n` HSPs sorted by score, including coordinates, average cosine similarity, gap stats, and extracted sequence/structure regions.
+8. **E-value Calculation** – If `--calculate_evalue` is enabled, the pipeline automatically fits a Gumbel distribution to the scores of random background alignments to determine statistical parameters. These are used to calculate an E-value for each alignment, providing an estimate of its significance.
+9. **Output** – the `alignments.tsv` file (also copied to `outdir/`) lists the top `--top_n` HSPs sorted by score, including coordinates, E-values, average cosine similarity, gap stats, and extracted sequence/structure regions.
 
 ## Installation & Quick Start
 
@@ -152,6 +155,7 @@ nextflow run main.nf -profile slurm,singularity,smoke
 | `--band_max_width` | `0` | Maximum band width after adaptation (0 = unlimited) |
 | `--gap_open` / `--gap_extend` | `12` / `2` | Affine gap penalties |
 | `--top_n` | `50` | Alignments retained in the final TSV |
+| `--calculate_evalue` | `true` | Calculate E-values for alignments |
 
 See [`nextflow.config`](nextflow.config) for additional tuning options (IVF/IVFPQ settings, padding, X-drop, background sampling, etc.).
 
@@ -162,7 +166,7 @@ See [`nextflow.config`](nextflow.config) for additional tuning options (IVF/IVFP
 - **`outdir/faiss_index/`** – FAISS artefacts and stats.
 - **`outdir/seeds.tsv`** – retained seed matches (for debugging or downstream analysis).
 - **`outdir/clusters.tsv` & `cluster_members.tsv`** – clustered seeds with diagonal drift statistics.
-- **`outdir/alignments.tsv`** – top alignments with sequences/structures, gapped alignment strings (`aligned_*` columns), and alignment metrics.
+- **`outdir/alignments.tsv`** – top alignments with sequences/structures, gapped alignment strings (`aligned_*` columns), E-values, and alignment metrics.
 - **`outdir/alignment_dp.jsonl`** – JSON Lines file containing the DP trace for each reported alignment.
 - **`outdir/alignment_pairs.txt`** – BLAST-style text dump of the aligned sequences with gap characters.
 - **`outdir/reports/`** – Nextflow trace/report/timeline/dag diagnostics.

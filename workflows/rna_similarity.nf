@@ -10,6 +10,8 @@ include { BUILD_FAISS_INDEX }                 from '../modules/build_faiss_index
 include { QUERY_FAISS_INDEX }                 from '../modules/query_faiss_index/main'
 include { CLUSTER_SEEDS }                     from '../modules/cluster_seeds/main'
 include { ALIGN_CANDIDATES }                  from '../modules/align_candidates/main'
+include { FIT_GUMBEL }                        from '../modules/fit_gumbel/main'
+include { CALCULATE_STATISTICS }              from '../modules/calculate_statistics/main'
 include { DRAW_ALIGNMENT_SVGS_RNARTISTCORE }  from '../modules/draw_alignment_svgs_rnartistcore/main'
 include { DRAW_ALIGNMENT_SVGS_R4RNA }         from '../modules/draw_alignment_svgs_r4rna/main'
 include { GENERATE_REPORT }                   from '../modules/generate_report/main'
@@ -102,6 +104,10 @@ workflow rna_similarity {
     def window_chunk_list = window_chunks.window_chunk.collect(flat: false)
 
     def merged_windows = MERGE_WINDOW_CHUNKS(window_chunk_list)
+    def db_size_ch = merged_windows.window_stats.map { stats_file ->
+        def stats = new groovy.json.JsonSlurper().parse(stats_file)
+        stats.database_window_count
+    }
 
     merged_windows.database_vectors
         .multiMap { path -> for_index: path; for_query: path }
@@ -132,28 +138,52 @@ workflow rna_similarity {
     def clusters = CLUSTER_SEEDS(seeds.seeds)
 
     // Align clustered candidates and produce final report TSV
-    def alignments = ALIGN_CANDIDATES(
+    def alignments_ch = ALIGN_CANDIDATES(
         clusters.cluster_members,
         clusters.clusters,
         embeddings_for_align,
         meta_ch
     )
 
+    def alignments_for_report
+    if (params.calculate_evalue) {
+        def gumbel_params_ch = FIT_GUMBEL(alignments_ch.alignment_stats)
+
+        def gumbel_loc_ch = gumbel_params_ch.gumbel_params.map { gumbel_meta, json_file ->
+            def params = new groovy.json.JsonSlurper().parse(json_file)
+            params.loc
+        }
+        def gumbel_scale_ch = gumbel_params_ch.gumbel_params.map { gumbel_meta, json_file ->
+            def params = new groovy.json.JsonSlurper().parse(json_file)
+            params.scale
+        }
+
+        def stats = CALCULATE_STATISTICS(
+            alignments_ch.alignments,
+            db_size_ch,
+            gumbel_loc_ch,
+            gumbel_scale_ch
+        )
+        alignments_for_report = stats.alignments_with_evalue
+    } else {
+        alignments_for_report = alignments_ch.alignments
+    }
+
     // Conditionally draw SVG visualizations and generate HTML report
     if (params.enable_drawings || params.enable_report) {
         // Choose drawing backend based on parameter
         def alignment_svgs
         if (params.drawing_backend == 'r4rna') {
-            alignment_svgs = DRAW_ALIGNMENT_SVGS_R4RNA(alignments.alignments)
+            alignment_svgs = DRAW_ALIGNMENT_SVGS_R4RNA(alignments_for_report)
         } else {
             // Default to rnartistcore
-            alignment_svgs = DRAW_ALIGNMENT_SVGS_RNARTISTCORE(alignments.alignments)
+            alignment_svgs = DRAW_ALIGNMENT_SVGS_RNARTISTCORE(alignments_for_report)
         }
 
         // Generate HTML report with embedded SVG visualizations
         if (params.enable_report) {
             GENERATE_REPORT(
-                alignments.alignments.combine(alignment_svgs.alignment_individual)
+                alignments_for_report.combine(alignment_svgs.alignment_individual)
             )
         }
     }

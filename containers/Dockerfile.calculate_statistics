@@ -1,0 +1,22 @@
+FROM continuumio/miniconda3:latest
+
+# Copy environment file
+COPY modules/calculate_statistics/environment.yml /tmp/environment.yml
+
+# Create conda environment
+RUN conda env create -f /tmp/environment.yml && \
+    conda clean -afy
+
+# Activate environment by default
+ENV PATH=/opt/conda/envs/calculate_statistics/bin:$PATH
+
+# Set working directory
+WORKDIR /app
+
+# Copy pipeline code
+COPY bin/calculate_statistics.py .
+
+# Make script executable
+RUN chmod +x calculate_statistics.py
+
+ENTRYPOINT ["calculate_statistics.py"]

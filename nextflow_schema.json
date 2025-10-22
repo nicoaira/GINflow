@@ -65,7 +65,8 @@
     
     "enable_drawings": {"type": "boolean", "description": "Generate SVG structure visualizations for alignments"},
     "enable_report": {"type": "boolean", "description": "Generate HTML report with embedded visualizations"},
-    "drawing_backend": {"type": "string", "enum": ["rnartistcore", "r4rna"], "description": "Visualization backend for drawing RNA structures"}    
+    "drawing_backend": {"type": "string", "enum": ["rnartistcore", "r4rna"], "description": "Visualization backend for drawing RNA structures"},
+    "calculate_evalue": {"type": "boolean", "description": "Calculate E-values for alignments"}
   },
   "required": ["input", "queries"]
 }

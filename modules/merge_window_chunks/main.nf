@@ -22,6 +22,9 @@ process MERGE_WINDOW_CHUNKS {
     path 'window_stats.json',    emit: window_stats
     path 'chunk_manifest.tsv',   emit: chunk_manifest
 
+    when:
+    task.ext.when == null || task.ext.when
+
     script:
     if (!chunk_records) {
         error 'No window vector chunks produced; merging cannot continue'
