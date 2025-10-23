@@ -2,11 +2,15 @@
 nextflow.enable.dsl=2
 
 process QUERY_FAISS_INDEX {
-    tag  "query_faiss_index"
+    tag { "query_" + query_vectors.baseName.replaceAll(/^query_/, '').replaceAll(/_vectors$/, '') }
 
     label params.faiss_use_gpu ? 'gpu' : 'medium_memory'
 
-    publishDir "${params.outdir}", mode: 'copy', pattern: 'seeds.tsv'
+    publishDir "${params.outdir}/query_results", mode: 'copy', pattern: 'seeds*.{tsv,json}',
+        saveAs: { filename ->
+            def qid = filename.replaceAll(/^seeds_/, '').replaceAll(/\.(tsv|json)$/, '')
+            "${qid}/${filename}"
+        }
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -21,10 +25,11 @@ process QUERY_FAISS_INDEX {
     path query_metadata
 
     output:
-    path "seeds.tsv", emit: seeds
-    path "query_stats.json", optional: true, emit: query_stats
+    path "seeds_*.tsv", emit: seeds
+    path "query_stats_*.json", optional: true, emit: query_stats
 
     script:
+    def query_id = query_vectors.baseName.replaceAll(/^query_/, '').replaceAll(/_vectors$/, '')
     def metric = params.faiss_metric ?: 'ip'
     def gpuFlag = params.faiss_use_gpu ? '--use-gpu' : ''
     def nprobe = params.faiss_nprobe ? "--nprobe ${params.faiss_nprobe}" : ''
@@ -47,7 +52,7 @@ process QUERY_FAISS_INDEX {
       ${nprobe} \
       ${hnswEfs} \
       ${exactRescore} \
-      --output seeds.tsv \
-      --stats-json query_stats.json
+      --output seeds_${query_id}.tsv \
+      --stats-json query_stats_${query_id}.json
     """
 }

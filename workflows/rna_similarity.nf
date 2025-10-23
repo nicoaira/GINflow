@@ -6,7 +6,9 @@ include { GENERATE_NODE_EMBEDDINGS }          from '../modules/generate_node_emb
 include { GENERATE_WINDOW_VECTORS }           from '../modules/generate_window_vectors/main'
 include { MERGE_EMBEDDING_CHUNKS }            from '../modules/merge_embedding_chunks/main'
 include { MERGE_WINDOW_CHUNKS }               from '../modules/merge_window_chunks/main'
+include { CALCULATE_EVD_PARAMS }              from '../modules/calculate_evd_params/main'
 include { BUILD_FAISS_INDEX }                 from '../modules/build_faiss_index/main'
+include { SPLIT_QUERIES }                     from '../modules/split_queries/main'
 include { QUERY_FAISS_INDEX }                 from '../modules/query_faiss_index/main'
 include { CLUSTER_SEEDS }                     from '../modules/cluster_seeds/main'
 include { ALIGN_CANDIDATES }                  from '../modules/align_candidates/main'
@@ -120,23 +122,85 @@ workflow rna_similarity {
     def q_vec = merged_windows.query_vectors
     def q_meta = merged_windows.query_metadata
 
+    // Calculate EVD parameters once for the database (if E-value calculation is enabled)
+    def evd_params_ch = CALCULATE_EVD_PARAMS(embeddings_for_align).evd_params
+
     // Build FAISS index from database windows
     def index = BUILD_FAISS_INDEX(db_vec_a.combine(db_meta_a))
     def faiss_idx = index.faiss_idx
     def faiss_map = index.faiss_map
 
-    // Query seeds from FAISS index
-    def seeds = QUERY_FAISS_INDEX(faiss_idx, db_vec_b, db_meta_b, q_vec, q_meta)
+    // Split queries into separate files for parallel processing
+    def split_queries_result = SPLIT_QUERIES(q_vec, q_meta)
 
-    // Group seeds into diagonal clusters
-    def clusters = CLUSTER_SEEDS(seeds.seeds)
+    // Create tuples of (query_id, query_vectors, query_metadata) for each query
+    def query_tuples = split_queries_result.query_vectors
+        .flatten()
+        .map { vec_file ->
+            def safe_id = vec_file.name.replaceAll(/^query_(.+)_vectors\.npy$/, '$1')
+            tuple(safe_id, vec_file)
+        }
+        .join(
+            split_queries_result.query_metadata
+                .flatten()
+                .map { meta_file ->
+                    def safe_id = meta_file.name.replaceAll(/^query_(.+)_metadata\.tsv$/, '$1')
+                    tuple(safe_id, meta_file)
+                }
+        )
+        .map { safe_id, vec_file, meta_file ->
+            tuple(safe_id, vec_file, meta_file)
+        }
 
-    // Align clustered candidates and produce final report TSV
+    // For each query, combine with shared database resources and run QUERY_FAISS_INDEX
+    def query_inputs = query_tuples
+        .combine(faiss_idx)
+        .combine(db_vec_b)
+        .combine(db_meta_b)
+        .map { query_id, q_vec_file, q_meta_file, faiss, db_vec, db_meta ->
+            tuple(query_id, faiss, db_vec, db_meta, q_vec_file, q_meta_file)
+        }
+
+    // Query FAISS index for each query independently (parallelized)
+    def seeds_per_query = QUERY_FAISS_INDEX(
+        query_inputs.map { it[1] },  // faiss_idx
+        query_inputs.map { it[2] },  // database_vectors
+        query_inputs.map { it[3] },  // database_metadata
+        query_inputs.map { it[4] },  // query_vectors
+        query_inputs.map { it[5] }   // query_metadata
+    )
+
+    // Cluster seeds for each query independently (parallelized)
+    def clusters_per_query = CLUSTER_SEEDS(seeds_per_query.seeds)
+
+    // Align candidates for each query independently (parallelized)
+    // Extract query_id from filenames and join cluster outputs
+    def members_with_id = clusters_per_query.cluster_members
+        .map { file ->
+            def query_id = file.baseName.replaceAll(/^cluster_members_/, '')
+            tuple(query_id, file)
+        }
+
+    def clusters_with_id = clusters_per_query.clusters
+        .map { file ->
+            def query_id = file.baseName.replaceAll(/^clusters_/, '')
+            tuple(query_id, file)
+        }
+
+    // Join by query_id to pair members with clusters, then split for ALIGN_CANDIDATES
+    def paired_clusters = members_with_id
+        .join(clusters_with_id)
+        .multiMap { query_id, members, clusters ->
+            cluster_members: members
+            cluster_summaries: clusters
+        }
+
     def alignments = ALIGN_CANDIDATES(
-        clusters.cluster_members,
-        clusters.clusters,
+        paired_clusters.cluster_members,
+        paired_clusters.cluster_summaries,
         embeddings_for_align,
-        meta_ch
+        meta_ch,
+        evd_params_ch
     )
 
     // Conditionally draw SVG visualizations and generate HTML report
@@ -152,9 +216,12 @@ workflow rna_similarity {
 
         // Generate HTML report with embedded SVG visualizations
         if (params.enable_report) {
-            GENERATE_REPORT(
-                alignments.alignments.combine(alignment_svgs.alignment_individual)
-            )
+            // Both channels originate from the same source and are in the same order
+            // Use merge to pair them by index
+            def paired_for_report = alignments.alignments
+                .merge(alignment_svgs.alignment_individual)
+
+            GENERATE_REPORT(paired_for_report)
         }
     }
 }

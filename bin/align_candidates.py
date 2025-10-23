@@ -133,6 +133,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Pre-computed K parameter for E-value calculation (if provided, skips EVD estimation)",
     )
+    parser.add_argument(
+        "--evd-params-json",
+        type=str,
+        default=None,
+        help="JSON file with pre-computed EVD parameters (evd_lambda, evd_K). Overrides --evd-lambda and --evd-K.",
+    )
     parser.add_argument("--output", required=True, help="Output TSV for alignment summaries")
     parser.add_argument("--stats-json", default=None, help="Optional JSON stats path")
     parser.add_argument("--dp-output", default=None, help="Optional JSONL file capturing DP traces for reported alignments")
@@ -707,7 +713,14 @@ def main() -> None:
     lambda_param: Optional[float] = None
     K_param: Optional[float] = None
     if args.calculate_evalue:
-        if args.evd_lambda is not None and args.evd_K is not None:
+        # Priority: JSON file > individual params > calculate
+        if args.evd_params_json:
+            # Load from JSON file
+            evd_data = json.loads(Path(args.evd_params_json).read_text())
+            lambda_param = float(evd_data["evd_lambda"])
+            K_param = float(evd_data["evd_K"])
+            print(f"Loaded EVD parameters from {args.evd_params_json}: λ={lambda_param:.4f}, K={K_param:.6f}", flush=True)
+        elif args.evd_lambda is not None and args.evd_K is not None:
             # Use pre-computed parameters
             lambda_param = args.evd_lambda
             K_param = args.evd_K

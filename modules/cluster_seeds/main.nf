@@ -2,11 +2,15 @@
 nextflow.enable.dsl=2
 
 process CLUSTER_SEEDS {
-    tag "cluster_seeds"
+    tag { "query_" + seeds.baseName.replaceAll(/^seeds_/, '') }
 
     label 'lightweight'
 
-    publishDir "${params.outdir}", mode: 'copy', pattern: 'seeds*'
+    publishDir "${params.outdir}/query_results", mode: 'copy', pattern: 'cluster*.{tsv,json}',
+        saveAs: { filename ->
+            def qid = filename.replaceAll(/^cluster(s|_members|_stats)_/, '').replaceAll(/\.(tsv|json)$/, '')
+            "${qid}/${filename}"
+        }
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
@@ -17,11 +21,12 @@ process CLUSTER_SEEDS {
     path seeds
 
     output:
-    path 'clusters.tsv', emit: clusters
-    path 'cluster_members.tsv', emit: cluster_members
-    path 'cluster_stats.json', optional: true, emit: cluster_stats
+    path 'clusters_*.tsv', emit: clusters
+    path 'cluster_members_*.tsv', emit: cluster_members
+    path 'cluster_stats_*.json', optional: true, emit: cluster_stats
 
     script:
+    def query_id = seeds.baseName.replaceAll(/^seeds_/, '')
     def span = params.cluster_span ?: 80
     def minSeeds = params.cluster_min_seeds ?: 2
     def diagTol = params.cluster_diagonal_tolerance ?: 12
@@ -29,12 +34,12 @@ process CLUSTER_SEEDS {
     """
     python3 ${baseDir}/bin/cluster_seeds.py \
         --seeds ${seeds} \
-        --output-clusters clusters.tsv \
-        --output-members cluster_members.tsv \
+        --output-clusters clusters_${query_id}.tsv \
+        --output-members cluster_members_${query_id}.tsv \
         --cluster-span ${span} \
         --min-seeds ${minSeeds} \
         --diagonal-tolerance ${diagTol} \
         --max-diagonal-span ${maxDiagSpan} \
-        --stats-json cluster_stats.json
+        --stats-json cluster_stats_${query_id}.json
     """
 }
