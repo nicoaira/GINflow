@@ -8,6 +8,7 @@ import json
 from collections import defaultdict
 from dataclasses import dataclass
 from itertools import count
+from multiprocessing import Pool
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -149,6 +150,7 @@ def parse_args() -> argparse.Namespace:
         help="Plot the banded scoring matrices for the reported alignments",
     )
     parser.add_argument("--plot-dir", default=None, help="Directory for scoring matrix plots")
+    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers for cluster alignment")
     return parser.parse_args()
 
 
@@ -654,6 +656,232 @@ def infer_columns(meta: pd.DataFrame, seq_col: Optional[str], struct_col: Option
     return seq, struct
 
 
+def process_cluster(
+    cluster_dict: dict,
+    seeds_dict: dict,
+    embeddings: Dict[str, np.ndarray],
+    mu0: float,
+    sigma0: float,
+    args_dict: dict,
+    meta_map: Dict[str, dict],
+    seq_col: Optional[str],
+    struct_col: Optional[str],
+    sequence_lengths: Dict[str, int],
+    lambda_param: Optional[float],
+    K_param: Optional[float],
+    collect_trace: bool,
+    plot_enabled: bool,
+) -> Optional[AlignmentBundle]:
+    """Process a single cluster alignment.
+
+    Args:
+        cluster_dict: Dictionary with cluster_id, seed_count, max_similarity
+        seeds_dict: Dictionary containing seed data (converted from DataFrame)
+        embeddings: Dictionary of embeddings
+        mu0: Background mean
+        sigma0: Background std
+        args_dict: Dictionary of alignment parameters
+        meta_map: Metadata dictionary
+        seq_col: Sequence column name
+        struct_col: Structure column name
+        sequence_lengths: Dictionary of sequence lengths
+        lambda_param: EVD lambda parameter
+        K_param: EVD K parameter
+        collect_trace: Whether to collect trace info
+        plot_enabled: Whether to enable plotting
+
+    Returns:
+        AlignmentBundle if successful, None otherwise
+    """
+    # Reconstruct DataFrame from dict
+    seeds = pd.DataFrame(seeds_dict)
+
+    cid = cluster_dict["cluster_id"]
+    query_id = str(seeds["query_transcript"].iloc[0])
+    target_id = str(seeds["target_transcript"].iloc[0])
+    diag_values = seeds["diagonal"].astype(int)
+    diag_median = int(np.median(diag_values))
+    diag_min = int(diag_values.min())
+    diag_max = int(diag_values.max())
+    diag_span = diag_max - diag_min
+
+    query_vecs = embeddings.get(query_id)
+    target_vecs = embeddings.get(target_id)
+    if query_vecs is None or target_vecs is None:
+        return None
+
+    q_start = max(0, int(seeds["query_window_start"].min()) - args_dict['padding'])
+    q_end = min(len(query_vecs), int(seeds["query_window_end"].max()) + args_dict['padding'])
+    t_start = max(0, int(seeds["target_window_start"].min()) - args_dict['padding'])
+    t_end = min(len(target_vecs), int(seeds["target_window_end"].max()) + args_dict['padding'])
+
+    query_slice = query_vecs[q_start:q_end]
+    target_slice = target_vecs[t_start:t_end]
+    diag_offset = diag_median + q_start - t_start
+
+    effective_band = args_dict['band_width']
+    adaptive_target = diag_span + args_dict['band_buffer']
+    if adaptive_target % 2 != 0:
+        adaptive_target += 1
+    if adaptive_target > effective_band:
+        effective_band = adaptive_target
+    if args_dict['band_max_width'] and args_dict['band_max_width'] > 0:
+        effective_band = min(effective_band, args_dict['band_max_width'])
+    effective_band = max(1, effective_band)
+
+    score, path, _ = smith_waterman(
+        query_slice,
+        target_slice,
+        mu0,
+        sigma0,
+        args_dict['gamma'],
+        effective_band,
+        diag_offset,
+        args_dict['gap_open'],
+        args_dict['gap_extend'],
+        args_dict['xdrop'],
+        args_dict['score_min'],
+        args_dict['score_max'],
+    )
+    if not path or score <= 0:
+        return None
+
+    alignment_info, trace = summarise_alignment(
+        path,
+        query_slice,
+        target_slice,
+        q_start,
+        t_start,
+        collect_trace=collect_trace,
+    )
+
+    # Calculate E-value and bit score if enabled
+    evalue = None
+    bit_score = None
+    if args_dict['calculate_evalue'] and lambda_param is not None and K_param is not None:
+        query_length = sequence_lengths.get(query_id, 0)
+        target_length = sequence_lengths.get(target_id, 0)
+        if query_length > 0 and target_length > 0:
+            evalue, bit_score = calculate_evalue(
+                raw_score=float(score),
+                query_length=query_length,
+                target_length=target_length,
+                lambda_param=lambda_param,
+                K=K_param,
+            )
+
+    result = AlignmentResult(
+        query_id=query_id,
+        target_id=target_id,
+        cluster_id=int(cid),
+        score=float(score),
+        query_start=alignment_info["query_start"],
+        query_end=alignment_info["query_end"],
+        target_start=alignment_info["target_start"],
+        target_end=alignment_info["target_end"],
+        alignment_length=alignment_info["length"],
+        avg_cosine=alignment_info["avg_cosine"],
+        gap_opens=alignment_info["gap_opens"],
+        gap_bases=alignment_info["gap_bases"],
+        seed_count=int(cluster_dict["seed_count"]),
+        max_seed_similarity=float(cluster_dict["max_similarity"]),
+        bit_score=bit_score,
+        evalue=evalue,
+    )
+    enriched = attach_metadata(result, meta_map, seq_col, struct_col)
+
+    if enriched.get("query_structure") and enriched.get("target_structure"):
+        q_alignment, t_alignment, alignment_mask = build_alignment_strings(
+            path,
+            enriched.get("query_structure"),
+            enriched.get("target_structure"),
+            q_start,
+            t_start,
+        )
+        if q_alignment:
+            enriched["aligned_query_structure"] = q_alignment
+        if t_alignment:
+            enriched["aligned_target_structure"] = t_alignment
+        if alignment_mask:
+            enriched["alignment_mask"] = alignment_mask
+        enriched["alignment_content"] = "structure"
+    elif enriched.get("query_sequence") and enriched.get("target_sequence"):
+        q_alignment, t_alignment, alignment_mask = build_alignment_strings(
+            path,
+            enriched.get("query_sequence"),
+            enriched.get("target_sequence"),
+            q_start,
+            t_start,
+        )
+        if q_alignment:
+            enriched["aligned_query_sequence"] = q_alignment
+        if t_alignment:
+            enriched["aligned_target_sequence"] = t_alignment
+        if alignment_mask:
+            enriched["alignment_mask"] = alignment_mask
+        enriched["alignment_content"] = "sequence"
+    enriched.update(
+        {
+            "diagonal_median": diag_median,
+            "diagonal_min": diag_min,
+            "diagonal_max": diag_max,
+            "diagonal_span": diag_span,
+            "band_width": effective_band,
+        }
+    )
+    plot_info = None
+    if plot_enabled:
+        plot_info = {
+            "query_start": q_start,
+            "query_end": q_end,
+            "target_start": t_start,
+            "target_end": t_end,
+            "query_len": len(query_vecs),
+            "target_len": len(target_vecs),
+            "band_width": effective_band,
+            "diag_offset": diag_offset,
+            "diag_median": diag_median,
+            "diag_span": diag_span,
+            "diag_min": diag_min,
+            "diag_max": diag_max,
+        }
+
+    dp_record = None
+    if collect_trace and trace is not None:
+        dp_record = {
+            "query_id": query_id,
+            "target_id": target_id,
+            "cluster_id": int(cid),
+            "score": float(score),
+            "alignment_start": {
+                "query": alignment_info["query_start"],
+                "target": alignment_info["target_start"],
+            },
+            "alignment_end": {
+                "query": alignment_info["query_end"],
+                "target": alignment_info["target_end"],
+            },
+            "diagonal": {
+                "median": diag_median,
+                "min": diag_min,
+                "max": diag_max,
+                "span": diag_span,
+                "offset": diag_offset,
+            },
+            "band_width": effective_band,
+            "trace": trace,
+        }
+
+    bundle = AlignmentBundle(
+        score=float(score),
+        record=enriched,
+        plot_info=plot_info,
+        dp_record=dp_record,
+    )
+
+    return bundle
+
+
 def main() -> None:
     args = parse_args()
 
@@ -700,13 +928,15 @@ def main() -> None:
     target_ids = {tid for tid in members_df["target_transcript"] if tid and tid.lower() != "nan"}
     required_ids = query_ids | target_ids
 
-    embeddings = load_embeddings(
+    embeddings_raw = load_embeddings(
         args.embeddings,
         args.id_column,
         args.node_index_column,
         args.embedding_column,
         required_ids=required_ids if required_ids else None,
     )
+    # Ensure embeddings dictionary has string keys for pickling
+    embeddings = {str(k): v for k, v in embeddings_raw.items()}
     mu0, sigma0 = sample_background(embeddings, args.background_samples, args.random_seed)
 
     # Estimate EVD parameters (lambda and K) for E-value calculation
@@ -744,11 +974,24 @@ def main() -> None:
 
     meta_df = pd.read_csv(args.meta, sep="\t", dtype={args.id_column: str})
     meta_df = meta_df.drop_duplicates(subset=[args.id_column])
-    meta_map = meta_df.set_index(args.id_column).to_dict(orient="index")
+    meta_map_raw = meta_df.set_index(args.id_column).to_dict(orient="index")
+    # Convert meta_map to plain Python types (remove pandas NA/NaN and numpy types)
+    meta_map = {}
+    for key, value_dict in meta_map_raw.items():
+        meta_map[str(key)] = {}
+        for k, v in value_dict.items():
+            if pd.isna(v):
+                meta_map[str(key)][str(k)] = None
+            elif isinstance(v, (np.integer, np.floating)):
+                meta_map[str(key)][str(k)] = v.item()
+            elif isinstance(v, np.ndarray):
+                meta_map[str(key)][str(k)] = v.tolist()
+            else:
+                meta_map[str(key)][str(k)] = v
     seq_col, struct_col = infer_columns(meta_df, args.sequence_column, args.structure_column)
 
-    # Store sequence lengths for E-value computation
-    sequence_lengths = {tid: len(vec) for tid, vec in embeddings.items()}
+    # Store sequence lengths for E-value computation (ensure int, not numpy int)
+    sequence_lengths = {str(tid): int(len(vec)) for tid, vec in embeddings.items()}
 
     plot_enabled = args.plot_scoring_matrices
     collect_trace = args.dp_output is not None
@@ -762,192 +1005,71 @@ def main() -> None:
 
     grouped_members = members_df.groupby("cluster_id", sort=False)
 
+    # Create a picklable args dict
+    args_dict = {
+        'padding': args.padding,
+        'band_width': args.band_width,
+        'band_buffer': args.band_buffer,
+        'band_max_width': args.band_max_width,
+        'gamma': args.gamma,
+        'gap_open': args.gap_open,
+        'gap_extend': args.gap_extend,
+        'xdrop': args.xdrop,
+        'score_min': args.score_min,
+        'score_max': args.score_max,
+        'calculate_evalue': args.calculate_evalue,
+    }
+
+    # Prepare cluster tasks
+    cluster_tasks = []
     for cluster in clusters_df.itertuples(index=False):
         cid = getattr(cluster, "cluster_id")
         if cid not in grouped_members.groups:
             continue
         seeds = grouped_members.get_group(cid)
-        query_id = str(seeds["query_transcript"].iloc[0])
-        target_id = str(seeds["target_transcript"].iloc[0])
-        diag_values = seeds["diagonal"].astype(int)
-        diag_median = int(np.median(diag_values))
-        diag_min = int(diag_values.min())
-        diag_max = int(diag_values.max())
-        diag_span = diag_max - diag_min
-
-        query_vecs = embeddings.get(query_id)
-        target_vecs = embeddings.get(target_id)
-        if query_vecs is None or target_vecs is None:
-            continue
-
-        q_start = max(0, int(seeds["query_window_start"].min()) - args.padding)
-        q_end = min(len(query_vecs), int(seeds["query_window_end"].max()) + args.padding)
-        t_start = max(0, int(seeds["target_window_start"].min()) - args.padding)
-        t_end = min(len(target_vecs), int(seeds["target_window_end"].max()) + args.padding)
-
-        query_slice = query_vecs[q_start:q_end]
-        target_slice = target_vecs[t_start:t_end]
-        diag_offset = diag_median + q_start - t_start
-
-        effective_band = args.band_width
-        adaptive_target = diag_span + args.band_buffer
-        if adaptive_target % 2 != 0:
-            adaptive_target += 1
-        if adaptive_target > effective_band:
-            effective_band = adaptive_target
-        if args.band_max_width and args.band_max_width > 0:
-            effective_band = min(effective_band, args.band_max_width)
-        effective_band = max(1, effective_band)
-
-        score, path, _ = smith_waterman(
-            query_slice,
-            target_slice,
+        # Convert cluster namedtuple to dict for pickling
+        cluster_dict = {
+            "cluster_id": int(getattr(cluster, "cluster_id")),
+            "seed_count": int(getattr(cluster, "seed_count")),
+            "max_similarity": float(getattr(cluster, "max_similarity")),
+        }
+        # Convert DataFrame to dict for pickling (ensure native Python types)
+        seeds_dict = {}
+        for col in seeds.columns:
+            seeds_dict[str(col)] = [
+                x.item() if isinstance(x, (np.integer, np.floating)) else (str(x) if not pd.isna(x) else None)
+                for x in seeds[col].tolist()
+            ]
+        cluster_tasks.append((
+            cluster_dict,
+            seeds_dict,
+            embeddings,
             mu0,
             sigma0,
-            args.gamma,
-            effective_band,
-            diag_offset,
-            args.gap_open,
-            args.gap_extend,
-            args.xdrop,
-            args.score_min,
-            args.score_max,
-        )
-        if not path or score <= 0:
+            args_dict,
+            meta_map,
+            seq_col,
+            struct_col,
+            sequence_lengths,
+            lambda_param,
+            K_param,
+            collect_trace,
+            plot_enabled,
+        ))
+
+    # Process clusters in parallel
+    if args.workers > 1 and len(cluster_tasks) > 1:
+        print(f"Processing {len(cluster_tasks)} clusters with {args.workers} workers...", flush=True)
+        with Pool(processes=args.workers) as pool:
+            bundles = pool.starmap(process_cluster, cluster_tasks)
+    else:
+        # Sequential processing
+        bundles = [process_cluster(*task) for task in cluster_tasks]
+
+    # Collect results
+    for bundle in bundles:
+        if bundle is None:
             continue
-
-        alignment_info, trace = summarise_alignment(
-            path,
-            query_slice,
-            target_slice,
-            q_start,
-            t_start,
-            collect_trace=collect_trace,
-        )
-
-        # Calculate E-value and bit score if enabled
-        evalue = None
-        bit_score = None
-        if args.calculate_evalue and lambda_param is not None and K_param is not None:
-            query_length = sequence_lengths.get(query_id, 0)
-            target_length = sequence_lengths.get(target_id, 0)
-            if query_length > 0 and target_length > 0:
-                evalue, bit_score = calculate_evalue(
-                    raw_score=float(score),
-                    query_length=query_length,
-                    target_length=target_length,
-                    lambda_param=lambda_param,
-                    K=K_param,
-                )
-
-        result = AlignmentResult(
-            query_id=query_id,
-            target_id=target_id,
-            cluster_id=int(cid),
-            score=float(score),
-            query_start=alignment_info["query_start"],
-            query_end=alignment_info["query_end"],
-            target_start=alignment_info["target_start"],
-            target_end=alignment_info["target_end"],
-            alignment_length=alignment_info["length"],
-            avg_cosine=alignment_info["avg_cosine"],
-            gap_opens=alignment_info["gap_opens"],
-            gap_bases=alignment_info["gap_bases"],
-            seed_count=int(getattr(cluster, "seed_count")),
-            max_seed_similarity=float(getattr(cluster, "max_similarity")),
-            bit_score=bit_score,
-            evalue=evalue,
-        )
-        enriched = attach_metadata(result, meta_map, seq_col, struct_col)
-
-        if enriched.get("query_structure") and enriched.get("target_structure"):
-            q_alignment, t_alignment, alignment_mask = build_alignment_strings(
-                path,
-                enriched.get("query_structure"),
-                enriched.get("target_structure"),
-                q_start,
-                t_start,
-            )
-            if q_alignment:
-                enriched["aligned_query_structure"] = q_alignment
-            if t_alignment:
-                enriched["aligned_target_structure"] = t_alignment
-            if alignment_mask:
-                enriched["alignment_mask"] = alignment_mask
-            enriched["alignment_content"] = "structure"
-        elif enriched.get("query_sequence") and enriched.get("target_sequence"):
-            q_alignment, t_alignment, alignment_mask = build_alignment_strings(
-                path,
-                enriched.get("query_sequence"),
-                enriched.get("target_sequence"),
-                q_start,
-                t_start,
-            )
-            if q_alignment:
-                enriched["aligned_query_sequence"] = q_alignment
-            if t_alignment:
-                enriched["aligned_target_sequence"] = t_alignment
-            if alignment_mask:
-                enriched["alignment_mask"] = alignment_mask
-            enriched["alignment_content"] = "sequence"
-        enriched.update(
-            {
-                "diagonal_median": diag_median,
-                "diagonal_min": diag_min,
-                "diagonal_max": diag_max,
-                "diagonal_span": diag_span,
-                "band_width": effective_band,
-            }
-        )
-        plot_info = None
-        if plot_enabled:
-            plot_info = {
-                "query_start": q_start,
-                "query_end": q_end,
-                "target_start": t_start,
-                "target_end": t_end,
-                "query_len": len(query_vecs),
-                "target_len": len(target_vecs),
-                "band_width": effective_band,
-                "diag_offset": diag_offset,
-                "diag_median": diag_median,
-                "diag_span": diag_span,
-                "diag_min": diag_min,
-                "diag_max": diag_max,
-            }
-
-        dp_record = None
-        if collect_trace and trace is not None:
-            dp_record = {
-                "query_id": query_id,
-                "target_id": target_id,
-                "cluster_id": int(cid),
-                "score": float(score),
-                "alignment_start": {
-                    "query": alignment_info["query_start"],
-                    "target": alignment_info["target_start"],
-                },
-                "alignment_end": {
-                    "query": alignment_info["query_end"],
-                    "target": alignment_info["target_end"],
-                },
-                "diagonal": {
-                    "median": diag_median,
-                    "min": diag_min,
-                    "max": diag_max,
-                    "span": diag_span,
-                    "offset": diag_offset,
-                },
-                "band_width": effective_band,
-                "trace": trace,
-            }
-
-        bundle = AlignmentBundle(
-            score=float(score),
-            record=enriched,
-            plot_info=plot_info,
-            dp_record=dp_record,
-        )
 
         if not store_results:
             continue

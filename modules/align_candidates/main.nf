@@ -61,6 +61,7 @@ process ALIGN_CANDIDATES {
         --score-max ${params.score_max ?: 8} \
         --top-n ${params.top_n ?: 50} \
         --evd-samples ${params.evd_samples ?: 1000} \
+        --workers ${task.cpus} \
         --output alignments_${query_id}.tsv \
         --stats-json alignment_stats_${query_id}.json \
         --dp-output alignment_dp_${query_id}.jsonl \
