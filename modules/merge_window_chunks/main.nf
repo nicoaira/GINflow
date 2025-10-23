@@ -12,7 +12,12 @@ process MERGE_WINDOW_CHUNKS {
         'docker.io/nicoaira/ginflow-merge-window-chunks:latest' }"
 
     input:
-    val chunk_records
+    tuple val(chunk_ids),
+          path(db_windows_list, stageAs: 'db_windows_*.npy'),
+          path(db_metadata_list, stageAs: 'db_metadata_*.tsv'),
+          path(query_windows_list, stageAs: 'query_windows_*.npy'),
+          path(query_metadata_list, stageAs: 'query_metadata_*.tsv'),
+          path(stats_list, stageAs: 'stats_*.json')
 
     output:
     path 'database_windows.npy', emit: database_vectors
@@ -23,12 +28,14 @@ process MERGE_WINDOW_CHUNKS {
     path 'chunk_manifest.tsv',   emit: chunk_manifest
 
     script:
-    if (!chunk_records) {
+    if (!chunk_ids) {
         error 'No window vector chunks produced; merging cannot continue'
     }
-    def manifestLines = chunk_records.collect { item ->
-        [item[0], item[1], item[2], item[3], item[4], item[5]].collect { it.toString() }.join('\t')
-    }
+    // All files are now staged in the work directory by Nextflow
+    // Build manifest using staged file names
+    def manifestLines = [chunk_ids, db_windows_list, db_metadata_list, query_windows_list, query_metadata_list, stats_list]
+        .transpose()
+        .collect { row -> row.join('\t') }
     def manifestContent = (
         ['chunk_id\tdatabase_windows\tdatabase_metadata\tquery_windows\tquery_metadata\twindow_stats'] +
         manifestLines

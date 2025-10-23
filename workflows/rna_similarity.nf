@@ -89,7 +89,13 @@ workflow rna_similarity {
         chunked_embeddings_ch = embedding_split.windows
         def embedding_chunks_for_merge_ch = embedding_split.merge
         def embedding_chunk_list = embedding_chunks_for_merge_ch.collect(flat: false)
-        def merged_embeddings = MERGE_EMBEDDING_CHUNKS(embedding_chunk_list)
+        // Restructure from list of tuples to tuple of lists for proper path staging
+        def embedding_inputs = embedding_chunk_list.map { chunks ->
+            def batch_ids = chunks.collect { it[0] }
+            def files = chunks.collect { it[1] }
+            tuple(batch_ids, files)
+        }
+        def merged_embeddings = MERGE_EMBEDDING_CHUNKS(embedding_inputs)
 
         embeddings_for_align = merged_embeddings.node_embeddings
     }
@@ -102,8 +108,18 @@ workflow rna_similarity {
     def window_chunks = GENERATE_WINDOW_VECTORS(window_inputs, meta_for_windows)
 
     def window_chunk_list = window_chunks.window_chunk.collect(flat: false)
+    // Restructure from list of 6-element tuples to a single 6-element tuple of lists for proper path staging
+    def window_merge_inputs = window_chunk_list.map { chunks ->
+        def chunk_ids = chunks.collect { it[0] }
+        def db_windows = chunks.collect { it[1] }
+        def db_metadata = chunks.collect { it[2] }
+        def query_windows = chunks.collect { it[3] }
+        def query_metadata = chunks.collect { it[4] }
+        def stats = chunks.collect { it[5] }
+        tuple(chunk_ids, db_windows, db_metadata, query_windows, query_metadata, stats)
+    }
 
-    def merged_windows = MERGE_WINDOW_CHUNKS(window_chunk_list)
+    def merged_windows = MERGE_WINDOW_CHUNKS(window_merge_inputs)
 
     merged_windows.database_vectors
         .multiMap { path -> for_index: path; for_query: path }

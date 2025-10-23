@@ -14,17 +14,21 @@ process MERGE_EMBEDDING_CHUNKS {
         'docker.io/nicoaira/ginflow-merge-embedding-chunks:latest' }"
 
     input:
-    val chunk_records
+    tuple val(batch_ids), path(embedding_files, stageAs: 'embedding_chunk_*.tsv')
 
     output:
     path 'node_embeddings.tsv', emit: node_embeddings
     path 'embedding_chunks.tsv', emit: embedding_manifest
 
     script:
-    if (!chunk_records) {
+    if (!batch_ids || !embedding_files) {
         error 'No embedding chunks provided; cannot merge embeddings'
     }
-    def manifestLines = chunk_records.collect { item -> "${item[0]}\t${item[1]}" }
+    // embedding_files are now staged in the work directory by Nextflow
+    // Build manifest using staged file names
+    def manifestLines = [batch_ids, embedding_files].transpose().collect { id, file ->
+        "${id}\t${file}"
+    }
     def manifestContent = manifestLines.join('\n')
     """
     cat <<'EOF' > embedding_chunks.tsv
