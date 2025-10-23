@@ -61,6 +61,8 @@
     "score_min": {"type": "number", "description": "Lower clamp for per-position scores"},
     "score_max": {"type": "number", "description": "Upper clamp for per-position scores"},
     "top_n": {"type": "integer", "minimum": 1, "description": "Maximum alignments reported"},
+    "calculate_evalue": {"type": "boolean", "description": "Calculate BLAST-like E-values for alignments (default: true)"},
+    "evd_samples": {"type": "integer", "minimum": 10, "description": "Number of random alignment pairs for EVD parameter estimation (default: 1000)"},
     "plot_scoring_matrices": {"type": "boolean", "description": "Plot banded scoring matrices for the reported alignments"},
     
     "enable_drawings": {"type": "boolean", "description": "Generate SVG structure visualizations for alignments"},

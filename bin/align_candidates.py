@@ -56,6 +56,8 @@ class AlignmentResult:
     gap_bases: int
     seed_count: int
     max_seed_similarity: float
+    bit_score: Optional[float] = None
+    evalue: Optional[float] = None
 
 
 @dataclass
@@ -100,6 +102,37 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--score-min", type=float, default=-4.0, help="Minimum clamped per-position score")
     parser.add_argument("--score-max", type=float, default=8.0, help="Maximum clamped per-position score")
     parser.add_argument("--top-n", type=int, default=50, help="Report at most this many alignments globally")
+    parser.add_argument(
+        "--calculate-evalue",
+        dest="calculate_evalue",
+        action="store_true",
+        default=True,
+        help="Calculate E-values for alignments (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-calculate-evalue",
+        dest="calculate_evalue",
+        action="store_false",
+        help="Disable E-value calculation",
+    )
+    parser.add_argument(
+        "--evd-samples",
+        type=int,
+        default=1000,
+        help="Number of random alignment samples for EVD parameter estimation (default: 1000)",
+    )
+    parser.add_argument(
+        "--evd-lambda",
+        type=float,
+        default=None,
+        help="Pre-computed lambda parameter for E-value calculation (if provided, skips EVD estimation)",
+    )
+    parser.add_argument(
+        "--evd-K",
+        type=float,
+        default=None,
+        help="Pre-computed K parameter for E-value calculation (if provided, skips EVD estimation)",
+    )
     parser.add_argument("--output", required=True, help="Output TSV for alignment summaries")
     parser.add_argument("--stats-json", default=None, help="Optional JSON stats path")
     parser.add_argument("--dp-output", default=None, help="Optional JSONL file capturing DP traces for reported alignments")
@@ -192,6 +225,186 @@ def sample_background(embeddings: Dict[str, np.ndarray], sample_count: int, seed
 def compute_score(dot: float, mu: float, sigma: float, gamma: float, smin: float, smax: float) -> float:
     z = gamma * ((dot - mu) / sigma)
     return float(np.clip(z, smin, smax))
+
+
+def shuffle_embeddings(embeddings: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """Shuffle the order of embedding vectors to create a random sequence.
+
+    This preserves the composition (same vectors) but destroys sequential information.
+
+    Args:
+        embeddings: Array of shape (n_nodes, embedding_dim)
+        rng: Random number generator
+
+    Returns:
+        Shuffled copy of embeddings
+    """
+    shuffled = embeddings.copy()
+    rng.shuffle(shuffled)
+    return shuffled
+
+
+def estimate_evd_parameters(
+    embeddings: Dict[str, np.ndarray],
+    mu: float,
+    sigma: float,
+    gamma: float,
+    band: int,
+    gap_open: float,
+    gap_extend: float,
+    xdrop: float,
+    clamp_min: float,
+    clamp_max: float,
+    num_samples: int = 1000,
+    seed: int = 42,
+) -> Tuple[float, float]:
+    """Estimate lambda and K parameters for BLAST-like E-value calculation.
+
+    Generates random sequence pairs by shuffling, aligns them to get a null
+    distribution of scores, and fits an Extreme Value Distribution (Gumbel).
+
+    Args:
+        embeddings: Dictionary mapping sequence IDs to embedding arrays
+        mu: Background mean for scoring
+        sigma: Background std for scoring
+        gamma: Scaling factor for scores
+        band: Band width for alignment
+        gap_open: Gap opening penalty
+        gap_extend: Gap extension penalty
+        xdrop: X-drop threshold
+        clamp_min: Minimum score clamp
+        clamp_max: Maximum score clamp
+        num_samples: Number of random pairs to generate
+        seed: Random seed
+
+    Returns:
+        Tuple of (lambda, K) parameters
+    """
+    from scipy.stats import gumbel_r
+
+    rng = np.random.default_rng(seed)
+
+    # Get list of sequences that have sufficient length
+    seq_ids = [tid for tid, vec in embeddings.items() if len(vec) >= 20]
+    if len(seq_ids) < 2:
+        # Not enough data, return default values
+        return 0.1, 0.01
+
+    null_scores: List[float] = []
+
+    print(f"Estimating EVD parameters from {num_samples} random alignments...", flush=True)
+
+    for i in range(num_samples):
+        # Sample two random sequences
+        id1, id2 = rng.choice(seq_ids, size=2, replace=True)
+
+        # Get embeddings and shuffle them
+        emb1 = shuffle_embeddings(embeddings[id1], rng)
+        emb2 = shuffle_embeddings(embeddings[id2], rng)
+
+        # Align with Smith-Waterman
+        score, path, _ = smith_waterman(
+            emb1,
+            emb2,
+            mu,
+            sigma,
+            gamma,
+            band,
+            diag_offset=0,  # Random offset for null model
+            gap_open=gap_open,
+            gap_extend=gap_extend,
+            xdrop=xdrop,
+            clamp_min=clamp_min,
+            clamp_max=clamp_max,
+            store_matrix=False,
+        )
+
+        if score > 0:
+            null_scores.append(float(score))
+
+        if (i + 1) % 100 == 0:
+            print(f"  Completed {i + 1}/{num_samples} random alignments...", flush=True)
+
+    if len(null_scores) < 10:
+        print("Warning: Very few random alignments produced positive scores. Using default parameters.", flush=True)
+        return 0.1, 0.01
+
+    # Fit Gumbel distribution (right-skewed EVD)
+    # The Gumbel distribution parameters are (loc=mu, scale=beta)
+    fit_mu, fit_beta = gumbel_r.fit(null_scores)
+
+    # Convert to Karlin-Altschul parameters
+    lambda_param = 1.0 / fit_beta
+    K = np.exp(-lambda_param * fit_mu)
+
+    print(f"EVD fitting complete:", flush=True)
+    print(f"  Gumbel location (μ) = {fit_mu:.4f}", flush=True)
+    print(f"  Gumbel scale (β) = {fit_beta:.4f}", flush=True)
+    print(f"  Lambda (λ) = {lambda_param:.4f}", flush=True)
+    print(f"  K = {K:.6f}", flush=True)
+    print(f"  Mean null score = {np.mean(null_scores):.4f}", flush=True)
+    print(f"  Std null score = {np.std(null_scores):.4f}", flush=True)
+
+    return float(lambda_param), float(K)
+
+
+def calculate_bit_score(raw_score: float, lambda_param: float, K: float) -> float:
+    """Convert raw alignment score to bit score.
+
+    Args:
+        raw_score: Raw alignment score from dynamic programming
+        lambda_param: Lambda parameter from EVD fitting
+        K: K parameter from EVD fitting
+
+    Returns:
+        Bit score (normalized, statistically meaningful score)
+    """
+    if lambda_param <= 0 or K <= 0:
+        return 0.0
+
+    bit_score = (lambda_param * raw_score - np.log(K)) / np.log(2)
+    return float(bit_score)
+
+
+def calculate_evalue(
+    raw_score: float,
+    query_length: int,
+    target_length: int,
+    lambda_param: float,
+    K: float,
+) -> Tuple[float, float]:
+    """Calculate BLAST-like E-value and bit score for an alignment.
+
+    Uses the Karlin-Altschul statistics based on Extreme Value Distribution.
+
+    The E-value represents the expected number of alignments with score >= S
+    that would occur by chance in a search space of this size.
+
+    Args:
+        raw_score: Raw alignment score from dynamic programming
+        query_length: Length of the query sequence (in nodes)
+        target_length: Length of the target sequence (in nodes)
+        lambda_param: Lambda parameter from EVD fitting
+        K: K parameter from EVD fitting
+
+    Returns:
+        Tuple of (E-value, bit_score)
+    """
+    if query_length == 0 or target_length == 0:
+        return float('inf'), 0.0
+
+    if lambda_param <= 0 or K <= 0:
+        return float('inf'), 0.0
+
+    # Calculate bit score
+    bit_score = calculate_bit_score(raw_score, lambda_param, K)
+
+    # Calculate E-value: E = m × n × 2^(-S')
+    # where m and n are sequence lengths and S' is the bit score
+    search_space = float(query_length * target_length)
+    evalue = search_space * np.power(2.0, -bit_score)
+
+    return float(evalue), float(bit_score)
 
 
 def smith_waterman(
@@ -490,10 +703,39 @@ def main() -> None:
     )
     mu0, sigma0 = sample_background(embeddings, args.background_samples, args.random_seed)
 
+    # Estimate EVD parameters (lambda and K) for E-value calculation
+    lambda_param: Optional[float] = None
+    K_param: Optional[float] = None
+    if args.calculate_evalue:
+        if args.evd_lambda is not None and args.evd_K is not None:
+            # Use pre-computed parameters
+            lambda_param = args.evd_lambda
+            K_param = args.evd_K
+            print(f"Using pre-computed EVD parameters: λ={lambda_param:.4f}, K={K_param:.6f}", flush=True)
+        else:
+            # Estimate parameters from random alignments
+            lambda_param, K_param = estimate_evd_parameters(
+                embeddings,
+                mu0,
+                sigma0,
+                args.gamma,
+                args.band_width,
+                args.gap_open,
+                args.gap_extend,
+                args.xdrop,
+                args.score_min,
+                args.score_max,
+                num_samples=args.evd_samples,
+                seed=args.random_seed,
+            )
+
     meta_df = pd.read_csv(args.meta, sep="\t", dtype={args.id_column: str})
     meta_df = meta_df.drop_duplicates(subset=[args.id_column])
     meta_map = meta_df.set_index(args.id_column).to_dict(orient="index")
     seq_col, struct_col = infer_columns(meta_df, args.sequence_column, args.structure_column)
+
+    # Store sequence lengths for E-value computation
+    sequence_lengths = {tid: len(vec) for tid, vec in embeddings.items()}
 
     plot_enabled = args.plot_scoring_matrices
     collect_trace = args.dp_output is not None
@@ -570,6 +812,21 @@ def main() -> None:
             collect_trace=collect_trace,
         )
 
+        # Calculate E-value and bit score if enabled
+        evalue = None
+        bit_score = None
+        if args.calculate_evalue and lambda_param is not None and K_param is not None:
+            query_length = sequence_lengths.get(query_id, 0)
+            target_length = sequence_lengths.get(target_id, 0)
+            if query_length > 0 and target_length > 0:
+                evalue, bit_score = calculate_evalue(
+                    raw_score=float(score),
+                    query_length=query_length,
+                    target_length=target_length,
+                    lambda_param=lambda_param,
+                    K=K_param,
+                )
+
         result = AlignmentResult(
             query_id=query_id,
             target_id=target_id,
@@ -585,6 +842,8 @@ def main() -> None:
             gap_bases=alignment_info["gap_bases"],
             seed_count=int(getattr(cluster, "seed_count")),
             max_seed_similarity=float(getattr(cluster, "max_similarity")),
+            bit_score=bit_score,
+            evalue=evalue,
         )
         enriched = attach_metadata(result, meta_map, seq_col, struct_col)
 
@@ -776,6 +1035,9 @@ def main() -> None:
             plot_count += 1
 
     stats = {"alignments": int(len(results_df)), "mu0": mu0, "sigma0": sigma0}
+    if lambda_param is not None and K_param is not None:
+        stats["evd_lambda"] = float(lambda_param)
+        stats["evd_K"] = float(K_param)
     if plot_enabled:
         stats["plots"] = int(plot_count)
     if args.stats_json:

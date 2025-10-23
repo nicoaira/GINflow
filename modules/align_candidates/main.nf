@@ -30,6 +30,7 @@ process ALIGN_CANDIDATES {
     def argsSeq = params.sequence_column ? "--sequence-column ${params.sequence_column}" : ''
     def argsStruct = params.structure_column_name ? "--structure-column ${params.structure_column_name}" : ''
     def plotArgs = params.plot_scoring_matrices ? "--plot-scoring-matrices --plot-dir alignment_plots" : ''
+    def evalueArgs = (params.calculate_evalue == false) ? "--no-calculate-evalue" : ""
     """
     python3 ${baseDir}/bin/align_candidates.py \
         --cluster-members ${cluster_members} \
@@ -52,12 +53,14 @@ process ALIGN_CANDIDATES {
         --score-min ${params.score_min ?: -4} \
         --score-max ${params.score_max ?: 8} \
         --top-n ${params.top_n ?: 50} \
+        --evd-samples ${params.evd_samples ?: 1000} \
         --output alignments.tsv \
         --stats-json alignment_stats.json \
         --dp-output alignment_dp.jsonl \
         --alignment-text alignment_pairs.txt \
         ${argsSeq} \
         ${argsStruct} \
+        ${evalueArgs} \
         ${plotArgs}
     """
 }

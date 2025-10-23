@@ -10,3 +10,5 @@ analyze_resources.py
 rebuild_containers.sh
 smoke_results/*
 *.pyc
+EVALUE_IMPLEMENTATION_GUIDE.md
+CODEBASE_EXPLORATION.md

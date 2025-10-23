@@ -19,6 +19,7 @@ GINflow is a Nextflow pipeline for BLAST-style search over RNA secondary structu
 - **Deterministic seeding** via cosine similarity thresholds and drift-aware diagonal clustering.
 - **Banded Smith–Waterman** with affine gaps, X-drop termination, and user-tunable scoring clamps.
 - **Background-aware scoring** using μ/σ derived from random node pairs.
+- **E-value calculation** providing BLAST-like statistical significance estimates for each alignment (enabled by default).
 - **GPU-ready embeddings**through ginfinity profiles, while downstream steps run efficiently on CPUs.
 - **Single TSV output** that captures the top alignments alongside sequence/structure context for downstream analysis or custom reporting.
 
@@ -152,6 +153,7 @@ nextflow run main.nf -profile slurm,singularity,smoke
 | `--band_max_width` | `0` | Maximum band width after adaptation (0 = unlimited) |
 | `--gap_open` / `--gap_extend` | `12` / `2` | Affine gap penalties |
 | `--top_n` | `50` | Alignments retained in the final TSV |
+| `--calculate_evalue` | `true` | Calculate BLAST-like E-values for alignments |
 
 See [`nextflow.config`](nextflow.config) for additional tuning options (IVF/IVFPQ settings, padding, X-drop, background sampling, etc.).
 
@@ -162,10 +164,32 @@ See [`nextflow.config`](nextflow.config) for additional tuning options (IVF/IVFP
 - **`outdir/faiss_index/`** – FAISS artefacts and stats.
 - **`outdir/seeds.tsv`** – retained seed matches (for debugging or downstream analysis).
 - **`outdir/clusters.tsv` & `cluster_members.tsv`** – clustered seeds with diagonal drift statistics.
-- **`outdir/alignments.tsv`** – top alignments with sequences/structures, gapped alignment strings (`aligned_*` columns), and alignment metrics.
+- **`outdir/alignments.tsv`** – top alignments with sequences/structures, gapped alignment strings (`aligned_*` columns), alignment metrics, and E-values (when enabled).
 - **`outdir/alignment_dp.jsonl`** – JSON Lines file containing the DP trace for each reported alignment.
 - **`outdir/alignment_pairs.txt`** – BLAST-style text dump of the aligned sequences with gap characters.
 - **`outdir/reports/`** – Nextflow trace/report/timeline/dag diagnostics.
+
+### E-value and Bit Score Interpretation
+
+When E-value calculation is enabled (default), each alignment in `alignments.tsv` includes both `bit_score` and `evalue` columns:
+
+- **Bit Score**: A normalized, statistically meaningful score independent of search space size. Higher bit scores indicate stronger alignments.
+- **E-value**: The expected number of alignments with equal or better score that would occur by chance in a search space of this size. Lower E-values indicate more statistically significant matches.
+
+**Significance thresholds:**
+- **E-value < 0.01**: Highly significant match
+- **E-value < 1**: Significant match
+- **E-value > 10**: May be due to chance; interpret with caution
+
+**How it works (BLAST-like approach):**
+1. **Null distribution sampling**: The pipeline generates random sequence pairs by shuffling real embeddings (default: 1000 pairs), preserving composition but destroying sequential information.
+2. **Extreme Value Distribution fitting**: These random alignment scores are fitted to a Gumbel distribution to estimate Karlin-Altschul parameters λ (lambda) and K.
+3. **Bit score calculation**: For each real alignment with raw score S: `bit_score = (λ × S - ln K) / ln 2`
+4. **E-value calculation**: `E-value = m × n × 2^(-bit_score)` where m and n are query and target sequence lengths.
+
+The estimated λ and K parameters are saved in `alignment_stats.json` for reproducibility and can be reused via `--evd-lambda` and `--evd-K` flags to skip re-estimation.
+
+To disable E-value calculation entirely, set `--calculate_evalue false`. To adjust the number of random samples for EVD fitting, use `--evd-samples N` (trade-off between accuracy and runtime).
 
 ## Troubleshooting
 
