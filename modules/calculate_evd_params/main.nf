@@ -37,6 +37,7 @@ process CALCULATE_EVD_PARAMS {
         --score-min ${params.score_min ?: -4} \
         --score-max ${params.score_max ?: 8} \
         --random-seed ${params.random_seed ?: 42} \
+        --workers ${task.cpus} \
         --output evd_params.json
     """
 }

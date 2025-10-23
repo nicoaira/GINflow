@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import multiprocessing as mp
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -91,6 +92,12 @@ def parse_args() -> argparse.Namespace:
         "--random-seed", type=int, default=42, help="Random seed for reproducibility"
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=None,
+        help="Number of parallel workers (default: all available CPUs)",
+    )
+    parser.add_argument(
         "--output", required=True, help="Output JSON file with EVD parameters"
     )
     return parser.parse_args()
@@ -128,23 +135,59 @@ def load_embeddings(
     return final_embeddings
 
 
-def sample_background(
-    embeddings: Dict[str, np.ndarray], sample_count: int, seed: int
-) -> Tuple[float, float]:
-    """Sample random node pairs to estimate background similarity distribution."""
-    rng = np.random.default_rng(seed)
-    ids = [tid for tid, vec in embeddings.items() if len(vec) > 0]
-    if not ids:
-        raise SystemExit("No embeddings available for background sampling")
+def _sample_background_batch(args_tuple):
+    """Helper function for parallel background sampling.
+
+    Args:
+        args_tuple: Tuple containing (batch_idx, batch_size, embeddings, ids, base_seed)
+
+    Returns:
+        List of similarity scores for this batch
+    """
+    batch_idx, batch_size, embeddings, ids, base_seed = args_tuple
+
+    # Create a unique RNG for this batch to ensure reproducibility
+    rng = np.random.default_rng(base_seed + batch_idx)
+
     sims: List[float] = []
-    for _ in range(sample_count):
+    for _ in range(batch_size):
         qid = rng.choice(ids)
         tid = rng.choice(ids)
         qvec = embeddings[qid][rng.integers(len(embeddings[qid]))]
         tvec = embeddings[tid][rng.integers(len(embeddings[tid]))]
         sims.append(float(np.dot(qvec, tvec)))
-    mu = float(np.mean(sims))
-    sigma = float(np.std(sims))
+
+    return sims
+
+
+def sample_background(
+    embeddings: Dict[str, np.ndarray], sample_count: int, seed: int, workers: Optional[int] = None
+) -> Tuple[float, float]:
+    """Sample random node pairs to estimate background similarity distribution."""
+    ids = [tid for tid, vec in embeddings.items() if len(vec) > 0]
+    if not ids:
+        raise SystemExit("No embeddings available for background sampling")
+
+    # Determine number of workers
+    if workers is None:
+        workers = mp.cpu_count()
+    workers = max(1, workers)
+
+    # Split work into batches for parallel processing
+    batch_size = max(1, sample_count // workers)
+    args_list = [
+        (i, batch_size if i < workers - 1 else sample_count - i * batch_size, embeddings, ids, seed)
+        for i in range(workers)
+    ]
+
+    # Run background sampling in parallel
+    all_sims: List[float] = []
+    with mp.Pool(processes=workers) as pool:
+        for batch_sims in pool.imap_unordered(_sample_background_batch, args_list):
+            all_sims.extend(batch_sims)
+
+    mu = float(np.mean(all_sims))
+    sigma = float(np.std(all_sims))
     if sigma < 1e-6:
         sigma = 1.0
     return mu, sigma
@@ -342,6 +385,62 @@ def smith_waterman(
     return float(best_score), [], matrix_scores
 
 
+def _align_random_pair(args_tuple):
+    """Helper function for parallel alignment of random sequence pairs.
+
+    Args:
+        args_tuple: Tuple containing (sample_idx, embeddings_dict, seq_ids, mu, sigma,
+                    gamma, band, gap_open, gap_extend, xdrop, clamp_min, clamp_max, seed)
+
+    Returns:
+        Alignment score (float) or None if score <= 0
+    """
+    (
+        sample_idx,
+        embeddings,
+        seq_ids,
+        mu,
+        sigma,
+        gamma,
+        band,
+        gap_open,
+        gap_extend,
+        xdrop,
+        clamp_min,
+        clamp_max,
+        base_seed,
+    ) = args_tuple
+
+    # Create a unique RNG for this sample to ensure reproducibility
+    rng = np.random.default_rng(base_seed + sample_idx)
+
+    # Sample two random sequences
+    id1, id2 = rng.choice(seq_ids, size=2, replace=True)
+
+    # Get embeddings and shuffle them
+    emb1 = shuffle_embeddings(embeddings[id1], rng)
+    emb2 = shuffle_embeddings(embeddings[id2], rng)
+
+    # Align with Smith-Waterman
+    score, _, _ = smith_waterman(
+        emb1,
+        emb2,
+        mu,
+        sigma,
+        gamma,
+        band,
+        diag_offset=0,  # Random offset for null model
+        gap_open=gap_open,
+        gap_extend=gap_extend,
+        xdrop=xdrop,
+        clamp_min=clamp_min,
+        clamp_max=clamp_max,
+        store_matrix=False,
+    )
+
+    return float(score) if score > 0 else None
+
+
 def estimate_evd_parameters(
     embeddings: Dict[str, np.ndarray],
     mu: float,
@@ -355,6 +454,7 @@ def estimate_evd_parameters(
     clamp_max: float,
     num_samples: int = 1000,
     seed: int = 42,
+    workers: Optional[int] = None,
 ) -> Tuple[float, float]:
     """Estimate lambda and K parameters for BLAST-like E-value calculation.
 
@@ -374,13 +474,12 @@ def estimate_evd_parameters(
         clamp_max: Maximum score clamp
         num_samples: Number of random pairs to generate
         seed: Random seed
+        workers: Number of parallel workers (None = use all CPUs)
 
     Returns:
         Tuple of (lambda, K) parameters
     """
     from scipy.stats import gumbel_r
-
-    rng = np.random.default_rng(seed)
 
     # Get list of sequences that have sufficient length
     seq_ids = [tid for tid, vec in embeddings.items() if len(vec) >= 20]
@@ -393,48 +492,51 @@ def estimate_evd_parameters(
         )
         return 0.1, 0.01
 
-    null_scores: List[float] = []
+    # Determine number of workers
+    if workers is None:
+        workers = mp.cpu_count()
+    workers = max(1, workers)
 
     print(
-        f"Estimating EVD parameters from {num_samples} random alignments...",
+        f"Estimating EVD parameters from {num_samples} random alignments using {workers} workers...",
         file=sys.stderr,
         flush=True,
     )
 
-    for i in range(num_samples):
-        # Sample two random sequences
-        id1, id2 = rng.choice(seq_ids, size=2, replace=True)
-
-        # Get embeddings and shuffle them
-        emb1 = shuffle_embeddings(embeddings[id1], rng)
-        emb2 = shuffle_embeddings(embeddings[id2], rng)
-
-        # Align with Smith-Waterman
-        score, path, _ = smith_waterman(
-            emb1,
-            emb2,
+    # Prepare arguments for parallel processing
+    args_list = [
+        (
+            i,
+            embeddings,
+            seq_ids,
             mu,
             sigma,
             gamma,
             band,
-            diag_offset=0,  # Random offset for null model
-            gap_open=gap_open,
-            gap_extend=gap_extend,
-            xdrop=xdrop,
-            clamp_min=clamp_min,
-            clamp_max=clamp_max,
-            store_matrix=False,
+            gap_open,
+            gap_extend,
+            xdrop,
+            clamp_min,
+            clamp_max,
+            seed,
         )
+        for i in range(num_samples)
+    ]
 
-        if score > 0:
-            null_scores.append(float(score))
+    # Run alignments in parallel
+    null_scores: List[float] = []
+    with mp.Pool(processes=workers) as pool:
+        # Use imap_unordered for better memory efficiency and progress tracking
+        for i, score in enumerate(pool.imap_unordered(_align_random_pair, args_list, chunksize=10)):
+            if score is not None:
+                null_scores.append(score)
 
-        if (i + 1) % 100 == 0:
-            print(
-                f"  Completed {i + 1}/{num_samples} random alignments...",
-                file=sys.stderr,
-                flush=True,
-            )
+            if (i + 1) % 100 == 0:
+                print(
+                    f"  Completed {i + 1}/{num_samples} random alignments...",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     if len(null_scores) < 10:
         print(
@@ -480,7 +582,7 @@ def main() -> None:
     )
 
     print("Sampling background statistics...", file=sys.stderr, flush=True)
-    mu0, sigma0 = sample_background(embeddings, args.background_samples, args.random_seed)
+    mu0, sigma0 = sample_background(embeddings, args.background_samples, args.random_seed, workers=args.workers)
     print(f"  Background μ = {mu0:.4f}", file=sys.stderr, flush=True)
     print(f"  Background σ = {sigma0:.4f}", file=sys.stderr, flush=True)
 
@@ -498,6 +600,7 @@ def main() -> None:
         args.score_max,
         num_samples=args.evd_samples,
         seed=args.random_seed,
+        workers=args.workers,
     )
 
     # Write output JSON
