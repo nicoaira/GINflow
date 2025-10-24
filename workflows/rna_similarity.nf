@@ -91,8 +91,10 @@ workflow rna_similarity {
         def embedding_chunk_list = embedding_chunks_for_merge_ch.collect(flat: false)
         // Restructure from list of tuples to tuple of lists for proper path staging
         def embedding_inputs = embedding_chunk_list.map { chunks ->
-            def batch_ids = chunks.collect { it[0] }
-            def files = chunks.collect { it[1] }
+            // Sort by chunk ID to ensure deterministic ordering for caching
+            def sorted_chunks = chunks.sort { a, b -> a[0] <=> b[0] }
+            def batch_ids = sorted_chunks.collect { it[0] }
+            def files = sorted_chunks.collect { it[1] }
             tuple(batch_ids, files)
         }
         def merged_embeddings = MERGE_EMBEDDING_CHUNKS(embedding_inputs)
@@ -110,12 +112,14 @@ workflow rna_similarity {
     def window_chunk_list = window_chunks.window_chunk.collect(flat: false)
     // Restructure from list of 6-element tuples to a single 6-element tuple of lists for proper path staging
     def window_merge_inputs = window_chunk_list.map { chunks ->
-        def chunk_ids = chunks.collect { it[0] }
-        def db_windows = chunks.collect { it[1] }
-        def db_metadata = chunks.collect { it[2] }
-        def query_windows = chunks.collect { it[3] }
-        def query_metadata = chunks.collect { it[4] }
-        def stats = chunks.collect { it[5] }
+        // Sort by chunk ID to ensure deterministic ordering for caching
+        def sorted_chunks = chunks.sort { a, b -> a[0] <=> b[0] }
+        def chunk_ids = sorted_chunks.collect { it[0] }
+        def db_windows = sorted_chunks.collect { it[1] }
+        def db_metadata = sorted_chunks.collect { it[2] }
+        def query_windows = sorted_chunks.collect { it[3] }
+        def query_metadata = sorted_chunks.collect { it[4] }
+        def stats = sorted_chunks.collect { it[5] }
         tuple(chunk_ids, db_windows, db_metadata, query_windows, query_metadata, stats)
     }
 
