@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import multiprocessing as mp
+from multiprocessing import shared_memory
 import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -98,9 +99,265 @@ def parse_args() -> argparse.Namespace:
         help="Number of parallel workers (default: all available CPUs)",
     )
     parser.add_argument(
+        "--sampled-sequences",
+        type=int,
+        default=50000,
+        help="Number of sequences to randomly sample for EVD calculation (default: 50000, use 0 for no limit)",
+    )
+    parser.add_argument(
         "--output", required=True, help="Output JSON file with EVD parameters"
     )
     return parser.parse_args()
+
+
+def collect_sequence_ids(path: str, id_col: str) -> List[str]:
+    """Collect all unique sequence IDs from embeddings file.
+
+    This is a lightweight first pass to get IDs without loading embeddings.
+    """
+    unique_ids = set()
+    chunk_iter = pd.read_csv(
+        path, sep="\t", chunksize=EMBEDDING_CHUNK_SIZE, dtype={id_col: str}, usecols=[id_col]
+    )
+
+    for chunk_df in chunk_iter:
+        unique_ids.update(chunk_df[id_col].astype(str).unique())
+
+    return list(unique_ids)
+
+
+def sample_sequence_ids(all_ids: List[str], max_sequences: int, seed: int) -> Set[str]:
+    """Randomly sample sequence IDs for EVD calculation.
+
+    Args:
+        all_ids: List of all available sequence IDs
+        max_sequences: Maximum number to sample (0 = no limit)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Set of sampled sequence IDs (or all IDs if max_sequences=0 or >= len(all_ids))
+    """
+    if max_sequences <= 0 or max_sequences >= len(all_ids):
+        return set(all_ids)
+
+    rng = np.random.default_rng(seed)
+    sampled = rng.choice(all_ids, size=max_sequences, replace=False)
+    return set(sampled)
+
+
+class SharedEmbeddings:
+    """Wrapper for embeddings stored in shared memory.
+
+    This allows multiple processes to access the same embeddings without
+    copying the data, reducing memory usage from (1+workers)× to ~1×.
+    """
+
+    def __init__(self, shm_name: str, metadata: Dict):
+        """Initialize accessor to shared memory embeddings.
+
+        Args:
+            shm_name: Name of the shared memory block
+            metadata: Dict containing 'ids', 'offsets', 'lengths', 'embedding_dim', 'total_size'
+        """
+        self.shm_name = shm_name
+        self.ids = metadata['ids']
+        self.offsets = metadata['offsets']
+        self.lengths = metadata['lengths']
+        self.embedding_dim = metadata['embedding_dim']
+        self.total_size = metadata['total_size']
+
+        # Attach to existing shared memory
+        self.shm = shared_memory.SharedMemory(name=shm_name)
+        # Create numpy array view (no copy)
+        self.flat_data = np.ndarray(
+            (self.total_size,), dtype=np.float32, buffer=self.shm.buf
+        )
+
+    def __getitem__(self, seq_id: str) -> np.ndarray:
+        """Get embeddings for a sequence ID.
+
+        Returns a copy to avoid shared memory corruption.
+        """
+        if seq_id not in self.offsets:
+            raise KeyError(f"Sequence ID not found: {seq_id}")
+
+        offset = self.offsets[seq_id]
+        length = self.lengths[seq_id]
+
+        # Extract flat data
+        flat = self.flat_data[offset:offset + length]
+
+        # Reshape based on embedding dimension
+        if self.embedding_dim == 0 or length % self.embedding_dim != 0:
+            # Something went wrong, return as is
+            return flat.copy()
+
+        num_rows = length // self.embedding_dim
+        data = flat.reshape(num_rows, self.embedding_dim)
+        return data.copy()  # Return copy to avoid shared memory issues
+
+    def __contains__(self, seq_id: str) -> bool:
+        return seq_id in self.offsets
+
+    def keys(self):
+        return self.ids
+
+    def items(self):
+        for seq_id in self.ids:
+            yield seq_id, self[seq_id]
+
+    def __len__(self):
+        return len(self.ids)
+
+    def cleanup(self):
+        """Close and unlink shared memory."""
+        self.shm.close()
+
+    def unlink(self):
+        """Unlink shared memory (call from main process only)."""
+        self.shm.unlink()
+
+
+def embeddings_to_shared_memory(embeddings: Dict[str, np.ndarray]) -> Tuple[SharedEmbeddings, shared_memory.SharedMemory]:
+    """Convert embeddings dictionary to shared memory format.
+
+    Args:
+        embeddings: Dictionary mapping sequence IDs to embedding arrays
+
+    Returns:
+        Tuple of (SharedEmbeddings accessor, SharedMemory object for cleanup)
+    """
+    if not embeddings:
+        raise ValueError("Cannot create shared memory from empty embeddings")
+
+    print(f"  Creating shared memory for {len(embeddings)} sequences...", file=sys.stderr, flush=True)
+
+    # Determine embedding dimension - find first 2D array
+    embedding_dim = None
+    first_shape = None
+    for emb in embeddings.values():
+        first_shape = emb.shape
+        if len(emb.shape) == 2:
+            embedding_dim = emb.shape[1]
+            break
+        elif len(emb.shape) == 1:
+            # This is a single-node sequence, dimension is the length
+            embedding_dim = len(emb)
+            break
+
+    if embedding_dim is None:
+        raise ValueError("Could not determine embedding dimension")
+
+    print(f"  Embedding dimension: {embedding_dim}, first shape: {first_shape}", file=sys.stderr, flush=True)
+
+    # Calculate total size needed and build metadata
+    ids = []
+    offsets = {}
+    lengths = {}
+    current_offset = 0
+
+    for seq_id, emb in embeddings.items():
+        ids.append(seq_id)
+        offsets[seq_id] = current_offset
+
+        # Ensure consistent shapes
+        if len(emb.shape) == 1:
+            # Single node: reshape to (1, embedding_dim)
+            if len(emb) != embedding_dim:
+                raise ValueError(f"Inconsistent embedding dimension for {seq_id}: expected {embedding_dim}, got {len(emb)}")
+            emb_length = embedding_dim
+        elif len(emb.shape) == 2:
+            # Multiple nodes: (num_nodes, embedding_dim)
+            if emb.shape[1] != embedding_dim:
+                raise ValueError(f"Inconsistent embedding dimension for {seq_id}: expected {embedding_dim}, got {emb.shape[1]}")
+            emb_length = emb.shape[0] * emb.shape[1]
+        else:
+            raise ValueError(f"Invalid embedding shape for {seq_id}: {emb.shape}")
+
+        lengths[seq_id] = emb_length
+        current_offset += emb_length
+
+    total_size = current_offset
+    memory_needed = total_size * 4  # 4 bytes per float32
+
+    print(f"  Total memory needed: {memory_needed / (1024**2):.2f} MB", file=sys.stderr, flush=True)
+
+    # Check if /dev/shm has enough space (important for Docker containers)
+    try:
+        import shutil
+        shm_stats = shutil.disk_usage('/dev/shm')
+        print(f"  /dev/shm available: {shm_stats.free / (1024**2):.2f} MB", file=sys.stderr, flush=True)
+        if shm_stats.free < memory_needed * 1.1:  # Add 10% safety margin
+            raise ValueError(
+                f"Insufficient /dev/shm space: need {memory_needed / (1024**2):.2f} MB, "
+                f"have {shm_stats.free / (1024**2):.2f} MB. "
+                f"If running in Docker, increase --shm-size to at least {int(memory_needed / (1024**3) + 1)}g"
+            )
+    except ValueError:
+        # Re-raise ValueError to be caught by caller
+        raise
+    except Exception as e:
+        print(f"  Warning: Could not check /dev/shm space: {e}", file=sys.stderr, flush=True)
+
+    # Create shared memory block
+    try:
+        shm = shared_memory.SharedMemory(create=True, size=memory_needed)
+        print(f"  Created shared memory block '{shm.name}' ({memory_needed / (1024**2):.2f} MB)", file=sys.stderr, flush=True)
+    except Exception as e:
+        raise RuntimeError(f"Failed to create shared memory: {e}. If running in Docker, try increasing --shm-size")
+
+    # Create numpy array view
+    flat_data = np.ndarray((total_size,), dtype=np.float32, buffer=shm.buf)
+
+    # Copy embeddings into shared memory
+    print(f"  Copying {total_size} floats ({total_size * 4} bytes) to shared memory...", file=sys.stderr, flush=True)
+    try:
+        for i, seq_id in enumerate(ids):
+            offset = offsets[seq_id]
+            length = lengths[seq_id]
+            emb = embeddings[seq_id]
+
+            # Validate before copy
+            if offset + length > total_size:
+                raise ValueError(f"Offset overflow for {seq_id}: offset={offset}, length={length}, total={total_size}")
+
+            # Flatten and copy
+            flat_emb = emb.flatten()
+            if len(flat_emb) != length:
+                raise ValueError(f"Length mismatch for {seq_id}: expected {length}, got {len(flat_emb)}")
+
+            flat_data[offset:offset + length] = flat_emb
+
+            if (i + 1) % 20 == 0:
+                print(f"    Copied {i + 1}/{len(ids)} sequences...", file=sys.stderr, flush=True)
+
+        print(f"  Successfully copied all embeddings to shared memory", file=sys.stderr, flush=True)
+
+    except Exception as e:
+        shm.close()
+        shm.unlink()
+        raise RuntimeError(f"Failed to copy embeddings to shared memory: {e}")
+
+    # Create metadata dict
+    metadata = {
+        'ids': ids,
+        'offsets': offsets,
+        'lengths': lengths,
+        'embedding_dim': embedding_dim,
+        'total_size': total_size,
+    }
+
+    # Create accessor
+    print(f"  Creating SharedEmbeddings accessor...", file=sys.stderr, flush=True)
+    try:
+        accessor = SharedEmbeddings(shm.name, metadata)
+        print(f"  SharedEmbeddings created successfully with name '{shm.name}'", file=sys.stderr, flush=True)
+    except Exception as e:
+        shm.close()
+        shm.unlink()
+        raise RuntimeError(f"Failed to create SharedEmbeddings accessor: {e}")
+
+    return accessor, shm
 
 
 def load_embeddings(
@@ -160,10 +417,52 @@ def _sample_background_batch(args_tuple):
     return sims
 
 
+def _sample_background_batch_shm(args_tuple):
+    """Helper function for parallel background sampling using shared memory.
+
+    Args:
+        args_tuple: Tuple containing (batch_idx, batch_size, shm_name, metadata, ids, base_seed)
+
+    Returns:
+        List of similarity scores for this batch
+    """
+    batch_idx, batch_size, shm_name, metadata, ids, base_seed = args_tuple
+
+    # Create shared embeddings accessor (no data copying)
+    embeddings = SharedEmbeddings(shm_name, metadata)
+
+    # Create a unique RNG for this batch to ensure reproducibility
+    rng = np.random.default_rng(base_seed + batch_idx)
+
+    sims: List[float] = []
+    for _ in range(batch_size):
+        qid = rng.choice(ids)
+        tid = rng.choice(ids)
+        qvec = embeddings[qid][rng.integers(len(embeddings[qid]))]
+        tvec = embeddings[tid][rng.integers(len(embeddings[tid]))]
+        sims.append(float(np.dot(qvec, tvec)))
+
+    # Cleanup
+    embeddings.cleanup()
+
+    return sims
+
+
 def sample_background(
-    embeddings: Dict[str, np.ndarray], sample_count: int, seed: int, workers: Optional[int] = None
+    embeddings: Dict[str, np.ndarray], sample_count: int, seed: int, workers: Optional[int] = None, use_shared_memory: bool = True
 ) -> Tuple[float, float]:
-    """Sample random node pairs to estimate background similarity distribution."""
+    """Sample random node pairs to estimate background similarity distribution.
+
+    Args:
+        embeddings: Dictionary or SharedEmbeddings object containing sequence embeddings
+        sample_count: Number of random pairs to sample
+        seed: Random seed for reproducibility
+        workers: Number of parallel workers (None = use all CPUs)
+        use_shared_memory: If True, use shared memory to reduce memory overhead (default: True)
+
+    Returns:
+        Tuple of (mu, sigma) for background distribution
+    """
     ids = [tid for tid, vec in embeddings.items() if len(vec) > 0]
     if not ids:
         raise SystemExit("No embeddings available for background sampling")
@@ -173,18 +472,64 @@ def sample_background(
         workers = mp.cpu_count()
     workers = max(1, workers)
 
+    # If single worker, no benefit from shared memory
+    if workers == 1:
+        use_shared_memory = False
+
     # Split work into batches for parallel processing
     batch_size = max(1, sample_count // workers)
-    args_list = [
-        (i, batch_size if i < workers - 1 else sample_count - i * batch_size, embeddings, ids, seed)
-        for i in range(workers)
-    ]
 
-    # Run background sampling in parallel
     all_sims: List[float] = []
-    with mp.Pool(processes=workers) as pool:
-        for batch_sims in pool.imap_unordered(_sample_background_batch, args_list):
-            all_sims.extend(batch_sims)
+
+    if use_shared_memory:
+        # Convert to shared memory if not already
+        try:
+            if isinstance(embeddings, SharedEmbeddings):
+                shm_embeddings = embeddings
+                shm = None  # Don't own the shared memory
+            else:
+                shm_embeddings, shm = embeddings_to_shared_memory(embeddings)
+        except Exception as e:
+            print(f"  WARNING: Shared memory initialization failed: {e}", file=sys.stderr, flush=True)
+            print(f"  Falling back to standard multiprocessing (higher memory usage)", file=sys.stderr, flush=True)
+            use_shared_memory = False
+
+    if use_shared_memory:
+        try:
+            # Build metadata dict for workers
+            metadata = {
+                'ids': list(shm_embeddings.ids),
+                'offsets': shm_embeddings.offsets,
+                'lengths': shm_embeddings.lengths,
+                'embedding_dim': shm_embeddings.embedding_dim,
+                'total_size': shm_embeddings.total_size,
+            }
+
+            args_list = [
+                (i, batch_size if i < workers - 1 else sample_count - i * batch_size, shm_embeddings.shm_name, metadata, ids, seed)
+                for i in range(workers)
+            ]
+
+            # Run background sampling in parallel with shared memory
+            with mp.Pool(processes=workers) as pool:
+                for batch_sims in pool.imap_unordered(_sample_background_batch_shm, args_list):
+                    all_sims.extend(batch_sims)
+
+        finally:
+            # Cleanup shared memory if we created it
+            if shm is not None:
+                shm_embeddings.cleanup()
+                shm.unlink()
+    else:
+        # Original implementation without shared memory
+        args_list = [
+            (i, batch_size if i < workers - 1 else sample_count - i * batch_size, embeddings, ids, seed)
+            for i in range(workers)
+        ]
+
+        with mp.Pool(processes=workers) as pool:
+            for batch_sims in pool.imap_unordered(_sample_background_batch, args_list):
+                all_sims.extend(batch_sims)
 
     mu = float(np.mean(all_sims))
     sigma = float(np.std(all_sims))
@@ -441,6 +786,69 @@ def _align_random_pair(args_tuple):
     return float(score) if score > 0 else None
 
 
+def _align_random_pair_shm(args_tuple):
+    """Helper function for parallel alignment of random sequence pairs using shared memory.
+
+    Args:
+        args_tuple: Tuple containing (sample_idx, shm_name, metadata, seq_ids, mu, sigma,
+                    gamma, band, gap_open, gap_extend, xdrop, clamp_min, clamp_max, seed)
+
+    Returns:
+        Alignment score (float) or None if score <= 0
+    """
+    (
+        sample_idx,
+        shm_name,
+        metadata,
+        seq_ids,
+        mu,
+        sigma,
+        gamma,
+        band,
+        gap_open,
+        gap_extend,
+        xdrop,
+        clamp_min,
+        clamp_max,
+        base_seed,
+    ) = args_tuple
+
+    # Create shared embeddings accessor (no data copying)
+    embeddings = SharedEmbeddings(shm_name, metadata)
+
+    # Create a unique RNG for this sample to ensure reproducibility
+    rng = np.random.default_rng(base_seed + sample_idx)
+
+    # Sample two random sequences
+    id1, id2 = rng.choice(seq_ids, size=2, replace=True)
+
+    # Get embeddings and shuffle them
+    emb1 = shuffle_embeddings(embeddings[id1], rng)
+    emb2 = shuffle_embeddings(embeddings[id2], rng)
+
+    # Align with Smith-Waterman
+    score, _, _ = smith_waterman(
+        emb1,
+        emb2,
+        mu,
+        sigma,
+        gamma,
+        band,
+        diag_offset=0,  # Random offset for null model
+        gap_open=gap_open,
+        gap_extend=gap_extend,
+        xdrop=xdrop,
+        clamp_min=clamp_min,
+        clamp_max=clamp_max,
+        store_matrix=False,
+    )
+
+    # Cleanup
+    embeddings.cleanup()
+
+    return float(score) if score > 0 else None
+
+
 def estimate_evd_parameters(
     embeddings: Dict[str, np.ndarray],
     mu: float,
@@ -455,6 +863,7 @@ def estimate_evd_parameters(
     num_samples: int = 1000,
     seed: int = 42,
     workers: Optional[int] = None,
+    use_shared_memory: bool = False,
 ) -> Tuple[float, float]:
     """Estimate lambda and K parameters for BLAST-like E-value calculation.
 
@@ -468,13 +877,14 @@ def estimate_evd_parameters(
         gamma: Scaling factor for scores
         band: Band width for alignment
         gap_open: Gap opening penalty
-        gap_extend: Gap extension penalty
+        gap_extend: Gap_extension penalty
         xdrop: X-drop threshold
         clamp_min: Minimum score clamp
         clamp_max: Maximum score clamp
         num_samples: Number of random pairs to generate
         seed: Random seed
         workers: Number of parallel workers (None = use all CPUs)
+        use_shared_memory: If True, use shared memory to reduce memory overhead (default: True)
 
     Returns:
         Tuple of (lambda, K) parameters
@@ -497,46 +907,112 @@ def estimate_evd_parameters(
         workers = mp.cpu_count()
     workers = max(1, workers)
 
+    # If single worker, no benefit from shared memory
+    if workers == 1:
+        use_shared_memory = False
+
     print(
         f"Estimating EVD parameters from {num_samples} random alignments using {workers} workers...",
         file=sys.stderr,
         flush=True,
     )
 
-    # Prepare arguments for parallel processing
-    args_list = [
-        (
-            i,
-            embeddings,
-            seq_ids,
-            mu,
-            sigma,
-            gamma,
-            band,
-            gap_open,
-            gap_extend,
-            xdrop,
-            clamp_min,
-            clamp_max,
-            seed,
-        )
-        for i in range(num_samples)
-    ]
-
-    # Run alignments in parallel
     null_scores: List[float] = []
-    with mp.Pool(processes=workers) as pool:
-        # Use imap_unordered for better memory efficiency and progress tracking
-        for i, score in enumerate(pool.imap_unordered(_align_random_pair, args_list, chunksize=10)):
-            if score is not None:
-                null_scores.append(score)
 
-            if (i + 1) % 100 == 0:
-                print(
-                    f"  Completed {i + 1}/{num_samples} random alignments...",
-                    file=sys.stderr,
-                    flush=True,
+    if use_shared_memory:
+        # Convert to shared memory if not already
+        if isinstance(embeddings, SharedEmbeddings):
+            shm_embeddings = embeddings
+            shm = None  # Don't own the shared memory
+        else:
+            print("  Converting embeddings to shared memory...", file=sys.stderr, flush=True)
+            shm_embeddings, shm = embeddings_to_shared_memory(embeddings)
+
+        try:
+            # Build metadata dict for workers
+            metadata = {
+                'ids': list(shm_embeddings.ids),
+                'offsets': shm_embeddings.offsets,
+                'lengths': shm_embeddings.lengths,
+                'embedding_dim': shm_embeddings.embedding_dim,
+                'total_size': shm_embeddings.total_size,
+            }
+
+            # Prepare arguments for parallel processing
+            args_list = [
+                (
+                    i,
+                    shm_embeddings.shm_name,
+                    metadata,
+                    seq_ids,
+                    mu,
+                    sigma,
+                    gamma,
+                    band,
+                    gap_open,
+                    gap_extend,
+                    xdrop,
+                    clamp_min,
+                    clamp_max,
+                    seed,
                 )
+                for i in range(num_samples)
+            ]
+
+            # Run alignments in parallel with shared memory
+            with mp.Pool(processes=workers) as pool:
+                # Use imap_unordered for better memory efficiency and progress tracking
+                for i, score in enumerate(pool.imap_unordered(_align_random_pair_shm, args_list, chunksize=10)):
+                    if score is not None:
+                        null_scores.append(score)
+
+                    if (i + 1) % 100 == 0:
+                        print(
+                            f"  Completed {i + 1}/{num_samples} random alignments...",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
+        finally:
+            # Cleanup shared memory if we created it
+            if shm is not None:
+                shm_embeddings.cleanup()
+                shm.unlink()
+    else:
+        # Original implementation without shared memory
+        # Prepare arguments for parallel processing
+        args_list = [
+            (
+                i,
+                embeddings,
+                seq_ids,
+                mu,
+                sigma,
+                gamma,
+                band,
+                gap_open,
+                gap_extend,
+                xdrop,
+                clamp_min,
+                clamp_max,
+                seed,
+            )
+            for i in range(num_samples)
+        ]
+
+        # Run alignments in parallel
+        with mp.Pool(processes=workers) as pool:
+            # Use imap_unordered for better memory efficiency and progress tracking
+            for i, score in enumerate(pool.imap_unordered(_align_random_pair, args_list, chunksize=10)):
+                if score is not None:
+                    null_scores.append(score)
+
+                if (i + 1) % 100 == 0:
+                    print(
+                        f"  Completed {i + 1}/{num_samples} random alignments...",
+                        file=sys.stderr,
+                        flush=True,
+                    )
 
     if len(null_scores) < 10:
         print(
@@ -568,13 +1044,32 @@ def estimate_evd_parameters(
 def main() -> None:
     args = parse_args()
 
+    # Collect all sequence IDs and optionally sample them
+    sampled_ids = None
+    total_sequences = None
+    if args.sampled_sequences > 0:
+        print("Collecting sequence IDs...", file=sys.stderr, flush=True)
+        all_ids = collect_sequence_ids(args.embeddings, args.id_column)
+        total_sequences = len(all_ids)
+        print(f"Found {total_sequences} total sequences in database", file=sys.stderr, flush=True)
+
+        sampled_ids = sample_sequence_ids(all_ids, args.sampled_sequences, args.random_seed)
+        if len(sampled_ids) < total_sequences:
+            print(
+                f"Randomly sampling {len(sampled_ids)} sequences for EVD calculation",
+                file=sys.stderr,
+                flush=True,
+            )
+        else:
+            print("Using all sequences (no sampling needed)", file=sys.stderr, flush=True)
+
     print("Loading embeddings...", file=sys.stderr, flush=True)
     embeddings = load_embeddings(
         args.embeddings,
         args.id_column,
         args.node_index_column,
         args.embedding_column,
-        required_ids=None,
+        required_ids=sampled_ids,
     )
 
     print(
@@ -620,6 +1115,9 @@ def main() -> None:
         "background_samples": args.background_samples,
         "random_seed": args.random_seed,
         "num_sequences": len(embeddings),
+        "sampled_sequences": args.sampled_sequences,
+        "total_sequences_in_database": total_sequences if total_sequences is not None else len(embeddings),
+        "sequences_sampled": total_sequences is not None and len(embeddings) < total_sequences,
     }
 
     Path(args.output).write_text(json.dumps(output_data, indent=2) + "\n")
