@@ -1,0 +1,14 @@
+{
+    "Should slice windows from smoke-test embeddings": {
+        "content": [
+            [
+                "versions.yml:md5,1c04174fb7573c16838171f9685208ca"
+            ]
+        ],
+        "timestamp": "2026-08-14T15:08:20.785318819",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

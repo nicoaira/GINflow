@@ -1,0 +1,55 @@
+nextflow_pipeline {
+
+    name "Test search modes"
+    script "../main.nf"
+    tag "pipeline"
+    tag "search"
+
+    test("build and query the same smoke TSV") {
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size = 2
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/faiss/index.faiss").exists()
+            assert path("${params.outdir}/seeds.tsv").exists()
+            def seeds = path("${params.outdir}/seeds.tsv").readLines()
+            assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
+            def rows = seeds.drop(1).findAll { it }
+            assert rows.size() > 0
+            def selfHits = rows.findAll { line ->
+                def cols = line.split('\t')
+                cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
+            }
+            assert selfHits.size() > 0
+        }
+    }
+
+    test("query an existing database (stub)") {
+
+        options "-stub"
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = null
+                query      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                database   = "${projectDir}/modules/generate_windows"
+                shard_size = 2
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/seeds.tsv").exists()
+            assert !path("${params.outdir}/faiss/index.faiss").exists()
+        }
+    }
+}

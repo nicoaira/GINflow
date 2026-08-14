@@ -1,0 +1,14 @@
+{
+    "Should recover self-hits from the smoke-test index": {
+        "content": [
+            [
+                "versions.yml:md5,cb2c62acc42f504a481a465e1bc75ee7"
+            ]
+        ],
+        "timestamp": "2026-08-14T15:13:03.044449249",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

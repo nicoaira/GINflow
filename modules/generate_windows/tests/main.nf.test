@@ -1,0 +1,68 @@
+nextflow_process {
+
+    name "Test Process GENERATE_WINDOWS"
+    script "../main.nf"
+    process "GENERATE_WINDOWS"
+
+    tag "modules"
+    tag "generate_windows"
+
+    test("Should slice windows from smoke-test embeddings") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = EMBED_RNA_GRAPHS.out.embeddings
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.windows.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def windowManifest = path(process.out.windows.get(0).get(2)).json
+                    assert windowManifest.status == 'complete'
+                    assert windowManifest.window_size == 11
+                    assert windowManifest.stride == 1
+                    assert windowManifest.window_dim == 1408
+                    assert windowManifest.l2_normalized == true
+                    assert windowManifest.records.size() == 10
+                    assert windowManifest.skipped_short.size() == 0
+                    windowManifest.records.each { rec ->
+                        assert rec.n_windows == Math.max(0, (rec.length as int) - 10)
+                    }
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

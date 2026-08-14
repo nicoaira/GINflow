@@ -2,25 +2,38 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://raw.githubusercontent.com/nicoaira/ginflow/master/nextflow_schema.json",
     "title": "nicoaira/ginflow pipeline parameters",
-    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings.",
+    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings and FAISS seeding.",
     "type": "object",
     "$defs": {
         "input_output_options": {
             "title": "Input/output options",
             "type": "object",
-            "required": ["input", "outdir"],
+            "required": ["outdir"],
             "properties": {
                 "input": {
                     "type": "string",
                     "format": "file-path",
                     "exists": true,
                     "pattern": "^\\S+\\.(tsv|txt|csv)$",
-                    "description": "Path to a structures table. Required columns: transcript_id, sequence, secondary_structure. Extra columns are allowed and ignored."
+                    "description": "Structures table used to build the FAISS database. Required columns: transcript_id, sequence, secondary_structure. Extra columns are allowed and ignored. Omit when searching an existing --database."
+                },
+                "query": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.(tsv|txt|csv)$",
+                    "description": "Structures table to search. Same columns as --input. Omit for a build-only run."
+                },
+                "database": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "exists": true,
+                    "description": "Existing faiss/ directory from a previous run (index.faiss, windows.tsv, meta.json). Use with --query. Do not combine with --input."
                 },
                 "outdir": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Output directory for graph shards and embeddings."
+                    "description": "Output directory for graphs, embeddings, windows, the FAISS database, and seeds."
                 }
             }
         },
@@ -77,11 +90,43 @@
                     "description": "Maximum edges per embedding microbatch."
                 }
             }
+        },
+        "search_options": {
+            "title": "Window search",
+            "type": "object",
+            "properties": {
+                "window_size": {
+                    "type": "integer",
+                    "default": 11,
+                    "minimum": 1,
+                    "description": "Sliding-window length in nucleotides. Each window is the concatenation of this many 128-d residue vectors."
+                },
+                "window_stride": {
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1,
+                    "description": "Step between consecutive window starts."
+                },
+                "seed_k": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "Maximum neighbours kept per query window before applying --seed_min_similarity."
+                },
+                "seed_min_similarity": {
+                    "type": "number",
+                    "default": 0.8,
+                    "minimum": -1,
+                    "maximum": 1,
+                    "description": "Minimum cosine similarity (L2-normalized window inner product) required to keep a seed."
+                }
+            }
         }
     },
     "allOf": [
         { "$ref": "#/$defs/input_output_options" },
         { "$ref": "#/$defs/graph_options" },
-        { "$ref": "#/$defs/embedding_options" }
+        { "$ref": "#/$defs/embedding_options" },
+        { "$ref": "#/$defs/search_options" }
     ]
 }

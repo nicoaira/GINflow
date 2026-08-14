@@ -1,0 +1,67 @@
+name: generate_windows
+description: Slice per-nucleotide embeddings into concatenated L2-normalized windows
+keywords:
+  - rna
+  - embeddings
+  - windows
+  - faiss
+tools:
+  - numpy:
+      description: Numerical arrays for window concatenation
+      homepage: https://numpy.org
+      documentation: https://numpy.org/doc
+      licence: ["BSD-3-Clause"]
+      identifier: biotools:numpy
+
+input:
+  - - meta:
+        type: map
+        description: Groovy Map containing sample information
+    - embeddings:
+        type: file
+        description: Embedding NPZ from EMBED_RNA_GRAPHS
+        pattern: "*.npz"
+        ontologies: []
+    - manifest:
+        type: file
+        description: Embedding manifest JSON
+        pattern: "*.manifest.json"
+        ontologies: []
+
+output:
+  windows:
+    - - meta:
+          type: map
+          description: Groovy Map containing sample information
+      - "*.windows.npz":
+          type: file
+          description: Window embedding arrays, one per transcript
+          pattern: "*.windows.npz"
+          ontologies: []
+      - "*.windows.manifest.json":
+          type: file
+          description: Window size, shapes, and skipped-short identifiers
+          pattern: "*.windows.manifest.json"
+          ontologies: []
+  versions:
+    - versions.yml:
+        type: file
+        description: File containing software versions
+        pattern: "versions.yml"
+        ontologies:
+          - edam: http://edamontology.org/format_3750
+
+authors:
+  - "@nicoaira"
+maintainers:
+  - "@nicoaira"
+containers:
+  docker:
+    linux/amd64:
+      name: community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:078dd4f35c795d6e
+      build_id: bd-078dd4f35c795d6e_1
+  singularity:
+    linux/amd64:
+      name: oras://community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:2947c3970152321a
+      build_id: bd-2947c3970152321a_1
+      https: https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/79/7920d351ee6307611f471013dcddff6d8a5c7ec7bf723d854e99a545376b63d8/data

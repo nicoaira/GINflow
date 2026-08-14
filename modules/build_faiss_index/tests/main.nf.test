@@ -1,0 +1,77 @@
+nextflow_process {
+
+    name "Test Process BUILD_FAISS_INDEX"
+    script "../main.nf"
+    process "BUILD_FAISS_INDEX"
+
+    tag "modules"
+    tag "build_faiss_index"
+
+    test("Should index smoke-test windows") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+            run("GENERATE_WINDOWS") {
+                script "../../generate_windows/main.nf"
+                process {
+                    """
+                    input[0] = EMBED_RNA_GRAPHS.out.embeddings
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
+                input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.database.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def db = path(process.out.database.get(0))
+                    assert db.resolve('index.faiss').exists()
+                    assert db.resolve('windows.tsv').exists()
+                    def meta = db.resolve('meta.json').json
+                    assert meta.window_size == 11
+                    assert meta.window_stride == 1
+                    assert meta.window_dim == 1408
+                    assert meta.metric == 'inner_product'
+                    assert meta.l2_normalized == true
+                    assert meta.n_records == 10
+                    assert (meta.n_windows as int) > 0
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

@@ -19,8 +19,16 @@ nextflow_pipeline {
             assert path("${params.outdir}/samples.csv").exists()
             def graphs = getAllFilesFromDir("${params.outdir}/graphs", includeDir: false)
             def embeddings = getAllFilesFromDir("${params.outdir}/embeddings", includeDir: false)
+            def windows = getAllFilesFromDir("${params.outdir}/windows", includeDir: false)
             assert graphs.findAll { it.name.endsWith('.safetensors') }.size() >= 1
             assert embeddings.findAll { it.name.endsWith('.npz') }.size() >= 1
+            assert windows.findAll { it.name.endsWith('.windows.npz') }.size() >= 1
+            assert path("${params.outdir}/faiss/index.faiss").exists()
+            assert path("${params.outdir}/faiss/windows.tsv").exists()
+            def meta = path("${params.outdir}/faiss/meta.json").json
+            assert meta.window_size == 11
+            assert meta.n_windows > 0
+            assert !path("${params.outdir}/seeds.tsv").exists()
         }
     }
 }

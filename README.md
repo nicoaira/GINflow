@@ -4,13 +4,15 @@
 
 ## Introduction
 
-**nicoaira/ginflow** is a Nextflow pipeline for BLAST-style search over RNA secondary structures. It uses [GINFINITY](https://github.com/nicoaira/GINFINITY) to build graph shards and node embeddings from a structures table. FAISS-based seeding and optional banded Smith–Waterman alignments will be added later.
+**nicoaira/ginflow** is a Nextflow pipeline for BLAST-style search over RNA secondary structures. It uses [GINFINITY](https://github.com/nicoaira/GINFINITY) to build graph shards and node embeddings, then slices those embeddings into windows and searches them with FAISS.
 
 The current steps are:
 
-1. Split the input structures TSV into shards
+1. Split a structures TSV into shards
 2. Build GINFINITY graph shards (`*.safetensors` + `*.json`)
 3. Embed each shard (`*.npz` + manifest)
+4. Slice sliding windows (default `w=11`, stride 1)
+5. Build a reusable FAISS database and/or search it for seeds
 
 ---
 
@@ -29,9 +31,24 @@ rna-1	ACGUACGU	((....))	RF00005
 Extra columns (e.g `rfam_family` ) are allowed. Then:
 
 ```bash
+# Build a reusable FAISS database
 nextflow run nicoaira/ginflow \
    -profile docker \
    --input structures.tsv \
+   --outdir <OUTDIR>
+
+# Search an existing database
+nextflow run nicoaira/ginflow \
+   -profile docker \
+   --query queries.tsv \
+   --database <OUTDIR>/faiss \
+   --outdir <SEARCH_OUTDIR>
+
+# Build and search in one run
+nextflow run nicoaira/ginflow \
+   -profile docker \
+   --input structures.tsv \
+   --query queries.tsv \
    --outdir <OUTDIR>
 ```
 

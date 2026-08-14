@@ -1,0 +1,14 @@
+{
+    "Should index smoke-test windows": {
+        "content": [
+            [
+                "versions.yml:md5,154ba83a5827840b5a72acd0ebd70429"
+            ]
+        ],
+        "timestamp": "2026-08-14T15:12:49.643471611",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}
