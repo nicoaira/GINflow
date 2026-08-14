@@ -1,0 +1,14 @@
+{
+    "Should cluster self-search seeds from the smoke TSV": {
+        "content": [
+            [
+                "versions.yml:md5,1fba2e2846b08ae79c3dc0f492a4a730"
+            ]
+        ],
+        "timestamp": "2026-08-14T16:13:49.200769097",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

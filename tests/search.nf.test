@@ -29,6 +29,16 @@ nextflow_pipeline {
                 cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
             }
             assert selfHits.size() > 0
+            assert path("${params.outdir}/clusters.tsv").exists()
+            assert path("${params.outdir}/alignments.tsv").exists()
+            def clusters = path("${params.outdir}/clusters.tsv").readLines()
+            assert clusters.drop(1).findAll { it }.size() > 0
+            def alignments = path("${params.outdir}/alignments.tsv").readLines()
+            assert alignments[0].contains('evalue')
+            def hitRows = alignments.drop(1).findAll { it }
+            assert hitRows.size() > 0
+            def evals = hitRows.collect { line -> line.split('\t')[5] as double }
+            assert evals == evals.toSorted()
         }
     }
 

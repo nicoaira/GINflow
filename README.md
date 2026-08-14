@@ -13,6 +13,7 @@ The current steps are:
 3. Embed each shard (`*.npz` + manifest)
 4. Slice sliding windows (default `w=11`, stride 1)
 5. Build a reusable FAISS database and/or search it for seeds
+6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, and rank by database E-value
 
 ---
 
@@ -51,6 +52,35 @@ nextflow run nicoaira/ginflow \
    --query queries.tsv \
    --outdir <OUTDIR>
 ```
+
+### Test database + short queries
+
+From a clone of this repo, build the 1200-sequence test database and search it with four molecules shorter than 200 nt, each from a different Rfam family (`tests/data/example_queries.tsv`: RF00001, RF00003, RF01725, RF01852). Those four records are also in the test table, so the top hit for each query should be itself.
+
+```bash
+# Build the test database
+nextflow run . \
+    -profile docker,test \
+    --outdir testdb
+
+# Search it
+nextflow run . \
+    -profile docker \
+    --query tests/data/example_queries.tsv \
+    --database testdb/faiss \
+    --outdir test_search
+```
+
+Or both steps in one run:
+
+```bash
+nextflow run . \
+    -profile docker,test \
+    --query tests/data/example_queries.tsv \
+    --outdir test_search
+```
+
+Ranked alignments are in `test_search/alignments.tsv`.
 
 > [!WARNING]
 > Please provide pipeline parameters via the CLI or Nextflow `-params-file` option. Custom config files including those provided by the `-c` Nextflow option can be used to provide any configuration _**except for parameters**_; see [docs](https://nf-co.re/docs/running/run-pipelines#using-parameter-files).

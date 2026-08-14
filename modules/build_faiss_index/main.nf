@@ -10,6 +10,8 @@ process BUILD_FAISS_INDEX {
     input:
     path windows, stageAs: 'windows/*'
     path manifests, stageAs: 'manifests/*'
+    path embeddings, stageAs: 'embeddings/*'
+    path metadata, stageAs: 'metadata/*'
 
     output:
     path "faiss", emit: database
@@ -24,6 +26,8 @@ process BUILD_FAISS_INDEX {
     build_faiss.py \\
         --windows windows/*.windows.npz \\
         --manifests manifests/*.windows.manifest.json \\
+        --embeddings embeddings/*.npz \\
+        --graph-metadata metadata/*.json \\
         --outdir faiss \\
         ${args}
 
@@ -39,6 +43,8 @@ process BUILD_FAISS_INDEX {
     mkdir -p faiss
     touch faiss/index.faiss
     touch faiss/windows.tsv
+    touch faiss/embeddings.npz
+    touch faiss/records.tsv
     echo '{}' > faiss/meta.json
 
     cat <<-END_VERSIONS > versions.yml

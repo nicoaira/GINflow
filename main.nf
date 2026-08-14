@@ -40,6 +40,13 @@ workflow {
     def query_path    = resolve_optional_path(params.query)
     def database_path = resolve_optional_path(params.database)
     def reuse_windows = input_path && query_path && input_path == query_path
+    def evd_existing  = null
+    if (params.database) {
+        def bundled = file("${params.database}/evd.json")
+        if (bundled.exists()) {
+            evd_existing = bundled.toString()
+        }
+    }
 
     if (params.input) {
         file(params.input, checkIfExists: true)
@@ -58,7 +65,8 @@ workflow {
         params.input    ?: [],
         params.query    ?: [],
         params.database ?: [],
-        reuse_windows
+        reuse_windows,
+        evd_existing
     )
 
     samples_ch = result.graphs
@@ -77,9 +85,14 @@ workflow {
         }
 
     publish:
-    samples  = samples_ch
-    database = result.database
-    seeds    = result.seeds
+    samples          = samples_ch
+    database         = result.database
+    seeds            = result.seeds
+    clusters         = result.clusters
+    cluster_members  = result.cluster_members
+    alignments       = result.alignments
+    alignment_text   = result.alignment_text
+    evd              = result.evd
 }
 
 output {
@@ -102,5 +115,22 @@ output {
     }
     seeds {
         path '.'
+    }
+    clusters {
+        path '.'
+    }
+    cluster_members {
+        path '.'
+    }
+    alignments {
+        path '.'
+    }
+    alignment_text {
+        path '.'
+    }
+    evd {
+        path { evd_file ->
+            evd_file >> 'faiss/evd.json'
+        }
     }
 }

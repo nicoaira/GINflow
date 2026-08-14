@@ -121,12 +121,85 @@
                     "description": "Minimum cosine similarity (L2-normalized window inner product) required to keep a seed."
                 }
             }
+        },
+        "cluster_options": {
+            "title": "Seed clustering",
+            "type": "object",
+            "properties": {
+                "cluster_span": {
+                    "type": "integer",
+                    "default": 80,
+                    "minimum": 0,
+                    "description": "Maximum nucleotide gap, on query and target, between a seed and the current cluster box."
+                },
+                "cluster_min_seeds": {
+                    "type": "integer",
+                    "default": 2,
+                    "minimum": 1,
+                    "description": "Minimum seeds required to keep a cluster."
+                },
+                "cluster_diagonal_tolerance": {
+                    "type": "integer",
+                    "default": 12,
+                    "minimum": 0,
+                    "description": "Allowed diagonal drift (query_start - target_start) when adding a seed."
+                },
+                "cluster_max_diagonal_span": {
+                    "type": "integer",
+                    "default": 96,
+                    "minimum": 0,
+                    "description": "Maximum diagonal breadth of a cluster. 0 disables the cap."
+                },
+                "cluster_max_seed_rank": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 0,
+                    "description": "Ignore FAISS hits worse than this rank. 0 keeps every seed."
+                }
+            }
+        },
+        "alignment_options": {
+            "title": "Smith–Waterman",
+            "type": "object",
+            "properties": {
+                "align_pad": {
+                    "type": "integer",
+                    "default": 32,
+                    "minimum": 0,
+                    "description": "Nucleotides of context added on each side of a cluster before GINFINITY-SW."
+                },
+                "align_max_cells": {
+                    "type": "integer",
+                    "default": 16777216,
+                    "minimum": 1,
+                    "description": "Maximum DP cells (crop length product) allowed for one cluster."
+                },
+                "evd_samples": {
+                    "type": "integer",
+                    "default": 1000,
+                    "minimum": 20,
+                    "description": "Reverse-sequence null alignments used to fit Karlin–Altschul λ and K."
+                },
+                "evd_max_length": {
+                    "type": "integer",
+                    "default": 400,
+                    "minimum": 8,
+                    "description": "Crop each null sequence to this length so EVD calibration stays O(L^2)."
+                },
+                "evd_seed": {
+                    "type": "integer",
+                    "default": 1,
+                    "description": "RNG seed for reverse-sequence null sampling."
+                }
+            }
         }
     },
     "allOf": [
         { "$ref": "#/$defs/input_output_options" },
         { "$ref": "#/$defs/graph_options" },
         { "$ref": "#/$defs/embedding_options" },
-        { "$ref": "#/$defs/search_options" }
+        { "$ref": "#/$defs/search_options" },
+        { "$ref": "#/$defs/cluster_options" },
+        { "$ref": "#/$defs/alignment_options" }
     ]
 }

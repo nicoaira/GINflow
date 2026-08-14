@@ -124,13 +124,62 @@ def build_index(shards: list[tuple[Path, Path]]) -> tuple[faiss.Index, list[tupl
     return index, mapping, meta
 
 
-def write_database(outdir: Path, index: faiss.Index, mapping: list[tuple[int, str, int, int]], meta: dict) -> None:
+def pack_records(embedding_paths: list[Path], metadata_paths: list[Path]) -> tuple[dict[str, np.ndarray], list[tuple[str, str, str]]]:
+    embeddings: dict[str, np.ndarray] = {}
+    for path in embedding_paths:
+        with np.load(path) as archive:
+            for key in archive.files:
+                if key in embeddings:
+                    raise ValueError(f"duplicate embedding id {key!r} in {path}")
+                embeddings[key] = np.asarray(archive[key])
+
+    records: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for path in metadata_paths:
+        payload = load_json(path)
+        identifiers = payload.get("identifiers")
+        sequences = payload.get("sequences")
+        structures = payload.get("structures")
+        if not (identifiers and sequences and structures):
+            raise ValueError(f"{path} is not a GINFINITY graph sidecar")
+        if not (len(identifiers) == len(sequences) == len(structures)):
+            raise ValueError(f"{path} identifier/sequence/structure length mismatch")
+        for identifier, sequence, structure in zip(identifiers, sequences, structures):
+            if identifier in seen:
+                raise ValueError(f"duplicate record id {identifier!r} in {path}")
+            if identifier not in embeddings:
+                raise ValueError(f"{identifier} is in {path} but missing from residue embeddings")
+            seen.add(identifier)
+            records.append((identifier, sequence, structure))
+
+    missing = sorted(set(embeddings) - seen)
+    if missing:
+        raise ValueError(f"embeddings without graph metadata: {missing[:8]}")
+    return embeddings, records
+
+
+def write_database(
+    outdir: Path,
+    index: faiss.Index,
+    mapping: list[tuple[int, str, int, int]],
+    meta: dict,
+    packed: tuple[dict[str, np.ndarray], list[tuple[str, str, str]]] | None = None,
+) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(outdir / "index.faiss"))
     with (outdir / "windows.tsv").open("w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["faiss_id", "transcript_id", "start", "end"])
         writer.writerows(mapping)
+    if packed is not None:
+        embeddings, records = packed
+        np.savez_compressed(outdir / "embeddings.npz", **embeddings)
+        with (outdir / "records.tsv").open("w", newline="") as handle:
+            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+            writer.writerow(["transcript_id", "sequence", "secondary_structure"])
+            writer.writerows(records)
+        meta["has_residue_embeddings"] = True
+        meta["n_packed_records"] = len(records)
     (outdir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
 
 
@@ -138,6 +187,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--windows", type=Path, nargs="+", required=True)
     parser.add_argument("--manifests", type=Path, nargs="+", required=True)
+    parser.add_argument("--embeddings", type=Path, nargs="*")
+    parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--outdir", type=Path, required=True)
     return parser.parse_args(argv)
 
@@ -147,11 +198,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         shards = pair_shards(args.windows, args.manifests)
         index, mapping, meta = build_index(shards)
+        packed = None
+        if args.embeddings or args.graph_metadata:
+            if not args.embeddings or not args.graph_metadata:
+                raise ValueError("--embeddings and --graph-metadata must be passed together")
+            packed = pack_records(args.embeddings, args.graph_metadata)
     except (OSError, KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    write_database(args.outdir, index, mapping, meta)
-    print(json.dumps({"outdir": str(args.outdir), **{k: meta[k] for k in ("n_windows", "n_records", "window_dim")}}))
+    write_database(args.outdir, index, mapping, meta, packed)
+    print(json.dumps({"outdir": str(args.outdir), **{k: meta[k] for k in ("n_windows", "n_records", "window_dim") if k in meta}}))
     return 0
 
 

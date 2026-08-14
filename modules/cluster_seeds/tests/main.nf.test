@@ -1,13 +1,13 @@
 nextflow_process {
 
-    name "Test Process SEARCH_FAISS"
+    name "Test Process CLUSTER_SEEDS"
     script "../main.nf"
-    process "SEARCH_FAISS"
+    process "CLUSTER_SEEDS"
 
     tag "modules"
-    tag "search_faiss"
+    tag "cluster_seeds"
 
-    test("Should recover self-hits from the smoke-test index") {
+    test("Should cluster self-search seeds from the smoke TSV") {
 
         setup {
             run("BUILD_RNA_GRAPHS") {
@@ -48,13 +48,21 @@ nextflow_process {
                     """
                 }
             }
+            run("SEARCH_FAISS") {
+                script "../../search_faiss/main.nf"
+                process {
+                    """
+                    input[0] = GENERATE_WINDOWS.out.windows
+                    input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                    """
+                }
+            }
         }
 
         when {
             process {
                 """
-                input[0] = GENERATE_WINDOWS.out.windows
-                input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                input[0] = SEARCH_FAISS.out.seeds.map { meta, tsv -> tsv }.collectFile(name: 'seeds.tsv', keepHeader: true, skip: 1)
                 """
             }
         }
@@ -62,21 +70,20 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert process.out.seeds.size() == 1 },
-                { assert process.out.versions.size() == 1 },
+                { assert process.out.clusters.size() == 1 },
                 {
-                    def seeds = path(process.out.seeds.get(0).get(1)).readLines()
-                    assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
-                    def rows = seeds.drop(1).findAll { it }
+                    def clusters = path(process.out.clusters.get(0)).readLines()
+                    assert clusters[0].startsWith('cluster_id')
+                    def rows = clusters.drop(1).findAll { it }
                     assert rows.size() > 0
-                    def selfHits = rows.findAll { line ->
+                    def selfRows = rows.findAll { line ->
                         def cols = line.split('\t')
-                        cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
+                        cols[1] == cols[2]
                     }
-                    assert selfHits.size() > 0
-                    selfHits.each { line ->
-                        def score = line.split('\t')[6] as double
-                        assert score > 0.999
+                    assert selfRows.size() > 0
+                    selfRows.each { line ->
+                        def cols = line.split('\t')
+                        assert (cols[3] as int) >= 2
                     }
                 },
                 {

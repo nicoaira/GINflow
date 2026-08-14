@@ -1,0 +1,63 @@
+process ALIGN_CLUSTERS {
+    tag "align"
+    label 'process_medium'
+
+    conda "${moduleDir}/environment.yml"
+    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e6/e6f98c10bebcb0d03b7c62b0ee42a9034c8114e4a1b07f47a9ae42bdca4ccd69/data' :
+        'community.wave.seqera.io/library/python_ginfinity-sw:5c1c3fedfe3d92e0' }"
+
+    input:
+    path clusters
+    path query_embeddings, stageAs: 'query_emb/*'
+    path query_metadata, stageAs: 'query_meta/*'
+    path database
+    path parameters
+    path evd
+
+    output:
+    path "alignments.tsv",     emit: alignments
+    path "alignments.txt",     emit: text
+    path "alignment_stats.json", emit: stats
+    path "versions.yml",       emit: versions
+
+    when:
+    task.ext.when == null || task.ext.when
+
+    script:
+    def args = task.ext.args ?: ''
+    """
+    align_clusters.py \\
+        --clusters ${clusters} \\
+        --parameters ${parameters} \\
+        --query-embeddings query_emb/*.npz \\
+        --query-metadata query_meta/*.json \\
+        --database ${database} \\
+        --evd ${evd} \\
+        --pad ${params.align_pad} \\
+        --max-cells ${params.align_max_cells} \\
+        --output alignments.tsv \\
+        --alignment-text alignments.txt \\
+        --stats-json alignment_stats.json \\
+        ${args}
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        ginfinity-sw: \$(python3 -c "import ginfinity_sw; print(ginfinity_sw.__version__)")
+        numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+    END_VERSIONS
+    """
+
+    stub:
+    """
+    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\tbit_score\\tevalue\\tevalue_pair\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tseed_count\\tmax_seed_score" > alignments.tsv
+    touch alignments.txt
+    echo '{}' > alignment_stats.json
+
+    cat <<-END_VERSIONS > versions.yml
+    "${task.process}":
+        ginfinity-sw: \$(python3 -c "import ginfinity_sw; print(ginfinity_sw.__version__)")
+        numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+    END_VERSIONS
+    """
+}

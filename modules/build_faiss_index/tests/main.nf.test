@@ -44,6 +44,8 @@ nextflow_process {
                 """
                 input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
                 input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
+                input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+                input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
                 """
             }
         }
@@ -65,6 +67,9 @@ nextflow_process {
                     assert meta.l2_normalized == true
                     assert meta.n_records == 10
                     assert (meta.n_windows as int) > 0
+                    assert meta.has_residue_embeddings == true
+                    assert db.resolve('embeddings.npz').exists()
+                    assert db.resolve('records.tsv').exists()
                 },
                 {
                     assert snapshot(process.out.versions).match()

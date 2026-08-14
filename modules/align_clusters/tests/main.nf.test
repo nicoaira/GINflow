@@ -1,0 +1,123 @@
+nextflow_process {
+
+    name "Test Process ALIGN_CLUSTERS"
+    script "../main.nf"
+    process "ALIGN_CLUSTERS"
+
+    tag "modules"
+    tag "align_clusters"
+
+    test("Should align smoke-test self-clusters") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+            run("GENERATE_WINDOWS") {
+                script "../../generate_windows/main.nf"
+                process {
+                    """
+                    input[0] = EMBED_RNA_GRAPHS.out.embeddings
+                    """
+                }
+            }
+            run("BUILD_FAISS_INDEX") {
+                script "../../build_faiss_index/main.nf"
+                process {
+                    """
+                    input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
+                    input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
+                    input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+                    input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
+                    """
+                }
+            }
+            run("SEARCH_FAISS") {
+                script "../../search_faiss/main.nf"
+                process {
+                    """
+                    input[0] = GENERATE_WINDOWS.out.windows
+                    input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                    """
+                }
+            }
+            run("CLUSTER_SEEDS") {
+                script "../../cluster_seeds/main.nf"
+                process {
+                    """
+                    input[0] = SEARCH_FAISS.out.seeds.map { meta, tsv -> tsv }.collectFile(name: 'seeds.tsv', keepHeader: true, skip: 1)
+                    """
+                }
+            }
+            run("ESTIMATE_EVD") {
+                script "../../estimate_evd/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_FAISS_INDEX.out.database
+                    input[1] = file("${projectDir}/assets/alignment.json", checkIfExists: true)
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = CLUSTER_SEEDS.out.clusters
+                input[1] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+                input[2] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
+                input[3] = BUILD_FAISS_INDEX.out.database.collect()
+                input[4] = file("${projectDir}/assets/alignment.json", checkIfExists: true)
+                input[5] = ESTIMATE_EVD.out.evd
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.alignments.size() == 1 },
+                {
+                    def header = path(process.out.alignments.get(0)).readLines()[0]
+                    assert header.contains('evalue')
+                    assert header.contains('bit_score')
+                    def rows = path(process.out.alignments.get(0)).readLines().drop(1).findAll { it }
+                    assert rows.size() > 0
+                    def evals = rows.collect { line -> line.split('\t')[5] as double }
+                    assert evals == evals.toSorted()
+                    def selfHits = rows.findAll { line ->
+                        def cols = line.split('\t')
+                        cols[1] == cols[2]
+                    }
+                    assert selfHits.size() > 0
+                    selfHits.each { line ->
+                        def cols = line.split('\t')
+                        assert (cols[3] as double) > 0
+                        assert (cols[5] as double) >= 0
+                    }
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

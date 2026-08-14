@@ -25,6 +25,12 @@ nextflow_pipeline {
             assert windows.findAll { it.name.endsWith('.windows.npz') }.size() >= 1
             assert path("${params.outdir}/faiss/index.faiss").exists()
             assert path("${params.outdir}/faiss/windows.tsv").exists()
+            assert path("${params.outdir}/faiss/embeddings.npz").exists()
+            assert path("${params.outdir}/faiss/records.tsv").exists()
+            assert path("${params.outdir}/faiss/evd.json").exists()
+            def evd = path("${params.outdir}/faiss/evd.json").json
+            assert (evd.lambda as double) > 0
+            assert (evd.K as double) > 0
             def meta = path("${params.outdir}/faiss/meta.json").json
             assert meta.window_size == 11
             assert meta.n_windows > 0

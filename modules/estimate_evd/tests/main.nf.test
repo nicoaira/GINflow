@@ -1,13 +1,13 @@
 nextflow_process {
 
-    name "Test Process SEARCH_FAISS"
+    name "Test Process ESTIMATE_EVD"
     script "../main.nf"
-    process "SEARCH_FAISS"
+    process "ESTIMATE_EVD"
 
     tag "modules"
-    tag "search_faiss"
+    tag "estimate_evd"
 
-    test("Should recover self-hits from the smoke-test index") {
+    test("Should fit positive lambda and K from smoke-test embeddings") {
 
         setup {
             run("BUILD_RNA_GRAPHS") {
@@ -53,8 +53,8 @@ nextflow_process {
         when {
             process {
                 """
-                input[0] = GENERATE_WINDOWS.out.windows
-                input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                input[0] = BUILD_FAISS_INDEX.out.database
+                input[1] = file("${projectDir}/assets/alignment.json", checkIfExists: true)
                 """
             }
         }
@@ -62,22 +62,14 @@ nextflow_process {
         then {
             assertAll(
                 { assert process.success },
-                { assert process.out.seeds.size() == 1 },
-                { assert process.out.versions.size() == 1 },
+                { assert process.out.evd.size() == 1 },
                 {
-                    def seeds = path(process.out.seeds.get(0).get(1)).readLines()
-                    assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
-                    def rows = seeds.drop(1).findAll { it }
-                    assert rows.size() > 0
-                    def selfHits = rows.findAll { line ->
-                        def cols = line.split('\t')
-                        cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
-                    }
-                    assert selfHits.size() > 0
-                    selfHits.each { line ->
-                        def score = line.split('\t')[6] as double
-                        assert score > 0.999
-                    }
+                    def evd = path(process.out.evd.get(0)).json
+                    assert (evd.lambda as double) > 0
+                    assert (evd.K as double) > 0
+                    assert (evd.n_positive as int) >= 20
+                    assert (evd.database_residues as int) > 0
+                    assert evd.null_model == 'reverse_sequence'
                 },
                 {
                     assert snapshot(process.out.versions).match()
