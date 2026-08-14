@@ -1,6 +1,6 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "$id": "https://raw.githubusercontent.com/nicoaira/ginflow/master/nextflow_schema.json",
+    "$id": "https://raw.githubusercontent.com/nicoaira/ginflow/main/nextflow_schema.json",
     "title": "nicoaira/ginflow pipeline parameters",
     "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings and FAISS seeding.",
     "type": "object",
