@@ -52,6 +52,16 @@ Seeds are then clustered along nearby diagonals and each cluster is aligned with
 | `--evd_samples` | `1000` | Reverse-sequence null alignments used to fit λ and K |
 | `--evd_max_length` | `400` | Max null-sequence length during EVD calibration |
 
+Every search writes `report.html` — a standalone page of ranked hits, aligned spans, and (if requested) structure plots.
+
+Optional structure plots (`--plot_backend rnartistcore`, `r4rna`, or `both`) draw the query and target 2Ds. The aligned span is coloured (`--plot_highlight_colour`); the rest of the molecule is gray. Default is `none`. Plots are also inlined in the report. Each draw process uses `task.cpus` workers (6 with the default `process_medium` label).
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--plot_backend` | `none` | `rnartistcore`, `r4rna`, `both`, or `none` |
+| `--plot_max` | `50` | Maximum SVGs (query and target each count as one) |
+| `--plot_highlight_colour` | `#00AA88` | Colour of the aligned span |
+
 Alignments are ranked by ascending database E-value. E = K m N exp(−λS), where m is the query length and N is the number of residues in the searchable database. λ and K are fit at database-build time from Smith–Waterman scores of reversed real embeddings (preserves local embedding correlation, destroys homology). The legacy `K = exp(−λμ)` conversion is not used; K comes from a length-aware Gumbel MLE so that μ = ln(Kmn)/λ.
 
 ## Run

@@ -1,0 +1,52 @@
+nextflow_process {
+
+    name "Test Process WRITE_REPORT"
+    script "../main.nf"
+    process "WRITE_REPORT"
+
+    tag "modules"
+    tag "write_report"
+
+    test("Should build an HTML report from the plot fixture") {
+
+        when {
+            process {
+                """
+                input[0] = file("${projectDir}/tests/data/plot_fixture.tsv", checkIfExists: true)
+                input[1] = file("${moduleDir}/tests/data/alignments.txt", checkIfExists: true)
+                input[2] = file("${moduleDir}/tests/data/evd.json", checkIfExists: true)
+                input[3] = file("${moduleDir}/tests/data/clusters.tsv", checkIfExists: true)
+                input[4] = file("${moduleDir}/tests/data/seeds.tsv", checkIfExists: true)
+                input[5] = file("${projectDir}/assets/no_plots_rnartist", checkIfExists: true)
+                input[6] = file("${projectDir}/assets/no_plots_r4rna", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.report.size() == 1 },
+                {
+                    def html = path(process.out.report.get(0)).text
+                    assert html.contains('<html')
+                    assert html.contains('Search report')
+                    assert html.contains('X06694.1/9-124')
+                    assert html.contains('X13842.1/1-150')
+                    assert html.contains('0.001') || html.contains('1e-3') || html.contains('0.001')
+                    assert html.contains('E = K')
+                    assert html.contains('article class="hit"')
+                    assert html.contains('base id')
+                    assert html.contains('structure id')
+                    assert html.contains('55.0%')
+                    assert html.contains('40.0%')
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

@@ -64,6 +64,10 @@ ALIGNMENT_COLUMNS = [
     "aligned_columns",
     "seed_count",
     "max_seed_score",
+    "query_sequence",
+    "query_structure",
+    "target_sequence",
+    "target_structure",
 ]
 
 
@@ -281,6 +285,10 @@ def main(argv: list[str] | None = None) -> int:
             "aligned_columns": len(result.columns),
             "seed_count": cluster.get("seed_count", ""),
             "max_seed_score": cluster.get("max_score", ""),
+            "query_sequence": query_meta[query_id][0],
+            "query_structure": query_meta[query_id][1],
+            "target_sequence": target_meta[target_id][0],
+            "target_structure": target_meta[target_id][1],
             "result": result,
         })
 
@@ -312,6 +320,10 @@ def main(argv: list[str] | None = None) -> int:
             "aligned_columns": item["aligned_columns"],
             "seed_count": item["seed_count"],
             "max_seed_score": item["max_seed_score"],
+            "query_sequence": item["query_sequence"],
+            "query_structure": item["query_structure"],
+            "target_sequence": item["target_sequence"],
+            "target_structure": item["target_structure"],
         })
         if args.alignment_text:
             q_seq, q_struct = query_meta[item["query_id"]]

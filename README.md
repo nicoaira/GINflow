@@ -14,6 +14,8 @@ The current steps are:
 4. Slice sliding windows (default `w=11`, stride 1)
 5. Build a reusable FAISS database and/or search it for seeds
 6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, and rank by database E-value
+7. Optionally plot query/target 2Ds (`--plot_backend rnartistcore`, `r4rna`, or `both`)
+8. Write a standalone HTML search report (`report.html`)
 
 ---
 
@@ -80,7 +82,7 @@ nextflow run . \
     --outdir test_search
 ```
 
-Ranked alignments are in `test_search/alignments.tsv`.
+Ranked alignments are in `test_search/alignments.tsv`. Open `test_search/report.html` in a browser for the searchable hit report.
 
 > [!WARNING]
 > Please provide pipeline parameters via the CLI or Nextflow `-params-file` option. Custom config files including those provided by the `-c` Nextflow option can be used to provide any configuration _**except for parameters**_; see [docs](https://nf-co.re/docs/running/run-pipelines#using-parameter-files).

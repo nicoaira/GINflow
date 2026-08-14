@@ -6,6 +6,9 @@ include { CLUSTER_SEEDS }                    from '../modules/cluster_seeds/main
 include { ALIGN_CLUSTERS }                   from '../modules/align_clusters/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_BUILD } from '../modules/estimate_evd/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_QUERY } from '../modules/estimate_evd/main'
+include { DRAW_RNARTISTCORE }                from '../modules/draw_rnartistcore/main'
+include { DRAW_R4RNA }                       from '../modules/draw_r4rna/main'
+include { WRITE_REPORT }                     from '../modules/write_report/main'
 
 workflow GINFLOW {
 
@@ -31,6 +34,9 @@ workflow GINFLOW {
     ch_query_embeddings = channel.empty()
     ch_query_metadata   = channel.empty()
     ch_evd              = channel.empty()
+    ch_plots_rnartist   = channel.empty()
+    ch_plots_r4rna      = channel.empty()
+    ch_report           = channel.empty()
     alignment_params    = file("${projectDir}/assets/alignment.json", checkIfExists: true)
 
     if (structures) {
@@ -112,6 +118,33 @@ workflow GINFLOW {
         ch_versions       = ch_versions.mix(ALIGN_CLUSTERS.out.versions)
         ch_alignments     = ALIGN_CLUSTERS.out.alignments
         ch_alignment_text = ALIGN_CLUSTERS.out.text
+
+        ch_report_rn = channel.fromPath("${projectDir}/assets/no_plots_rnartist", checkIfExists: true, type: 'dir')
+        ch_report_r4 = channel.fromPath("${projectDir}/assets/no_plots_r4rna", checkIfExists: true, type: 'dir')
+        if (params.plot_backend in ['rnartistcore', 'both']) {
+            DRAW_RNARTISTCORE(ALIGN_CLUSTERS.out.alignments)
+            ch_versions       = ch_versions.mix(DRAW_RNARTISTCORE.out.versions)
+            ch_plots_rnartist = DRAW_RNARTISTCORE.out.plots
+            ch_report_rn      = DRAW_RNARTISTCORE.out.plots
+        }
+        if (params.plot_backend in ['r4rna', 'both']) {
+            DRAW_R4RNA(ALIGN_CLUSTERS.out.alignments)
+            ch_versions    = ch_versions.mix(DRAW_R4RNA.out.versions)
+            ch_plots_r4rna = DRAW_R4RNA.out.plots
+            ch_report_r4   = DRAW_R4RNA.out.plots
+        }
+
+        WRITE_REPORT(
+            ALIGN_CLUSTERS.out.alignments,
+            ALIGN_CLUSTERS.out.text,
+            ch_evd.collect(),
+            CLUSTER_SEEDS.out.clusters,
+            ch_seeds,
+            ch_report_rn,
+            ch_report_r4
+        )
+        ch_versions = ch_versions.mix(WRITE_REPORT.out.versions)
+        ch_report   = WRITE_REPORT.out.report
     }
 
     emit:
@@ -125,5 +158,8 @@ workflow GINFLOW {
     alignments       = ch_alignments
     alignment_text   = ch_alignment_text
     evd              = ch_evd
+    plots_rnartist   = ch_plots_rnartist
+    plots_r4rna      = ch_plots_r4rna
+    report           = ch_report
     versions         = ch_versions
 }

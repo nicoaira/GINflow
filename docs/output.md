@@ -25,6 +25,10 @@ outdir/
 ├── cluster_members.tsv
 ├── alignments.tsv
 ├── alignments.txt
+├── report.html
+├── plots/
+│   ├── rnartistcore/
+│   └── r4rna/
 ├── samples.csv
 └── pipeline_info/
 ```
@@ -79,4 +83,15 @@ Diagonal HSP clusters. A cluster starts at the highest-scoring unused seed and g
 
 ## alignments.tsv / alignments.txt
 
-GINFINITY-SW local alignments of each cluster crop, ranked by ascending database E-value. Coordinates are 0-based half-open on the original molecules. Extra columns: `bit_score`, `evalue` (K m N e^{−λS}), `evalue_pair` (same formula with the target length instead of the full database). `alignments.txt` is the six-line RNA rendering.
+GINFINITY-SW local alignments of each cluster crop, ranked by ascending database E-value. Coordinates are 0-based half-open on the original molecules. Extra columns: `bit_score`, `evalue` (K m N e^{−λS}), `evalue_pair` (same formula with the target length instead of the full database), plus the full `query_sequence` / `query_structure` / `target_sequence` / `target_structure`. `alignments.txt` is the six-line RNA rendering.
+
+## report.html
+
+Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and each hit shows the aligned span on both molecules. Structure plots are inlined when `--plot_backend` was set.
+
+## plots/
+
+Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`. Each alignment can produce a query SVG and a target SVG, up to `--plot_max`. The aligned span is coloured with `--plot_highlight_colour`; unaligned residues stay gray.
+
+- `plots/rnartistcore/*.svg` — RNArtistCore 2Ds
+- `plots/r4rna/*.svg` — R4RNA arc diagrams

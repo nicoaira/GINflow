@@ -190,6 +190,23 @@
                     "type": "integer",
                     "default": 1,
                     "description": "RNG seed for reverse-sequence null sampling."
+                },
+                "plot_backend": {
+                    "type": "string",
+                    "default": "none",
+                    "enum": ["none", "rnartistcore", "r4rna", "both"],
+                    "description": "Draw aligned regions with RNArtistCore 2Ds, R4RNA arc plots, both, or skip plotting."
+                },
+                "plot_max": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "Maximum number of SVGs to write (query and target each count as one)."
+                },
+                "plot_highlight_colour": {
+                    "type": "string",
+                    "default": "#00AA88",
+                    "description": "Colour of the aligned span. Unaligned residues stay gray."
                 }
             }
         }

@@ -93,6 +93,9 @@ workflow {
     alignments       = result.alignments
     alignment_text   = result.alignment_text
     evd              = result.evd
+    plots_rnartist   = result.plots_rnartist
+    plots_r4rna      = result.plots_r4rna
+    report           = result.report
 }
 
 output {
@@ -132,5 +135,14 @@ output {
         path { evd_file ->
             evd_file >> 'faiss/evd.json'
         }
+    }
+    plots_rnartist {
+        path 'plots/rnartistcore'
+    }
+    plots_r4rna {
+        path 'plots/r4rna'
+    }
+    report {
+        path '.'
     }
 }

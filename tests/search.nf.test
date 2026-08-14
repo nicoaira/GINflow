@@ -31,6 +31,8 @@ nextflow_pipeline {
             assert selfHits.size() > 0
             assert path("${params.outdir}/clusters.tsv").exists()
             assert path("${params.outdir}/alignments.tsv").exists()
+            assert path("${params.outdir}/report.html").exists()
+            assert path("${params.outdir}/report.html").text.contains('Search report')
             def clusters = path("${params.outdir}/clusters.tsv").readLines()
             assert clusters.drop(1).findAll { it }.size() > 0
             def alignments = path("${params.outdir}/alignments.tsv").readLines()

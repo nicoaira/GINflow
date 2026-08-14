@@ -1,0 +1,9 @@
+{
+  "lambda": 2.24,
+  "K": 0.0002,
+  "null_model": "reverse_sequence",
+  "fit_method": "length_aware_gumbel_mle",
+  "n_samples": 200,
+  "database_sequences": 4,
+  "database_residues": 512
+}

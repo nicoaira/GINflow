@@ -1,0 +1,14 @@
+{
+    "Should draw query and target SVGs from the plot fixture": {
+        "content": [
+            [
+                "versions.yml:md5,5a71497f218623e95b9796c83418895d"
+            ]
+        ],
+        "timestamp": "2026-08-14T17:21:19.971091955",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

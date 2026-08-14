@@ -1,0 +1,2 @@
+cluster_id	query_id	target_id	seed_count	query_start	query_end	target_start	target_end	max_score	diagonal	diagonal_min	diagonal_max	diagonal_span
+0	X06694.1/9-124	X13842.1/1-150	3	10	40	10	40	0.9	0	0	0	0

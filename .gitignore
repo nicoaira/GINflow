@@ -16,6 +16,7 @@ null/
 ro-crate-metadata.json
 results*
 scripts/build_test_structures.py
+test_search/
 
 # repowise API keys (local)
 .repowise/.env

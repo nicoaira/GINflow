@@ -1,0 +1,11 @@
+# cluster 0  X06694.1/9-124 vs X13842.1/1-150  score=10.0000  bits=5.00  E=0.001
+Score = 10
+Aligned columns = 20 (20 ungapped); base identity = 55.0%; structure identity = 40.0%; conserved pairs = 3
+Query span = (10, 40); Target span = (10, 40) (0-based, half-open)
+
+Query    11 UUGACGAUCAUAGAGCGUUG 30
+            ((((((((((....((..((
+                 <<<<<<<<<<    
+            |||.||.||||...||..||
+            ((((((((((..(((((...
+Sbjct    11 CCGGGGGAAGUCGGUGAUCA 30

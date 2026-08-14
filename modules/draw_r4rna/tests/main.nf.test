@@ -1,0 +1,44 @@
+nextflow_process {
+
+    name "Test Process DRAW_R4RNA"
+    script "../main.nf"
+    process "DRAW_R4RNA"
+
+    tag "modules"
+    tag "draw_r4rna"
+
+    test("Should draw query and target arc plots from the plot fixture") {
+
+        when {
+            process {
+                """
+                input[0] = file("${projectDir}/tests/data/plot_fixture.tsv", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.plots.size() == 1 },
+                {
+                    def plotDir = file(process.out.plots.get(0))
+                    assert plotDir.isDirectory()
+                    def svgs = plotDir.listFiles().findAll { it.name.endsWith('.svg') }
+                    assert svgs.size() >= 2
+                    svgs.each { svg ->
+                        def text = svg.text
+                        assert text.contains('<svg')
+                        assert text.contains('#00AA88') || text.contains('66.666667%')
+                        assert text.toLowerCase().contains('#b0b0b0') || text.contains('69.019608%')
+                    }
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

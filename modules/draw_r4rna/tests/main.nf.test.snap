@@ -1,0 +1,14 @@
+{
+    "Should draw query and target arc plots from the plot fixture": {
+        "content": [
+            [
+                "versions.yml:md5,deb6e8488c6005d755f2499816574cc0"
+            ]
+        ],
+        "timestamp": "2026-08-14T17:28:49.597754194",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}
