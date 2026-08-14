@@ -1,0 +1,14 @@
+{
+    "Should embed a graph shard built from the test structures TSV": {
+        "content": [
+            [
+                "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+            ]
+        ],
+        "timestamp": "2026-08-14T00:56:40.443942765",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

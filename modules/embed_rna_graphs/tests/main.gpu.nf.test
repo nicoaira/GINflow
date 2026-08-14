@@ -1,0 +1,91 @@
+nextflow_process {
+
+    name "Test Process EMBED_RNA_GRAPHS (GPU)"
+    script "../main.nf"
+    process "EMBED_RNA_GRAPHS"
+
+    tag "gpu"
+    tag "modules"
+    tag "embed_rna_graphs"
+
+    test("Should embed a graph shard on GPU from the smoke structures TSV") {
+
+        config "./nextflow.gpu.config"
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = BUILD_RNA_GRAPHS.out.graphs
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.embeddings.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def manifest = path(process.out.embeddings.get(0).get(2)).json
+                    assert manifest.status == 'complete'
+                    assert manifest.records.size() == 10
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+    test("Should stub embed on GPU") {
+
+        config "./nextflow.gpu.config"
+        options "-stub"
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = BUILD_RNA_GRAPHS.out.graphs
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert snapshot(process.out).match() }
+            )
+        }
+
+    }
+
+}

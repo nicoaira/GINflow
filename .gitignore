@@ -1,0 +1,24 @@
+*.pyc
+.DS_Store
+AGENTS.md
+.nextflow*
+.nf-test.log
+nf-test
+.nf-test*
+results/
+test.xml
+testing*
+testing/
+work/
+null/
+.lineage/
+.repowise/
+ro-crate-metadata.json
+results*
+scripts/build_test_structures.py
+
+# repowise API keys (local)
+.repowise/.env
+.vscode/
+.codex/
+.mcp.json

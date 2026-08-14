@@ -1,0 +1,54 @@
+nextflow_process {
+
+    name "Test Process BUILD_RNA_GRAPHS"
+    script "../main.nf"
+    process "BUILD_RNA_GRAPHS"
+
+    tag "modules"
+    tag "build_rna_graphs"
+
+    test("Should build a graph shard from a structures TSV with extra columns") {
+
+        when {
+            process {
+                """
+                input[0] = [
+                    [ id: 'test' ],
+                    file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.graphs.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def sidecar = path(process.out.graphs.get(0).get(2))
+                    def metadata = sidecar.json
+                    assert metadata.record_count == 10
+                    assert metadata.identifiers == [
+                        'X58874.1/548-664',
+                        'V00591.1/394-557',
+                        'AF325695.1/199-9',
+                        'M68929.1/186481-186410',
+                        'EU020111.1/1-345',
+                        'AL596170.1/192-86',
+                        'M57569.1/218-27',
+                        'URS0000D690D1_12908/1-144',
+                        'AACY020396882.1/829-878',
+                        'M34509.1/93-182'
+                    ]
+                    assert metadata.node_count == 349 + 349 + 349 + 350 + 347 + 342 + 368 + 144 + 350 + 332
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

@@ -1,0 +1,87 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/nicoaira/ginflow/master/nextflow_schema.json",
+    "title": "nicoaira/ginflow pipeline parameters",
+    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings.",
+    "type": "object",
+    "$defs": {
+        "input_output_options": {
+            "title": "Input/output options",
+            "type": "object",
+            "required": ["input", "outdir"],
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "format": "file-path",
+                    "exists": true,
+                    "pattern": "^\\S+\\.(tsv|txt|csv)$",
+                    "description": "Path to a structures table. Required columns: transcript_id, sequence, secondary_structure. Extra columns are allowed and ignored."
+                },
+                "outdir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Output directory for graph shards and embeddings."
+                }
+            }
+        },
+        "graph_options": {
+            "title": "Graph construction",
+            "type": "object",
+            "properties": {
+                "shard_size": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "Maximum number of RNA records per BUILD_RNA_GRAPHS job."
+                },
+                "id_column": {
+                    "type": "string",
+                    "default": "transcript_id",
+                    "description": "Column name for the molecule identifier."
+                },
+                "sequence_column": {
+                    "type": "string",
+                    "default": "sequence",
+                    "description": "Column name for the RNA sequence."
+                },
+                "structure_column": {
+                    "type": "string",
+                    "default": "secondary_structure",
+                    "description": "Column name for the dot-bracket secondary structure."
+                },
+                "delimiter": {
+                    "type": "string",
+                    "default": "\\t",
+                    "description": "Field delimiter of the structures table."
+                }
+            }
+        },
+        "embedding_options": {
+            "title": "Embedding",
+            "type": "object",
+            "properties": {
+                "embed_device": {
+                    "type": "string",
+                    "default": "cpu",
+                    "enum": ["cpu", "cuda"],
+                    "description": "Documented embed device. CUDA requires -profile gpu, which sets accelerator=1 on EMBED_RNA_GRAPHS and selects the GPU Wave image."
+                },
+                "max_batch_nodes": {
+                    "type": "integer",
+                    "default": 60000,
+                    "description": "Maximum nodes per embedding microbatch."
+                },
+                "max_batch_edges": {
+                    "type": "integer",
+                    "default": 300000,
+                    "description": "Maximum edges per embedding microbatch."
+                }
+            }
+        }
+    },
+    "allOf": [
+        { "$ref": "#/$defs/input_output_options" },
+        { "$ref": "#/$defs/graph_options" },
+        { "$ref": "#/$defs/embedding_options" }
+    ]
+}

@@ -1,0 +1,69 @@
+name: build_rna_graphs
+description: Build an RNA graph shard from a structures TSV
+keywords:
+  - rna
+  - secondary structure
+  - graph
+  - gine
+tools:
+  - ginfinity:
+      description: Per-nucleotide RNA structure embeddings generated with a GINE encoder
+      homepage: https://github.com/nicoaira/GINFINITY
+      documentation: https://github.com/nicoaira/GINFINITY/tree/main/docs
+      licence: ["PolyForm-Noncommercial-1.0.0", "CC-BY-NC-4.0"]
+      identifier: ""
+
+input:
+  - - meta:
+        type: map
+        description: |
+          Groovy Map containing sample information
+          e.g. [ id:'test' ]
+    - structures:
+        type: file
+        description: |
+          Tab-delimited RNA table with default columns transcript_id,
+          sequence, and secondary_structure. Column names and delimiter
+          can be overridden with task.ext.args.
+        pattern: "*.{tsv,txt,csv}"
+        ontologies: []
+
+output:
+  graphs:
+    - - meta:
+          type: map
+          description: |
+            Groovy Map containing sample information
+            e.g. [ id:'test' ]
+      - "*.safetensors":
+          type: file
+          description: Graph-shard tensors
+          pattern: "*.safetensors"
+          ontologies: []
+      - "*.json":
+          type: file
+          description: Graph-shard JSON sidecar (identifiers, sequences, structures, graph_spec)
+          pattern: "*.json"
+          ontologies: []
+  versions:
+    - versions.yml:
+        type: file
+        description: File containing software versions
+        pattern: "versions.yml"
+        ontologies:
+          - edam: http://edamontology.org/format_3750
+
+authors:
+  - "@nicoaira"
+maintainers:
+  - "@nicoaira"
+containers:
+  docker:
+    linux/amd64:
+      name: community.wave.seqera.io/library/ginfinity:1.0.1--ec3ad584ab4c66db
+      build_id: bd-ec3ad584ab4c66db_1
+  singularity:
+    linux/amd64:
+      name: oras://community.wave.seqera.io/library/ginfinity:1.0.1--b0a8a9738401d060
+      build_id: bd-b0a8a9738401d060_1
+      https: https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/52/52aef85397c34ad4b14f3068d1881c5b09fd9df24ae5697900bb598e2dc892d0/data

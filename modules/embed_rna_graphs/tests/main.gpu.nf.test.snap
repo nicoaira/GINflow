@@ -1,0 +1,49 @@
+{
+    "Should embed a graph shard on GPU from the smoke structures TSV": {
+        "content": [
+            [
+                "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+            ]
+        ],
+        "timestamp": "2026-08-14T12:24:40.465892864",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    },
+    "Should stub embed on GPU": {
+        "content": [
+            {
+                "0": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.npz:md5,d41d8cd98f00b204e9800998ecf8427e",
+                        "test.manifest.json:md5,d41d8cd98f00b204e9800998ecf8427e"
+                    ]
+                ],
+                "1": [
+                    "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+                ],
+                "embeddings": [
+                    [
+                        {
+                            "id": "test"
+                        },
+                        "test.npz:md5,d41d8cd98f00b204e9800998ecf8427e",
+                        "test.manifest.json:md5,d41d8cd98f00b204e9800998ecf8427e"
+                    ]
+                ],
+                "versions": [
+                    "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+                ]
+            }
+        ],
+        "timestamp": "2026-08-14T12:24:47.696323581",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

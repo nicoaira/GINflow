@@ -1,0 +1,26 @@
+nextflow_pipeline {
+
+    name "Test pipeline"
+    script "../main.nf"
+    tag "pipeline"
+
+    test("-profile smoke_test") {
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size = 2
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/samples.csv").exists()
+            def graphs = getAllFilesFromDir("${params.outdir}/graphs", includeDir: false)
+            def embeddings = getAllFilesFromDir("${params.outdir}/embeddings", includeDir: false)
+            assert graphs.findAll { it.name.endsWith('.safetensors') }.size() >= 1
+            assert embeddings.findAll { it.name.endsWith('.npz') }.size() >= 1
+        }
+    }
+}
