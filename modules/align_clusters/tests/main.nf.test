@@ -97,6 +97,8 @@ nextflow_process {
                     def header = path(process.out.alignments.get(0)).readLines()[0]
                     assert header.contains('evalue')
                     assert header.contains('bit_score')
+                    assert header.contains('query_aligned')
+                    assert header.contains('target_aligned')
                     def rows = path(process.out.alignments.get(0)).readLines().drop(1).findAll { it }
                     assert rows.size() > 0
                     def evals = rows.collect { line -> line.split('\t')[5] as double }

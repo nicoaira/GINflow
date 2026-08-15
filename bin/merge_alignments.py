@@ -77,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
             "target_start", "target_end", "query_length", "target_length",
             "match_count", "aligned_columns", "seed_count", "max_seed_score",
             "query_sequence", "query_structure", "target_sequence", "target_structure",
+            "query_aligned", "target_aligned",
         ]
 
     rows.sort(key=lambda row: (

@@ -68,7 +68,18 @@ ALIGNMENT_COLUMNS = [
     "query_structure",
     "target_sequence",
     "target_structure",
+    "query_aligned",
+    "target_aligned",
 ]
+
+
+def aligned_strings(result: Alignment, query_seq: str, target_seq: str) -> tuple[str, str]:
+    query_parts = []
+    target_parts = []
+    for query, target in result.columns:
+        query_parts.append("-" if query < 0 else query_seq[query])
+        target_parts.append("-" if target < 0 else target_seq[target])
+    return "".join(query_parts), "".join(target_parts)
 
 
 def load_json(path: Path) -> dict:
@@ -266,6 +277,9 @@ def main(argv: list[str] | None = None) -> int:
         log_db = log_evalue(result.score, query_length, db_residues, lam, k_value)
         log_pair = log_evalue(result.score, query_length, target_length, lam, k_value)
         evalue_db = evalue_from_log(log_db)
+        query_aligned, target_aligned = aligned_strings(
+            result, query_meta[query_id][0], target_meta[target_id][0]
+        )
         rows.append({
             "cluster_id": cluster["cluster_id"],
             "query_id": query_id,
@@ -289,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
             "query_structure": query_meta[query_id][1],
             "target_sequence": target_meta[target_id][0],
             "target_structure": target_meta[target_id][1],
+            "query_aligned": query_aligned,
+            "target_aligned": target_aligned,
             "result": result,
         })
 
@@ -324,6 +340,8 @@ def main(argv: list[str] | None = None) -> int:
             "query_structure": item["query_structure"],
             "target_sequence": item["target_sequence"],
             "target_structure": item["target_structure"],
+            "query_aligned": item["query_aligned"],
+            "target_aligned": item["target_aligned"],
         })
         if args.alignment_text:
             q_seq, q_struct = query_meta[item["query_id"]]

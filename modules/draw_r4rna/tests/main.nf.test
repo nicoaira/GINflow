@@ -7,7 +7,7 @@ nextflow_process {
     tag "modules"
     tag "draw_r4rna"
 
-    test("Should draw query and target arc plots from the plot fixture") {
+    test("Should draw a unified alignment arc plot from the plot fixture") {
 
         when {
             process {
@@ -25,13 +25,16 @@ nextflow_process {
                     def plotDir = file(process.out.plots.get(0))
                     assert plotDir.isDirectory()
                     def svgs = plotDir.listFiles().findAll { it.name.endsWith('.svg') }
-                    assert svgs.size() >= 2
-                    svgs.each { svg ->
-                        def text = svg.text
-                        assert text.contains('<svg')
-                        assert text.contains('#00AA88') || text.contains('66.666667%')
-                        assert text.toLowerCase().contains('#b0b0b0') || text.contains('69.019608%')
-                    }
+                    assert svgs.size() == 1
+                    assert svgs[0].name.endsWith('_alignment.svg')
+                    def text = svgs[0].text
+                    assert text.contains('<svg')
+                    assert text.contains('#00AA88')
+                    assert text.contains('#1f6f8b') || text.contains('#1F6F8B')
+                    assert text.contains('#c45c26') || text.contains('#C45C26')
+                    assert text.contains('same base')
+                    assert text.contains('X06694')
+                    assert text.contains('X13842')
                 },
                 {
                     assert snapshot(process.out.versions).match()

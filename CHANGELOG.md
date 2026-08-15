@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Changed`
 
+- R4RNA plots are now one alignment-coordinate SVG per pair (query arcs up, target arcs flipped down, shared x, identity ribbon). The report shows that figure full-width instead of separate query and target diagrams. `alignments.tsv` keeps gapped `query_aligned` / `target_aligned` strings.
 - Default git branch is `main` (`manifest.defaultBranch` and the schema `$id`).
 - `--plot_max` is now `--plot_max_pairs` (default 25): max alignment pairs **per query**. Each pair plots both partners. `DRAW_R4RNA`, `DRAW_SW`, and `DRAW_RNARTISTCORE` run once per query.
 - `ALIGN_CLUSTERS` and plot processes run per query (`SPLIT_CLUSTERS` then `MERGE_ALIGNMENTS` for the shared `alignments.tsv` / `report.html`). `SEARCH_FAISS` stays batched; `--search_shard_size` sets query records per search task (default: `--shard_size`).

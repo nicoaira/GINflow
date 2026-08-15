@@ -53,16 +53,16 @@ Seeds are then clustered along nearby diagonals and each cluster is aligned with
 | `--evd_samples` | `1000` | Reverse-sequence null alignments used to fit λ and K |
 | `--evd_max_length` | `400` | Max null-sequence length during EVD calibration |
 
-Every search writes `report.html` — a standalone page of ranked hits, aligned spans, and (if requested) structure and SW-matrix plots. Hits are paginated (10 per page by default; 25, 50, 100, or 150). Plots sit in a two-column Query | Target panel, one row per type (RNArtistCore, R4RNA, alignment).
+Every search writes `report.html` — a standalone page of ranked hits, aligned spans, and (if requested) structure and SW-matrix plots. Hits are paginated (10 per page by default; 25, 50, 100, or 150). RNArtistCore and SW plots sit in a two-column Query | Target (or cosine | SW scores) grid. R4RNA is one full-width alignment arc plot per pair.
 
-Optional structure plots (`--plot_backend rnartistcore`, `r4rna`, or `both`) draw the query and target 2Ds. The aligned span is coloured (`--plot_highlight_colour`); the rest of the molecule is gray. Default is `none`. `--plot_sw` adds the crop cosine matrix and the substitution-score matrix with the Smith–Waterman traceback. Each query runs its own draw task. `--plot_max_pairs` (default 25) is per query and counts alignment pairs; each pair writes both partners. Plots are also inlined in the report. Each draw process uses `task.cpus` workers (6 with the default `process_medium` label).
+Optional structure plots (`--plot_backend rnartistcore`, `r4rna`, or `both`) draw the query and target 2Ds. RNArtistCore colours the aligned span (`--plot_highlight_colour`); the rest of the molecule is gray. R4RNA draws both structures on alignment coordinates (query arcs up, target arcs down) with a per-column base-identity ribbon. Default is `none`. `--plot_sw` adds the crop cosine matrix and the substitution-score matrix with the Smith–Waterman traceback. Each query runs its own draw task. `--plot_max_pairs` (default 25) is per query and counts alignment pairs. Plots are also inlined in the report. Each draw process uses `task.cpus` workers (6 with the default `process_medium` label).
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--plot_backend` | `none` | `rnartistcore`, `r4rna`, `both`, or `none` |
 | `--plot_sw` | `false` | Draw crop cosine + SW score matrices (traceback on the score plot) |
-| `--plot_max_pairs` | `25` | Max alignment pairs plotted per query; each pair draws both partners |
-| `--plot_highlight_colour` | `#00AA88` | Colour of the aligned span and SW traceback |
+| `--plot_max_pairs` | `25` | Max alignment pairs plotted per query |
+| `--plot_highlight_colour` | `#00AA88` | Colour of the aligned span, shared pairs, matching bases, and SW traceback |
 
 Alignments are ranked by ascending database E-value. E = K m N exp(−λS), where m is the query length and N is the number of residues in the searchable database. λ and K are fit at database-build time from Smith–Waterman scores of reversed real embeddings (preserves local embedding correlation, destroys homology). The legacy `K = exp(−λμ)` conversion is not used; K comes from a length-aware Gumbel MLE so that μ = ln(Kmn)/λ.
 

@@ -226,8 +226,7 @@ def build_hits(
             "alignment_text": block.get("text", ""),
             "plot_rn_query": match_plot(rn_svgs, index, query_id, target_id, "query", cluster_id),
             "plot_rn_target": match_plot(rn_svgs, index, query_id, target_id, "target", cluster_id),
-            "plot_r4_query": match_plot(r4_svgs, index, query_id, target_id, "query", cluster_id),
-            "plot_r4_target": match_plot(r4_svgs, index, query_id, target_id, "target", cluster_id),
+            "plot_r4": match_plot(r4_svgs, index, query_id, target_id, "alignment", cluster_id),
             "plot_sw_similarity": match_plot(sw_svgs or {}, index, query_id, target_id, "similarity", cluster_id),
             "plot_sw_scores": match_plot(sw_svgs or {}, index, query_id, target_id, "scores", cluster_id),
         })
@@ -314,25 +313,34 @@ def plot_cell(svg: str | None, caption: str) -> str:
     return f'<div class="plot plot-empty"><span class="muted">No {escape(caption)}</span></div>'
 
 
-def plot_panel(hit: dict) -> str:
-    rows = (
-        ("RNArtistCore", "plot_rn_query", "plot_rn_target", "query", "target"),
-        ("R4RNA", "plot_r4_query", "plot_r4_target", "query", "target"),
-        ("Alignment", "plot_sw_similarity", "plot_sw_scores", "cosine", "SW scores"),
+def plot_row_pair(label: str, left: str | None, right: str | None, left_cap: str, right_cap: str) -> str:
+    return (
+        "<tr>"
+        f'<th scope="row">{escape(label)}</th>'
+        f"<td>{plot_cell(left, left_cap)}</td>"
+        f"<td>{plot_cell(right, right_cap)}</td>"
+        "</tr>"
     )
+
+
+def plot_panel(hit: dict) -> str:
     body = []
-    for label, q_key, t_key, q_cap, t_cap in rows:
-        query_svg = hit.get(q_key)
-        target_svg = hit.get(t_key)
-        if not query_svg and not target_svg:
-            continue
+    rn_query = hit.get("plot_rn_query")
+    rn_target = hit.get("plot_rn_target")
+    if rn_query or rn_target:
+        body.append(plot_row_pair("RNArtistCore", rn_query, rn_target, "query", "target"))
+    r4 = hit.get("plot_r4")
+    if r4:
         body.append(
             "<tr>"
-            f'<th scope="row">{escape(label)}</th>'
-            f"<td>{plot_cell(query_svg, q_cap)}</td>"
-            f"<td>{plot_cell(target_svg, t_cap)}</td>"
+            '<th scope="row">R4RNA</th>'
+            f'<td class="wide" colspan="2">{plot_cell(r4, "aligned structures")}</td>'
             "</tr>"
         )
+    sw_sim = hit.get("plot_sw_similarity")
+    sw_scores = hit.get("plot_sw_scores")
+    if sw_sim or sw_scores:
+        body.append(plot_row_pair("Alignment", sw_sim, sw_scores, "cosine", "SW scores"))
     if not body:
         return (
             '<p class="muted">No plots for this hit. Re-run with --plot_backend '
@@ -566,6 +574,7 @@ table.hits tr[hidden] { display: none; }
   color: var(--mute); font-weight: 600; background: #f7faf9; vertical-align: middle;
 }
 .plot-grid td { width: calc((100% - 7.4rem) / 2); background: #fff; }
+.plot-grid td.wide { width: auto; }
 .plot { margin: 0; background: #fff; padding: .2rem; }
 .plot figcaption { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: .1rem .2rem .35rem; }
 .plot svg { width: 100%; height: auto; display: block; background: #fff; }

@@ -200,7 +200,7 @@
                     "type": "string",
                     "default": "none",
                     "enum": ["none", "rnartistcore", "r4rna", "both"],
-                    "description": "Draw aligned regions with RNArtistCore 2Ds, R4RNA arc plots, both, or skip plotting."
+                    "description": "Draw aligned regions with RNArtistCore 2Ds, a unified R4RNA alignment arc plot, both, or skip plotting."
                 },
                 "plot_sw": {
                     "type": "boolean",
@@ -211,12 +211,12 @@
                     "type": "integer",
                     "default": 25,
                     "minimum": 1,
-                    "description": "Maximum alignment pairs to plot per query. Each pair writes both partners (query and target 2Ds, or cosine and score matrices)."
+                    "description": "Maximum alignment pairs to plot per query. RNArtistCore writes query and target 2Ds; R4RNA writes one alignment arc plot; SW writes cosine and score matrices."
                 },
                 "plot_highlight_colour": {
                     "type": "string",
                     "default": "#00AA88",
-                    "description": "Colour of the aligned span. Unaligned residues stay gray."
+                    "description": "Colour of the aligned span, shared R4RNA pairs, matching bases, and the SW traceback."
                 }
             }
         }

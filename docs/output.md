@@ -84,16 +84,16 @@ Diagonal HSP clusters. A cluster starts at the highest-scoring unused seed and g
 
 ## alignments.tsv / alignments.txt
 
-GINFINITY-SW local alignments of each cluster crop, ranked by ascending database E-value. Coordinates are 0-based half-open on the original molecules. Extra columns: `bit_score`, `evalue` (K m N e^{−λS}), `evalue_pair` (same formula with the target length instead of the full database), plus the full `query_sequence` / `query_structure` / `target_sequence` / `target_structure`. `alignments.txt` is the six-line RNA rendering.
+GINFINITY-SW local alignments of each cluster crop, ranked by ascending database E-value. Coordinates are 0-based half-open on the original molecules. Extra columns: `bit_score`, `evalue` (K m N e^{−λS}), `evalue_pair` (same formula with the target length instead of the full database), the full `query_sequence` / `query_structure` / `target_sequence` / `target_structure`, and gapped `query_aligned` / `target_aligned` strings. `alignments.txt` is the six-line RNA rendering.
 
 ## report.html
 
-Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and paginated (10 / 25 / 50 / 100 / 150 per page, default 10). Each hit shows the aligned span on both molecules. Plots are a two-column Query | Target panel with one row per type (RNArtistCore, R4RNA, alignment cosine / SW scores) when those backends were requested.
+Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and paginated (10 / 25 / 50 / 100 / 150 per page, default 10). Each hit shows the aligned span on both molecules. RNArtistCore and SW plots use a two-column Query | Target (or cosine | SW scores) panel. R4RNA is a single full-width alignment arc plot.
 
 ## plots/
 
-Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`, and/or when `--plot_sw` is set. Each query gets its own draw task. Structure plots write a query SVG and a target SVG per pair. SW plots write a cosine SVG and a score SVG (traceback on the scores). `--plot_max_pairs` (default 25) is the number of alignment pairs per query, not the number of SVG files. The aligned span and SW path use `--plot_highlight_colour`; unaligned residues stay gray.
+Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`, and/or when `--plot_sw` is set. Each query gets its own draw task. RNArtistCore writes a query SVG and a target SVG per pair. R4RNA writes one alignment-coordinate SVG per pair (query arcs above, target arcs below, identity ribbon between the backbones). SW plots write a cosine SVG and a score SVG (traceback on the scores). `--plot_max_pairs` (default 25) is the number of alignment pairs per query, not the number of SVG files. The aligned span, shared pairs, matching bases, and SW path use `--plot_highlight_colour`.
 
 - `plots/rnartistcore/*.svg` — RNArtistCore 2Ds
-- `plots/r4rna/*.svg` — R4RNA arc diagrams
+- `plots/r4rna/*.svg` — R4RNA alignment arc diagrams
 - `plots/sw/*.svg` — crop cosine and substitution-score heatmaps

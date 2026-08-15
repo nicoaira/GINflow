@@ -52,7 +52,7 @@ process ALIGN_CLUSTERS {
     stub:
     def prefix = task.ext.prefix ?: clusters.simpleName
     """
-    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\tbit_score\\tevalue\\tevalue_pair\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tseed_count\\tmax_seed_score\\tquery_sequence\\tquery_structure\\ttarget_sequence\\ttarget_structure" > ${prefix}.alignments.tsv
+    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\tbit_score\\tevalue\\tevalue_pair\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tseed_count\\tmax_seed_score\\tquery_sequence\\tquery_structure\\ttarget_sequence\\ttarget_structure\\tquery_aligned\\ttarget_aligned" > ${prefix}.alignments.tsv
     touch ${prefix}.alignments.txt
     echo '{}' > ${prefix}.alignment_stats.json
 
