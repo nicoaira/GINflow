@@ -19,6 +19,7 @@ nextflow_process {
                 input[4] = file("${moduleDir}/tests/data/seeds.tsv", checkIfExists: true)
                 input[5] = []
                 input[6] = []
+                input[7] = file("${moduleDir}/tests/data/plots_sw", checkIfExists: true)
                 """
             }
         }
@@ -40,6 +41,19 @@ nextflow_process {
                     assert html.contains('structure id')
                     assert html.contains('55.0%')
                     assert html.contains('40.0%')
+                    assert html.contains('GINFINITY-SW') || html.contains('Alignment')
+                    assert html.contains('cosine')
+                    assert html.contains('SW scores')
+                    assert html.contains('>Query<')
+                    assert html.contains('>Target<')
+                    assert html.contains('plot-grid')
+                    assert html.contains('flt-page-size')
+                    assert html.contains('value="10"')
+                    assert html.contains('value="25"')
+                    assert html.contains('value="50"')
+                    assert html.contains('value="100"')
+                    assert html.contains('value="150"')
+                    assert html.contains('#00AA88')
                 },
                 {
                     assert snapshot(process.out.versions).match()

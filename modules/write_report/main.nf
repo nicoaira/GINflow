@@ -15,6 +15,7 @@ process WRITE_REPORT {
     path seeds
     path plots_rnartist, stageAs: 'plots_rnartist'
     path plots_r4rna,    stageAs: 'plots_r4rna'
+    path plots_sw,       stageAs: 'plots_sw'
 
     output:
     path "report.html", emit: report
@@ -25,8 +26,9 @@ process WRITE_REPORT {
 
     script:
     def args = task.ext.args ?: ''
-    def rn_arg = plots_rnartist instanceof Collection && plots_rnartist.isEmpty() ? '' : '--plots-rnartist plots_rnartist'
-    def r4_arg = plots_r4rna instanceof Collection && plots_r4rna.isEmpty() ? '' : '--plots-r4rna plots_r4rna'
+    def rn_arg = plots_rnartist instanceof Collection && plots_rnartist.isEmpty() ? '' : "--plots-rnartist ${plots_rnartist}"
+    def r4_arg = plots_r4rna instanceof Collection && plots_r4rna.isEmpty() ? '' : "--plots-r4rna ${plots_r4rna}"
+    def sw_arg = plots_sw instanceof Collection && plots_sw.isEmpty() ? '' : "--plots-sw ${plots_sw}"
     """
     write_report.py \\
         --alignments ${alignments} \\
@@ -36,6 +38,7 @@ process WRITE_REPORT {
         --seeds ${seeds} \\
         ${rn_arg} \\
         ${r4_arg} \\
+        ${sw_arg} \\
         --highlight-colour '${params.plot_highlight_colour}' \\
         --output report.html \\
         ${args}

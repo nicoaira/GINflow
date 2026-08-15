@@ -101,28 +101,51 @@ def parse_alignment_text(path: Path | None) -> dict[tuple[str, str, str], dict]:
     return blocks
 
 
-def load_svgs(directory: Path | None) -> dict[str, str]:
-    if directory is None or not directory.is_dir():
+def load_svg_file(path: Path) -> str:
+    raw = path.read_text(errors="replace")
+    raw = re.sub(r"<script[\s\S]*?</script>", "", raw, flags=re.I)
+    raw = re.sub(r"<\?xml[^>]*\?>", "", raw)
+    return raw.strip()
+
+
+def load_svgs(sources: Path | list[Path] | None) -> dict[str, str]:
+    if sources is None:
         return {}
+    paths = sources if isinstance(sources, list) else [sources]
     found: dict[str, str] = {}
-    for svg in sorted(directory.glob("*.svg")) + sorted(directory.glob("*/*.svg")):
-        raw = svg.read_text(errors="replace")
-        raw = re.sub(r"<script[\s\S]*?</script>", "", raw, flags=re.I)
-        raw = re.sub(r"<\?xml[^>]*\?>", "", raw)
-        found[svg.name] = raw.strip()
+    for source in paths:
+        if source is None:
+            continue
+        if source.is_file() and source.suffix.lower() == ".svg":
+            found[source.name] = load_svg_file(source)
+            continue
+        if not source.is_dir():
+            continue
+        for svg in sorted(source.rglob("*.svg")):
+            found[svg.name] = load_svg_file(svg)
     return found
 
 
-def match_plot(svgs: dict[str, str], index: int, query_id: str, target_id: str, kind: str) -> str | None:
-    stem = f"{index:04d}_{safe_name(query_id)}__{safe_name(target_id)}_{kind}"
-    exact = f"{stem}.svg"
-    if exact in svgs:
-        return svgs[exact]
-    needle_q = safe_name(query_id)
-    needle_t = safe_name(target_id)
+def match_plot(
+    svgs: dict[str, str],
+    index: int,
+    query_id: str,
+    target_id: str,
+    kind: str,
+    cluster_id: str = "",
+) -> str | None:
+    safe_q = safe_name(query_id)
+    safe_t = safe_name(target_id)
+    names = []
+    if cluster_id != "":
+        names.append(f"{safe_name(cluster_id)}_{safe_q}__{safe_t}_{kind}.svg")
+    names.append(f"{index:04d}_{safe_q}__{safe_t}_{kind}.svg")
+    for exact in names:
+        if exact in svgs:
+            return svgs[exact]
     suffix = f"_{kind}.svg"
     for name, body in svgs.items():
-        if name.endswith(suffix) and needle_q in name and needle_t in name:
+        if name.endswith(suffix) and safe_q in name and safe_t in name:
             return body
     return None
 
@@ -148,6 +171,7 @@ def build_hits(
     texts: dict[tuple[str, str, str], dict],
     rn_svgs: dict[str, str],
     r4_svgs: dict[str, str],
+    sw_svgs: dict[str, str] | None = None,
 ) -> list[dict]:
     hits = []
     for index, row in enumerate(rows):
@@ -200,10 +224,12 @@ def build_hits(
             "target_sequence": row.get("target_sequence", ""),
             "target_structure": row.get("target_structure", ""),
             "alignment_text": block.get("text", ""),
-            "plot_rn_query": match_plot(rn_svgs, index, query_id, target_id, "query"),
-            "plot_rn_target": match_plot(rn_svgs, index, query_id, target_id, "target"),
-            "plot_r4_query": match_plot(r4_svgs, index, query_id, target_id, "query"),
-            "plot_r4_target": match_plot(r4_svgs, index, query_id, target_id, "target"),
+            "plot_rn_query": match_plot(rn_svgs, index, query_id, target_id, "query", cluster_id),
+            "plot_rn_target": match_plot(rn_svgs, index, query_id, target_id, "target", cluster_id),
+            "plot_r4_query": match_plot(r4_svgs, index, query_id, target_id, "query", cluster_id),
+            "plot_r4_target": match_plot(r4_svgs, index, query_id, target_id, "target", cluster_id),
+            "plot_sw_similarity": match_plot(sw_svgs or {}, index, query_id, target_id, "similarity", cluster_id),
+            "plot_sw_scores": match_plot(sw_svgs or {}, index, query_id, target_id, "scores", cluster_id),
         })
     return hits
 
@@ -280,23 +306,49 @@ def marked_seq(seq: str, start: int, end: int) -> str:
     )
 
 
-def hit_article(hit: dict, colour: str) -> str:
-    plots = []
-    for label, key in (
-        ("RNArtistCore · query", "plot_rn_query"),
-        ("RNArtistCore · target", "plot_rn_target"),
-        ("R4RNA · query", "plot_r4_query"),
-        ("R4RNA · target", "plot_r4_target"),
-    ):
-        svg = hit.get(key)
-        if svg:
-            plots.append(
-                f'<figure class="plot"><figcaption>{escape(label)}</figcaption>{svg}</figure>'
-            )
-    plot_block = (
-        f'<div class="plots">{"".join(plots)}</div>' if plots
-        else '<p class="muted">No structure plots for this hit. Re-run with --plot_backend rnartistcore, r4rna, or both.</p>'
+def plot_cell(svg: str | None, caption: str) -> str:
+    if svg:
+        return (
+            f'<figure class="plot"><figcaption>{escape(caption)}</figcaption>{svg}</figure>'
+        )
+    return f'<div class="plot plot-empty"><span class="muted">No {escape(caption)}</span></div>'
+
+
+def plot_panel(hit: dict) -> str:
+    rows = (
+        ("RNArtistCore", "plot_rn_query", "plot_rn_target", "query", "target"),
+        ("R4RNA", "plot_r4_query", "plot_r4_target", "query", "target"),
+        ("Alignment", "plot_sw_similarity", "plot_sw_scores", "cosine", "SW scores"),
     )
+    body = []
+    for label, q_key, t_key, q_cap, t_cap in rows:
+        query_svg = hit.get(q_key)
+        target_svg = hit.get(t_key)
+        if not query_svg and not target_svg:
+            continue
+        body.append(
+            "<tr>"
+            f'<th scope="row">{escape(label)}</th>'
+            f"<td>{plot_cell(query_svg, q_cap)}</td>"
+            f"<td>{plot_cell(target_svg, t_cap)}</td>"
+            "</tr>"
+        )
+    if not body:
+        return (
+            '<p class="muted">No plots for this hit. Re-run with --plot_backend '
+            "rnartistcore/r4rna/both and/or --plot_sw.</p>"
+        )
+    return (
+        '<section class="plot-panel" aria-label="Structure and alignment plots">'
+        '<table class="plot-grid">'
+        "<thead><tr><th></th><th>Query</th><th>Target</th></tr></thead>"
+        f"<tbody>{''.join(body)}</tbody>"
+        "</table></section>"
+    )
+
+
+def hit_article(hit: dict, colour: str) -> str:
+    plot_block = plot_panel(hit)
     base_id = hit["base_identity"]
     if base_id is None and hit["aligned_columns"]:
         base_id = 100.0 * hit["pair_identity"]
@@ -502,10 +554,28 @@ table.hits tr[hidden] { display: none; }
   margin: 1rem 0 0; overflow: auto; background: var(--bench); color: #d5e4e0;
   padding: .8rem 1rem; font-size: .72rem; line-height: 1.35;
 }
-.plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; margin-top: 1rem; }
-.plot { margin: 0; background: #f7faf9; border: 1px solid var(--line); padding: .4rem; }
-.plot figcaption { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: .2rem .3rem .4rem; }
+.plot-panel { margin-top: 1.1rem; overflow-x: auto; }
+.plot-grid { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 36rem; }
+.plot-grid th, .plot-grid td { border: 1px solid var(--line); vertical-align: top; padding: .45rem; }
+.plot-grid thead th {
+  text-align: center; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--mute); font-weight: 600; background: #eef3f2;
+}
+.plot-grid tbody th {
+  width: 7.4rem; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--mute); font-weight: 600; background: #f7faf9; vertical-align: middle;
+}
+.plot-grid td { width: calc((100% - 7.4rem) / 2); background: #fff; }
+.plot { margin: 0; background: #fff; padding: .2rem; }
+.plot figcaption { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: .1rem .2rem .35rem; }
 .plot svg { width: 100%; height: auto; display: block; background: #fff; }
+.plot-empty { min-height: 4.5rem; display: flex; align-items: center; justify-content: center; background: #f7faf9; }
+.pager { display: flex; align-items: center; gap: .45rem; margin-left: auto; }
+.pager button {
+  font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  padding: .3rem .55rem; border-radius: 3px; cursor: pointer;
+}
+.pager button:disabled { opacity: .45; cursor: default; }
 .muted, .empty { color: var(--mute); }
 .methods {
   margin: 2rem 6vw 3rem; padding-top: 1rem; border-top: 1px solid var(--line);
@@ -531,7 +601,7 @@ table.hits tr[hidden] { display: none; }
 
 JS = """
 (function () {
-  const state = { query: "all", emax: Infinity, hideSelf: false, q: "", selected: 0 };
+  const state = { query: "all", emax: Infinity, hideSelf: false, q: "", selected: 0, page: 0, pageSize: 10 };
   const rows = Array.from(document.querySelectorAll("tr[data-hit]"));
   const cards = Array.from(document.querySelectorAll("article.hit"));
   const ticks = Array.from(document.querySelectorAll(".gel-tick"));
@@ -548,45 +618,75 @@ JS = """
     if (state.q && !hay.includes(state.q)) return false;
     return true;
   }
+  function filtered() {
+    return rows.filter(visible).map(num);
+  }
+  function pageCount(shown) {
+    return Math.max(1, Math.ceil(shown.length / state.pageSize) || 1);
+  }
   function render() {
-    const shown = [];
+    const shown = filtered();
+    const pages = pageCount(shown);
+    if (state.page >= pages) state.page = pages - 1;
+    if (state.page < 0) state.page = 0;
+    const start = state.page * state.pageSize;
+    const pageHits = shown.slice(start, start + state.pageSize);
+    if (!pageHits.includes(state.selected)) state.selected = pageHits[0] ?? -1;
     rows.forEach((tr) => {
-      const ok = visible(tr);
-      tr.hidden = !ok;
-      if (ok) shown.push(num(tr));
+      const i = num(tr);
+      tr.hidden = !pageHits.includes(i);
+      tr.classList.toggle("selected", i === state.selected);
     });
-    if (!shown.includes(state.selected)) state.selected = shown[0] ?? -1;
     cards.forEach((card) => {
       const i = Number(card.id.replace("hit-", ""));
-      card.hidden = i !== state.selected;
+      card.hidden = !pageHits.includes(i);
     });
-    rows.forEach((tr) => tr.classList.toggle("selected", num(tr) === state.selected));
     ticks.forEach((tick) => tick.classList.toggle("on", Number(tick.getAttribute("data-hit")) === state.selected));
     qbtns.forEach((btn) => btn.classList.toggle("active", btn.getAttribute("data-query") === state.query));
     const n = document.getElementById("shown-count");
     if (n) n.textContent = String(shown.length);
-    const sel = document.getElementById("hit-" + state.selected);
-    if (sel && !sel.hasAttribute("data-seen")) {
-      sel.setAttribute("data-seen", "1");
-    }
+    const status = document.getElementById("page-status");
+    if (status) status.textContent = (shown.length ? state.page + 1 : 0) + " / " + (shown.length ? pages : 0);
+    const prev = document.getElementById("page-prev");
+    const next = document.getElementById("page-next");
+    if (prev) prev.disabled = state.page <= 0;
+    if (next) next.disabled = state.page >= pages - 1 || shown.length === 0;
   }
+  function resetPage() { state.page = 0; }
   document.getElementById("flt-query")?.addEventListener("click", (ev) => {
     const btn = ev.target.closest(".query-btn");
     if (!btn) return;
     state.query = btn.getAttribute("data-query");
+    resetPage();
     render();
   });
   document.getElementById("flt-e")?.addEventListener("change", (ev) => {
     const v = ev.target.value;
     state.emax = v === "all" ? Infinity : Number(v);
+    resetPage();
     render();
   });
   document.getElementById("flt-self")?.addEventListener("change", (ev) => {
     state.hideSelf = ev.target.checked;
+    resetPage();
     render();
   });
   document.getElementById("flt-q")?.addEventListener("input", (ev) => {
     state.q = ev.target.value.trim().toLowerCase();
+    resetPage();
+    render();
+  });
+  document.getElementById("flt-page-size")?.addEventListener("change", (ev) => {
+    state.pageSize = Number(ev.target.value) || 10;
+    resetPage();
+    render();
+  });
+  document.getElementById("page-prev")?.addEventListener("click", () => {
+    state.page -= 1;
+    render();
+  });
+  document.getElementById("page-next")?.addEventListener("click", () => {
+    state.page += 1;
     render();
   });
   document.getElementById("hit-table")?.addEventListener("click", (ev) => {
@@ -598,10 +698,20 @@ JS = """
   });
   document.addEventListener("keydown", (ev) => {
     if (ev.target.matches("input, select, textarea")) return;
-    const shown = rows.filter((tr) => !tr.hidden).map(num);
+    const shown = filtered();
     const at = shown.indexOf(state.selected);
-    if (ev.key === "j" && at < shown.length - 1) { state.selected = shown[at + 1]; render(); }
-    if (ev.key === "k" && at > 0) { state.selected = shown[at - 1]; render(); }
+    if (ev.key === "j" && at < shown.length - 1) {
+      state.selected = shown[at + 1];
+      state.page = Math.floor((at + 1) / state.pageSize);
+      render();
+      document.getElementById("hit-" + state.selected)?.scrollIntoView({ block: "nearest" });
+    }
+    if (ev.key === "k" && at > 0) {
+      state.selected = shown[at - 1];
+      state.page = Math.floor((at - 1) / state.pageSize);
+      render();
+      document.getElementById("hit-" + state.selected)?.scrollIntoView({ block: "nearest" });
+    }
   });
   render();
 })();
@@ -701,7 +811,21 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
         <input id="flt-q" type="search" placeholder="query or target id" autocomplete="off"/>
       </label>
       <label class="ctl check"><input id="flt-self" type="checkbox"/> Hide self matches</label>
-      <p class="muted" style="margin:0 0 .2rem auto">showing <strong id="shown-count">{n_align}</strong> · j / k moves</p>
+      <label class="ctl">Results per page
+        <select id="flt-page-size">
+          <option value="10" selected>10</option>
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="150">150</option>
+        </select>
+      </label>
+      <nav class="pager" aria-label="Results pages">
+        <button type="button" id="page-prev">Prev</button>
+        <span id="page-status" class="muted">1 / 1</span>
+        <button type="button" id="page-next">Next</button>
+      </nav>
+      <p class="muted" style="margin:0 0 .2rem">showing <strong id="shown-count">{n_align}</strong> · j / k moves</p>
     </div>
     <div class="table-wrap">
       <table class="hits" id="hit-table">
@@ -735,8 +859,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--evd", type=Path)
     parser.add_argument("--clusters", type=Path)
     parser.add_argument("--seeds", type=Path)
-    parser.add_argument("--plots-rnartist", type=Path)
-    parser.add_argument("--plots-r4rna", type=Path)
+    parser.add_argument("--plots-rnartist", type=Path, nargs="*")
+    parser.add_argument("--plots-r4rna", type=Path, nargs="*")
+    parser.add_argument("--plots-sw", type=Path, nargs="*")
     parser.add_argument("--highlight-colour", default="#0E8F78")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args(argv)
@@ -753,7 +878,8 @@ def main(argv: list[str] | None = None) -> int:
             evd = payload
     rn_svgs = load_svgs(args.plots_rnartist)
     r4_svgs = load_svgs(args.plots_r4rna)
-    hits = build_hits(rows, texts, rn_svgs, r4_svgs)
+    sw_svgs = load_svgs(args.plots_sw)
+    hits = build_hits(rows, texts, rn_svgs, r4_svgs, sw_svgs)
     queries = query_summaries(hits)
     if args.clusters and args.clusters.is_file():
         evd.setdefault("n_clusters", len(read_tsv(args.clusters)))
