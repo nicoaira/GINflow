@@ -119,19 +119,15 @@ workflow GINFLOW {
         ch_alignments     = ALIGN_CLUSTERS.out.alignments
         ch_alignment_text = ALIGN_CLUSTERS.out.text
 
-        ch_report_rn = channel.fromPath("${projectDir}/assets/no_plots_rnartist", checkIfExists: true, type: 'dir')
-        ch_report_r4 = channel.fromPath("${projectDir}/assets/no_plots_r4rna", checkIfExists: true, type: 'dir')
         if (params.plot_backend in ['rnartistcore', 'both']) {
             DRAW_RNARTISTCORE(ALIGN_CLUSTERS.out.alignments)
             ch_versions       = ch_versions.mix(DRAW_RNARTISTCORE.out.versions)
             ch_plots_rnartist = DRAW_RNARTISTCORE.out.plots
-            ch_report_rn      = DRAW_RNARTISTCORE.out.plots
         }
         if (params.plot_backend in ['r4rna', 'both']) {
             DRAW_R4RNA(ALIGN_CLUSTERS.out.alignments)
             ch_versions    = ch_versions.mix(DRAW_R4RNA.out.versions)
             ch_plots_r4rna = DRAW_R4RNA.out.plots
-            ch_report_r4   = DRAW_R4RNA.out.plots
         }
 
         WRITE_REPORT(
@@ -140,8 +136,8 @@ workflow GINFLOW {
             ch_evd.collect(),
             CLUSTER_SEEDS.out.clusters,
             ch_seeds,
-            ch_report_rn,
-            ch_report_r4
+            ch_plots_rnartist.ifEmpty([]),
+            ch_plots_r4rna.ifEmpty([])
         )
         ch_versions = ch_versions.mix(WRITE_REPORT.out.versions)
         ch_report   = WRITE_REPORT.out.report

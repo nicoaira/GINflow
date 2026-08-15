@@ -25,6 +25,8 @@ process WRITE_REPORT {
 
     script:
     def args = task.ext.args ?: ''
+    def rn_arg = plots_rnartist instanceof Collection && plots_rnartist.isEmpty() ? '' : '--plots-rnartist plots_rnartist'
+    def r4_arg = plots_r4rna instanceof Collection && plots_r4rna.isEmpty() ? '' : '--plots-r4rna plots_r4rna'
     """
     write_report.py \\
         --alignments ${alignments} \\
@@ -32,8 +34,8 @@ process WRITE_REPORT {
         --evd ${evd} \\
         --clusters ${clusters} \\
         --seeds ${seeds} \\
-        --plots-rnartist plots_rnartist \\
-        --plots-r4rna plots_r4rna \\
+        ${rn_arg} \\
+        ${r4_arg} \\
         --highlight-colour '${params.plot_highlight_colour}' \\
         --output report.html \\
         ${args}
