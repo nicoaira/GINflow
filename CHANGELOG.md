@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Optional `start`/`end` columns on the structures table build GINFINITY sliced graphs (one independent subject/query per window, including several comma-separated windows on the same row). Defaults: `--keep_paired_neighbours` with `--context_hops 4`. Mixed examples are in `tests/data/sliced_structures.tsv`. Per-query alignment and plot filenames use `baseName` so two slices of the same accession do not collide.
 - GINflow logo in `docs/images/ginflow_logo.svg` (README header and search report masthead) and `docs/images/ginflow_icon.svg` (report favicon).
+- Metro-map pipeline schematic (`docs/images/ginflow_metro.svg`) generated with [nf-metro](https://github.com/seqeralabs/nf-metro) from `docs/images/ginflow_metro.mmd`.
 - FAISS seed search: `GENERATE_WINDOWS` slices concatenated `w=11` windows, `BUILD_FAISS_INDEX` writes a reusable `IndexFlatIP` database, and `SEARCH_FAISS` returns seeds above `--seed_min_similarity`. Modes are inferred from `--input` / `--query` / `--database`.
 - Seed clustering (`CLUSTER_SEEDS`) and GINFINITY-SW alignment (`ALIGN_CLUSTERS`) on a padded crop of each cluster. The FAISS directory now also packs residue embeddings and sequences so query-only runs can align.
 - Database E-values: `ESTIMATE_EVD` fits Karlin–Altschul λ, K from reverse-sequence GINFINITY-SW scores; `ALIGN_CLUSTERS` ranks hits by ascending E = K m N exp(−λS).

@@ -21,6 +21,14 @@ The current steps are:
 7. Optionally plot structures (`--plot_backend`: RNArtistCore 2Ds and/or a unified R4RNA alignment arc plot) and/or SW matrices (`--plot_sw`)
 8. Write a standalone HTML search report (`report.html`)
 
+## Pipeline overview
+
+<p align="center">
+  <img src="docs/images/ginflow_metro.svg" alt="GINflow pipeline metro map" width="100%">
+</p>
+
+Three coloured routes match the run modes (`--input`, `--input --query`, `--query --database`). Dashed lines are optional plotters (`--plot_backend`, `--plot_sw`). Open circles are optional steps.
+
 ---
 
 ## Usage
