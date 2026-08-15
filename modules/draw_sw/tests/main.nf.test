@@ -40,7 +40,7 @@ nextflow_process {
                     }
                     def scores = svgs.find { it.name.endsWith('_scores.svg') }.text
                     assert scores.contains('polyline')
-                    assert scores.contains('#00AA88')
+                    assert scores.contains('#24B064')
                 },
                 {
                     assert snapshot(process.out.versions).match()

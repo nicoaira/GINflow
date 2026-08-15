@@ -220,14 +220,14 @@ def matrix_svg(
         x = MARGIN_LEFT + PANEL * pos / cols
         y = MARGIN_TOP + PANEL
         tick_svg.append(
-            f'<line x1="{x:.1f}" y1="{y}" x2="{x:.1f}" y2="{y + 5}" stroke="#5e7074"/>'
+            f'<line x1="{x:.1f}" y1="{y}" x2="{x:.1f}" y2="{y + 5}" stroke="#6c757d"/>'
             f'<text x="{x:.1f}" y="{y + 18}" text-anchor="middle">{xml_escape(label)}</text>'
         )
     for pos, label in y_ticks:
         x = MARGIN_LEFT
         y = MARGIN_TOP + PANEL * pos / rows
         tick_svg.append(
-            f'<line x1="{x - 5}" y1="{y:.1f}" x2="{x}" y2="{y:.1f}" stroke="#5e7074"/>'
+            f'<line x1="{x - 5}" y1="{y:.1f}" x2="{x}" y2="{y:.1f}" stroke="#6c757d"/>'
             f'<text x="{x - 8}" y="{y + 3:.1f}" text-anchor="end">{xml_escape(label)}</text>'
         )
     path_svg = ""
@@ -251,7 +251,7 @@ def matrix_svg(
                 f'<circle cx="{sx:.2f}" cy="{sy:.2f}" r="3.2" fill="{xml_escape(colour)}" '
                 f'stroke="#ffffff" stroke-width="1"/>'
             )
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#1a2426">
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" font-family="ui-sans-serif, system-ui, sans-serif" font-size="11" fill="#212529">
   <defs>
     <marker id="{xml_escape(marker_id)}" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="{xml_escape(colour)}"/>
@@ -259,15 +259,15 @@ def matrix_svg(
   </defs>
   <rect width="100%" height="100%" fill="#ffffff"/>
   <text x="{MARGIN_LEFT}" y="16" font-size="13" font-weight="600">{xml_escape(title)}</text>
-  <text x="{MARGIN_LEFT}" y="30" fill="#5e7074">{xml_escape(subtitle)}</text>
+  <text x="{MARGIN_LEFT}" y="30" fill="#6c757d">{xml_escape(subtitle)}</text>
   <image href="data:image/png;base64,{payload}" x="{MARGIN_LEFT}" y="{MARGIN_TOP}" width="{PANEL}" height="{PANEL}" preserveAspectRatio="none"/>
-  <rect x="{MARGIN_LEFT}" y="{MARGIN_TOP}" width="{PANEL}" height="{PANEL}" fill="none" stroke="#d5e0de"/>
+  <rect x="{MARGIN_LEFT}" y="{MARGIN_TOP}" width="{PANEL}" height="{PANEL}" fill="none" stroke="#dee2e6"/>
   {path_svg}
   {''.join(tick_svg)}
   <text x="{MARGIN_LEFT + PANEL / 2}" y="{height - 8}" text-anchor="middle">target residue</text>
   <text x="14" y="{MARGIN_TOP + PANEL / 2}" text-anchor="middle" transform="rotate(-90 14 {MARGIN_TOP + PANEL / 2})">query residue</text>
   <image href="data:image/png;base64,{cbar}" x="{MARGIN_LEFT + PANEL + 14}" y="{MARGIN_TOP}" width="12" height="{PANEL}" preserveAspectRatio="none"/>
-  <rect x="{MARGIN_LEFT + PANEL + 14}" y="{MARGIN_TOP}" width="12" height="{PANEL}" fill="none" stroke="#d5e0de"/>
+  <rect x="{MARGIN_LEFT + PANEL + 14}" y="{MARGIN_TOP}" width="12" height="{PANEL}" fill="none" stroke="#dee2e6"/>
   <text x="{MARGIN_LEFT + PANEL + 30}" y="{MARGIN_TOP + 8}" font-size="10">{xml_escape(cbar_high)}</text>
   <text x="{MARGIN_LEFT + PANEL + 30}" y="{MARGIN_TOP + PANEL}" font-size="10">{xml_escape(cbar_low)}</text>
 </svg>
@@ -361,7 +361,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--pad", type=int, default=32)
     parser.add_argument("--max-cells", type=int, default=16_777_216)
     parser.add_argument("--max-pairs", type=int, default=25)
-    parser.add_argument("--highlight-colour", default="#00AA88")
+    parser.add_argument("--highlight-colour", default="#24B064")
     parser.add_argument("--cpus", type=int, default=1)
     return parser.parse_args(argv)
 

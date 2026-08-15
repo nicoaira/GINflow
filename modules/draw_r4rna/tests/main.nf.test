@@ -29,9 +29,9 @@ nextflow_process {
                     assert svgs[0].name.endsWith('_alignment.svg')
                     def text = svgs[0].text
                     assert text.contains('<svg')
-                    assert text.contains('#00AA88')
-                    assert text.contains('#1f6f8b') || text.contains('#1F6F8B')
-                    assert text.contains('#c45c26') || text.contains('#C45C26')
+                    assert text.contains('#24B064')
+                    assert text.contains('#396E35')
+                    assert text.contains('#ECDC86')
                     assert text.contains('same base')
                     assert text.contains('X06694')
                     assert text.contains('X13842')

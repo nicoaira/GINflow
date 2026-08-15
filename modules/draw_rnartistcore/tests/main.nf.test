@@ -29,8 +29,8 @@ nextflow_process {
                     svgs.each { svg ->
                         def text = svg.text.toLowerCase()
                         assert text.contains('<svg')
-                        assert text.contains('#00aa88')
-                        assert text.contains('#b0b0b0')
+                        assert text.contains('#24b064')
+                        assert text.contains('#adb5bd')
                     }
                 },
                 {

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
-- GINFINITY logo in `docs/images/ginfinity.png`, the README header, and the search report masthead.
+- GINflow logo in `docs/images/ginflow_logo.svg` (README header and search report masthead) and `docs/images/ginflow_icon.svg` (report favicon).
 - FAISS seed search: `GENERATE_WINDOWS` slices concatenated `w=11` windows, `BUILD_FAISS_INDEX` writes a reusable `IndexFlatIP` database, and `SEARCH_FAISS` returns seeds above `--seed_min_similarity`. Modes are inferred from `--input` / `--query` / `--database`.
 - Seed clustering (`CLUSTER_SEEDS`) and GINFINITY-SW alignment (`ALIGN_CLUSTERS`) on a padded crop of each cluster. The FAISS directory now also packs residue embeddings and sequences so query-only runs can align.
 - Database E-values: `ESTIMATE_EVD` fits Karlin–Altschul λ, K from reverse-sequence GINFINITY-SW scores; `ALIGN_CLUSTERS` ranks hits by ascending E = K m N exp(−λS).
@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--plot_max` is now `--plot_max_pairs` (default 25): max alignment pairs **per query**. Each pair plots both partners. `DRAW_R4RNA`, `DRAW_SW`, and `DRAW_RNARTISTCORE` run once per query.
 - `ALIGN_CLUSTERS` and plot processes run per query (`SPLIT_CLUSTERS` then `MERGE_ALIGNMENTS` for the shared `alignments.tsv` / `report.html`). `SEARCH_FAISS` stays batched; `--search_shard_size` sets query records per search task (default: `--shard_size`).
 - `report.html` plot panel is a two-column Query | Target grid (one row per RNArtistCore, R4RNA, and alignment plot). Results are paginated: 10 per page by default, or 25 / 50 / 100 / 150.
+- README, R4RNA / RNArtistCore plots, and `report.html` use the nf-core palette (green `#24B064`, yellow `#ECDC86`, brown `#3F2B29`, dark green `#396E35`, Bootstrap grays). `--plot_highlight_colour` now defaults to `#24B064`.
+- `report.html` is a light theme by default. `--report_theme dark` writes a gray-900 report; a masthead toggle switches themes in the browser.
 
 ### `Fixed`
 

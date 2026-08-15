@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/ginfinity.png" alt="GINFINITY" width="280">
+  <img src="docs/images/ginflow_logo.svg" alt="GINflow" width="150">
 </p>
 
 # GINflow

@@ -13,7 +13,6 @@ from html import escape
 from pathlib import Path
 
 
-GRAY = "#B0B0B0"
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 CLUSTER_HEAD = re.compile(
     r"^# cluster\s+(\S+)\s+(\S+)\s+vs\s+(\S+)",
@@ -406,67 +405,134 @@ def hit_article(hit: dict, colour: str) -> str:
 
 
 CSS = """
-:root {
-  --bench: #1e2a2e;
-  --bench-2: #263338;
-  --glass: #f3f7f6;
+:root, [data-theme="light"] {
+  color-scheme: light;
+  --nf-green: #24B064;
+  --nf-yellow: #ECDC86;
+  --nf-brown: #3F2B29;
+  --nf-dark-green: #396E35;
+  --gray-100: #f8f9fa;
+  --gray-200: #e9ecef;
+  --gray-300: #dee2e6;
+  --gray-400: #ced4da;
+  --gray-500: #adb5bd;
+  --gray-600: #6c757d;
+  --gray-700: #495057;
+  --gray-800: #343a40;
+  --gray-900: #212529;
+  --glass: #f8f9fa;
   --card: #ffffff;
-  --ink: #1a2426;
-  --mute: #5e7074;
-  --line: #d5e0de;
-  --pair: #0e8f78;
-  --pair-soft: #d7f3ec;
-  --warn: #c45c26;
-  --ns: #8a9698;
-  --good: #1f6f8b;
-  --strong: #0e8f78;
-  --weak: #c45c26;
-  --self: #7a5c2e;
+  --ink: #212529;
+  --mute: #6c757d;
+  --line: #dee2e6;
+  --pair: #24B064;
+  --pair-soft: #d8f3e6;
+  --warn: #3F2B29;
+  --ns: #adb5bd;
+  --good: #396E35;
+  --strong: #24B064;
+  --weak: #3F2B29;
+  --self: #3F2B29;
+  --mast-bg: #ffffff;
+  --mast-ink: #212529;
+  --mast-mute: #6c757d;
+  --mast-lede: #495057;
+  --queries-bg: #e9ecef;
+  --table-head: #e9ecef;
+  --table-line: #e9ecef;
+  --row-selected: #d8f3e6;
+  --track: #dee2e6;
+  --seq-bg: #f8f9fa;
+  --seq-dim: #adb5bd;
+  --aln-bg: #212529;
+  --aln-ink: #e9ecef;
+  --plot-bg: #ffffff;
+  --plot-head: #e9ecef;
+  --hover-bg: #ffffff;
   --mono: ui-monospace, "Cascadia Mono", "Source Code Pro", "Noto Sans Mono", Menlo, Consolas, monospace;
   --sans: "Segoe UI", "Source Sans 3", "IBM Plex Sans", system-ui, sans-serif;
   --serif: Palatino, "Palatino Linotype", "Book Antiqua", "Iowan Old Style", Georgia, serif;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --glass: #212529;
+  --card: #343a40;
+  --ink: #f8f9fa;
+  --mute: #adb5bd;
+  --line: #495057;
+  --pair-soft: rgba(36, 176, 100, 0.18);
+  --warn: #ECDC86;
+  --ns: #6c757d;
+  --good: #24B064;
+  --strong: #24B064;
+  --weak: #ECDC86;
+  --self: #ECDC86;
+  --mast-bg: #212529;
+  --mast-ink: #f8f9fa;
+  --mast-mute: #adb5bd;
+  --mast-lede: #ced4da;
+  --queries-bg: #343a40;
+  --table-head: #343a40;
+  --table-line: #495057;
+  --row-selected: rgba(36, 176, 100, 0.22);
+  --track: #495057;
+  --seq-bg: #343a40;
+  --seq-dim: #6c757d;
+  --aln-bg: #212529;
+  --aln-ink: #e9ecef;
+  --plot-bg: #ffffff;
+  --plot-head: #343a40;
+  --hover-bg: #495057;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--glass); color: var(--ink); font-family: var(--sans); }
 body { min-height: 100vh; }
 .mast {
+  position: relative;
   background:
-    radial-gradient(1200px 280px at 80% -40%, rgba(14,143,120,.28), transparent 60%),
-    linear-gradient(180deg, var(--bench) 0%, var(--bench-2) 100%);
-  color: #e7eeec;
-  padding: 2.2rem 6vw 1.6rem;
+    radial-gradient(1100px 260px at 88% -50%, rgba(36,176,100,.18), transparent 58%),
+    var(--mast-bg);
+  color: var(--mast-ink);
+  padding: 1.5rem 6vw 1.35rem;
   border-bottom: 4px solid var(--pair);
 }
-.mast-brand { display: flex; align-items: center; gap: 1.35rem; margin: 0 0 .85rem; }
-.mast-logo { height: 4.8rem; width: auto; display: block; flex: 0 0 auto; }
+.mast-brand { display: flex; align-items: center; gap: 1rem; margin: 0 0 .7rem; }
+.mast-logo { height: 3.4rem; width: auto; max-width: 8.5rem; display: block; flex: 0 0 auto; }
+.theme-toggle {
+  position: absolute; top: 1.15rem; right: 6vw;
+  font: inherit; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  padding: .3rem .6rem; border-radius: 3px; cursor: pointer;
+}
+.theme-toggle:hover, .theme-toggle:focus-visible { outline: 2px solid var(--pair); }
 .mast-kicker {
   font-family: var(--mono);
   letter-spacing: .28em;
   text-transform: uppercase;
   font-size: .68rem;
-  color: #9db5b0;
-  margin: 0 0 .4rem;
+  color: var(--mast-mute);
+  margin: 0 0 .35rem;
 }
 .mast h1 {
   font-family: var(--serif);
   font-weight: 500;
-  font-size: clamp(1.8rem, 3vw, 2.6rem);
-  margin: 0 0 .35rem;
+  font-size: clamp(1.6rem, 2.8vw, 2.3rem);
+  margin: 0 0 .3rem;
   letter-spacing: -.02em;
 }
-.mast p.lede { margin: 0; color: #c5d4d0; max-width: 46rem; line-height: 1.45; }
+.mast p.lede { margin: 0; color: var(--mast-lede); max-width: 46rem; line-height: 1.45; }
 .stats {
-  display: flex; flex-wrap: wrap; gap: 1.6rem 2.4rem;
-  margin: 1.4rem 0 0; padding: 0; list-style: none;
+  display: flex; flex-wrap: wrap; gap: 1.4rem 2.2rem;
+  margin: 1.2rem 0 0; padding: 0; list-style: none;
 }
 .stats li { min-width: 6.5rem; }
 .stats b {
-  display: block; font-family: var(--mono); font-size: 1.15rem; font-weight: 600; color: #fff;
+  display: block; font-family: var(--mono); font-size: 1.15rem; font-weight: 600; color: var(--pair);
 }
-.stats span { display: block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: #9db5b0; margin-top: .15rem; }
+.stats span { display: block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mast-mute); margin-top: .15rem; }
 .shell { display: grid; grid-template-columns: 220px minmax(0, 1fr) 64px; gap: 0; }
 .queries {
-  background: #e7eeec;
+  background: var(--queries-bg);
   border-right: 1px solid var(--line);
   padding: 1.2rem 1rem 2rem;
   position: sticky; top: 0; align-self: start; max-height: 100vh; overflow: auto;
@@ -480,7 +546,7 @@ body { min-height: 100vh; }
   padding: .45rem .5rem; margin: 0 0 .15rem; border-radius: 4px; cursor: pointer;
   font: inherit; color: inherit;
 }
-.query-btn:hover, .query-btn:focus-visible { background: #fff; outline: 2px solid var(--pair); }
+.query-btn:hover, .query-btn:focus-visible { background: var(--hover-bg); outline: 2px solid var(--pair); }
 .query-btn.active { background: var(--card); box-shadow: inset 3px 0 0 var(--pair); }
 .query-btn .name { display: block; font-family: var(--mono); font-size: .78rem; word-break: break-all; }
 .query-btn .meta { display: block; color: var(--mute); font-size: .72rem; margin-top: .1rem; }
@@ -500,12 +566,12 @@ table.hits { width: 100%; border-collapse: collapse; font-size: .86rem; }
 table.hits th {
   text-align: left; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
   color: var(--mute); font-weight: 600; padding: .55rem .65rem; border-bottom: 1px solid var(--line);
-  background: #eef3f2; position: sticky; top: 0;
+  background: var(--table-head); position: sticky; top: 0;
 }
-table.hits td { padding: .5rem .65rem; border-bottom: 1px solid #edf2f1; vertical-align: top; }
+table.hits td { padding: .5rem .65rem; border-bottom: 1px solid var(--table-line); vertical-align: top; }
 table.hits tr { cursor: pointer; }
 table.hits tr:hover td { background: var(--pair-soft); }
-table.hits tr.selected td { background: #e4f6f1; }
+table.hits tr.selected td { background: var(--row-selected); }
 table.hits tr[hidden] { display: none; }
 .idc { font-family: var(--mono); font-size: .78rem; word-break: break-all; }
 .e { font-family: var(--mono); font-variant-numeric: tabular-nums; }
@@ -526,7 +592,7 @@ table.hits tr[hidden] { display: none; }
 }
 .gel-wrap h2 { writing-mode: vertical-rl; transform: rotate(180deg); margin: 0 auto .6rem; }
 .gel { display: block; margin: 0 auto; }
-.gel-lane { fill: #d5e0de; }
+.gel-lane { fill: var(--track); }
 .gel-tick { stroke: var(--ns); stroke-width: 1.4; }
 .gel-tick.strong { stroke: var(--strong); stroke-width: 2; }
 .gel-tick.good { stroke: var(--good); }
@@ -550,19 +616,19 @@ table.hits tr[hidden] { display: none; }
 .span-row { display: grid; grid-template-columns: 11rem minmax(0,1fr); gap: .7rem; align-items: center; }
 .span-lab { font-family: var(--mono); font-size: .75rem; color: var(--mute); }
 .rail { position: relative; height: 1.35rem; }
-.rail-track { position: absolute; left: 0; right: 0; top: .45rem; height: .28rem; background: #d5e0de; border-radius: 99px; }
+.rail-track { position: absolute; left: 0; right: 0; top: .45rem; height: .28rem; background: var(--track); border-radius: 99px; }
 .rail-hit { position: absolute; top: .28rem; height: .62rem; border-radius: 2px; min-width: 2px; opacity: .95; }
 .rail-meta { position: absolute; inset: auto 0 0 0; display: flex; justify-content: space-between; font-size: .65rem; color: var(--mute); font-family: var(--mono); }
 .letters { margin-top: .9rem; }
 .seq-lab { margin: .65rem 0 .15rem; font-size: .68rem; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); }
 .seq {
   margin: 0; font-family: var(--mono); font-size: .72rem; line-height: 1.55;
-  word-break: break-all; background: #f7faf9; padding: .4rem .5rem; border-left: 3px solid var(--line);
+  word-break: break-all; background: var(--seq-bg); padding: .4rem .5rem; border-left: 3px solid var(--line);
 }
-.seq .dim { color: #9aa8aa; }
+.seq .dim { color: var(--seq-dim); }
 .seq .lit { color: var(--ink); background: var(--pair-soft); box-shadow: inset 0 -2px 0 var(--pair); }
 .aln {
-  margin: 1rem 0 0; overflow: auto; background: var(--bench); color: #d5e4e0;
+  margin: 1rem 0 0; overflow: auto; background: var(--aln-bg); color: var(--aln-ink);
   padding: .8rem 1rem; font-size: .72rem; line-height: 1.35;
 }
 .plot-panel { margin-top: 1.1rem; overflow-x: auto; }
@@ -570,18 +636,18 @@ table.hits tr[hidden] { display: none; }
 .plot-grid th, .plot-grid td { border: 1px solid var(--line); vertical-align: top; padding: .45rem; }
 .plot-grid thead th {
   text-align: center; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--mute); font-weight: 600; background: #eef3f2;
+  color: var(--mute); font-weight: 600; background: var(--plot-head);
 }
 .plot-grid tbody th {
   width: 7.4rem; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--mute); font-weight: 600; background: #f7faf9; vertical-align: middle;
+  color: var(--mute); font-weight: 600; background: var(--seq-bg); vertical-align: middle;
 }
-.plot-grid td { width: calc((100% - 7.4rem) / 2); background: #fff; }
+.plot-grid td { width: calc((100% - 7.4rem) / 2); background: var(--plot-bg); }
 .plot-grid td.wide { width: auto; }
-.plot { margin: 0; background: #fff; padding: .2rem; }
+.plot { margin: 0; background: var(--plot-bg); padding: .2rem; }
 .plot figcaption { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: .1rem .2rem .35rem; }
 .plot svg { width: 100%; height: auto; display: block; background: #fff; }
-.plot-empty { min-height: 4.5rem; display: flex; align-items: center; justify-content: center; background: #f7faf9; }
+.plot-empty { min-height: 4.5rem; display: flex; align-items: center; justify-content: center; background: var(--seq-bg); }
 .pager { display: flex; align-items: center; gap: .45rem; margin-left: auto; }
 .pager button {
   font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
@@ -599,10 +665,12 @@ table.hits tr[hidden] { display: none; }
   .queries, .gel-wrap { position: static; max-height: none; border: 0; }
   .gel-wrap { display: none; }
   .span-row { grid-template-columns: 1fr; }
-  .mast-logo { height: 3.6rem; }
+  .mast-logo { height: 2.7rem; max-width: 6.8rem; }
+  .theme-toggle { position: static; margin: 0 0 .8rem auto; display: block; }
 }
 @media print {
-  .queries, .controls, .gel-wrap, .mast { break-inside: avoid; }
+  .queries, .controls, .gel-wrap, .mast, .theme-toggle { break-inside: avoid; }
+  .theme-toggle { display: none; }
   .hit { break-inside: avoid; display: block !important; }
   .aln { background: #fff; color: #000; border: 1px solid #ccc; }
   body { background: #fff; }
@@ -614,6 +682,21 @@ table.hits tr[hidden] { display: none; }
 
 JS = """
 (function () {
+  const toggle = document.getElementById("theme-toggle");
+  function themeLabel(theme) {
+    return theme === "dark" ? "Light theme" : "Dark theme";
+  }
+  function currentTheme() {
+    return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+  }
+  if (toggle) {
+    toggle.textContent = themeLabel(currentTheme());
+    toggle.addEventListener("click", () => {
+      const next = currentTheme() === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      toggle.textContent = themeLabel(next);
+    });
+  }
   const state = { query: "all", emax: Infinity, hideSelf: false, q: "", selected: 0, page: 0, pageSize: 10 };
   const rows = Array.from(document.querySelectorAll("tr[data-hit]"));
   const cards = Array.from(document.querySelectorAll("article.hit"));
@@ -742,7 +825,7 @@ def logo_data_uri(path: Path | None) -> str:
     return f"data:{mime};base64,{payload}"
 
 
-def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, colour: str) -> str:
+def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, colour: str, theme: str = "light") -> str:
     n_align = len(hits)
     n_query = len(queries)
     n_self = sum(1 for hit in hits if hit["self"])
@@ -794,29 +877,39 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
     lam_txt = f"{lam:.4g}" if isinstance(lam, (int, float)) else "—"
     k_txt = f"{k_value:.4g}" if isinstance(k_value, (int, float)) else "—"
     logo = meta.get("logo", "")
+    icon = meta.get("icon", "")
+    theme = theme if theme in {"light", "dark"} else "light"
     brand = (
         f'<div class="mast-brand">'
-        f'<img class="mast-logo" src="{logo}" alt="GINFINITY" width="160" height="112"/>'
+        f'<img class="mast-logo" src="{logo}" alt="GINflow" width="110" height="78"/>'
         f"<div>"
         if logo else
         ""
     )
     brand_end = "</div></div>" if logo else ""
+    favicon = (
+        f'<link rel="icon" href="{icon}" type="image/svg+xml"/>'
+        if icon else
+        ""
+    )
+    toggle_label = "Light theme" if theme == "dark" else "Dark theme"
     return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="{escape(theme)}">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>ginflow search report</title>
+{favicon}
 <style>{CSS}</style>
 </head>
 <body>
 <header class="mast">
+  <button type="button" class="theme-toggle" id="theme-toggle">{escape(toggle_label)}</button>
   {brand}
   <p class="mast-kicker">ginflow</p>
   <h1>Search report</h1>
   {brand_end}
-  <p class="lede">Local GINFINITY-SW alignments ranked like BLAST, lowest database E-value first. The teal mark is the aligned span; gray is the rest of the molecule.</p>
+  <p class="lede">Local GINFINITY-SW alignments ranked like BLAST, lowest database E-value first. The green mark is the aligned span; gray is the rest of the molecule.</p>
   <ul class="stats">
     <li><b>{n_query}</b><span>queries</span></li>
     <li><b>{n_align}</b><span>alignments</span></li>
@@ -897,8 +990,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plots-rnartist", type=Path, nargs="*")
     parser.add_argument("--plots-r4rna", type=Path, nargs="*")
     parser.add_argument("--plots-sw", type=Path, nargs="*")
-    parser.add_argument("--highlight-colour", default="#0E8F78")
+    parser.add_argument("--highlight-colour", default="#24B064")
     parser.add_argument("--logo", type=Path)
+    parser.add_argument("--icon", type=Path)
+    parser.add_argument("--theme", choices=("light", "dark"), default="light")
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args(argv)
 
@@ -928,8 +1023,10 @@ def main(argv: list[str] | None = None) -> int:
         {
             "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
             "logo": logo_data_uri(args.logo),
+            "icon": logo_data_uri(args.icon),
         },
         args.highlight_colour,
+        args.theme,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(html)

@@ -12,8 +12,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
-GRAY = "#B0B0B0"
-GRAY_LETTER = "#666666"
+GRAY = "#adb5bd"
+GRAY_LETTER = "#6c757d"
 
 KTS = """rnartist {{
     ss {{
@@ -63,7 +63,7 @@ def theme_block(start: int, end: int, colour: str) -> str:
         loc = (start + 1, end)
         parts.extend([
             _color_block(colour, "N", loc),
-            _color_block("#222222", "n", loc),
+            _color_block("#212529", "n", loc),
             _color_block(colour, "phosphodiester_bond", loc),
             _color_block(colour, "secondary_interaction", loc),
         ])
@@ -98,7 +98,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--alignments", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
-    parser.add_argument("--highlight-colour", default="#00AA88")
+    parser.add_argument("--highlight-colour", default="#24B064")
     parser.add_argument("--max-pairs", type=int, default=25)
     parser.add_argument("--cpus", type=int, default=1)
     return parser.parse_args(argv)

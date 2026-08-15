@@ -10,15 +10,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
-INK = "#1a2426"
-MUTE = "#5e7074"
-TRACK = "#eef3f2"
-QUERY_ONLY = "#1f6f8b"
-TARGET_ONLY = "#7a5c2e"
-MISMATCH = "#c45c26"
-GAP = "#8a9698"
-RESIDUE = "#1a2426"
-PAIR = "#0e8f78"
+INK = "#212529"
+MUTE = "#6c757d"
+TRACK = "#e9ecef"
+QUERY_ONLY = "#396E35"
+TARGET_ONLY = "#3F2B29"
+MISMATCH = "#ECDC86"
+GAP = "#adb5bd"
+RESIDUE = "#212529"
+PAIR = "#24B064"
 
 OPENS = {"(": ")", "<": ">", "[": "]", "{": "}", "A": "a", "B": "b", "C": "c", "D": "d"}
 CLOSES = {end: start for start, end in OPENS.items()}
@@ -367,7 +367,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--alignments", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
-    parser.add_argument("--highlight-colour", default="#00AA88")
+    parser.add_argument("--highlight-colour", default="#24B064")
     parser.add_argument("--max-pairs", type=int, default=25)
     parser.add_argument("--cpus", type=int, default=1)
     return parser.parse_args(argv)
