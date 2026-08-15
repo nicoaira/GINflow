@@ -206,9 +206,9 @@ def render_svg(
 ) -> str:
     count = len(query_aln)
     col_w = column_width(count)
-    plot_left = MARGIN_LEFT
     plot_width = count * col_w
-    width = max(640.0, plot_left + plot_width + MARGIN_RIGHT)
+    width = max(640.0, plot_width + MARGIN_LEFT + MARGIN_RIGHT)
+    plot_left = (width - plot_width) / 2.0
     mid_y = MARGIN_TOP + ARC_MAX + AXIS_GAP / 2.0
     y_query = mid_y - AXIS_GAP / 2.0
     y_target = mid_y + AXIS_GAP / 2.0
@@ -288,18 +288,18 @@ def render_svg(
     draw_backbone(target_aln, y_target)
 
     parts.append(
-        f'<text x="{plot_left:.1f}" y="16" font-size="12" font-weight="600">{xml_escape(query_id)}</text>'
+        f'<text x="{MARGIN_LEFT:.1f}" y="16" font-size="12" font-weight="600">{xml_escape(query_id)}</text>'
     )
     parts.append(
-        f'<text x="{plot_left:.1f}" y="28" fill="{MUTE}" font-size="10">'
+        f'<text x="{MARGIN_LEFT:.1f}" y="28" fill="{MUTE}" font-size="10">'
         f"query {query_start}–{query_end}</text>"
     )
     parts.append(
-        f'<text x="{plot_left:.1f}" y="{height - 16:.1f}" font-size="12" font-weight="600">'
+        f'<text x="{MARGIN_LEFT:.1f}" y="{height - 16:.1f}" font-size="12" font-weight="600">'
         f"{xml_escape(target_id)}</text>"
     )
     parts.append(
-        f'<text x="{plot_left:.1f}" y="{height - 4:.1f}" fill="{MUTE}" font-size="10">'
+        f'<text x="{MARGIN_LEFT:.1f}" y="{height - 4:.1f}" fill="{MUTE}" font-size="10">'
         f"target {target_start}–{target_end}</text>"
     )
 
