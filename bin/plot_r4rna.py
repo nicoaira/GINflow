@@ -79,25 +79,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--alignments", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
     parser.add_argument("--highlight-colour", default="#CC0000")
-    parser.add_argument("--max-plots", type=int, default=50)
+    parser.add_argument("--max-pairs", type=int, default=25)
     parser.add_argument("--cpus", type=int, default=1)
     return parser.parse_args(argv)
 
 
-def collect_jobs(rows: list[dict[str, str]], max_plots: int, colour: str) -> list[tuple]:
+def pair_stem(row: dict[str, str], index: int) -> str:
+    qid = row.get("query_id", f"query_{index}")
+    tid = row.get("target_id", f"target_{index}")
+    cluster = row.get("cluster_id", str(index))
+    return f"{safe_name(cluster)}_{safe_name(qid)}__{safe_name(tid)}"
+
+
+def collect_jobs(rows: list[dict[str, str]], max_pairs: int, colour: str) -> list[tuple]:
     jobs: list[tuple] = []
-    for index, row in enumerate(rows):
-        if len(jobs) >= max_plots:
-            break
-        qid = row.get("query_id", f"query_{index}")
-        tid = row.get("target_id", f"target_{index}")
-        prefix = f"{index:04d}_{safe_name(qid)}__{safe_name(tid)}"
+    for index, row in enumerate(rows[:max_pairs]):
+        prefix = pair_stem(row, index)
         for kind, seq_key, ss_key, start_key, end_key in (
             ("query", "query_sequence", "query_structure", "query_start", "query_end"),
             ("target", "target_sequence", "target_structure", "target_start", "target_end"),
         ):
-            if len(jobs) >= max_plots:
-                break
             jobs.append((
                 row.get(seq_key, ""),
                 row.get(ss_key, ""),
@@ -123,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     args.outdir.mkdir(parents=True, exist_ok=True)
     with args.alignments.open(newline="") as handle:
         rows = list(csv.DictReader(handle, delimiter="\t"))
-    jobs = collect_jobs(rows, args.max_plots, args.highlight_colour)
+    jobs = collect_jobs(rows, args.max_pairs, args.highlight_colour)
     workers = max(1, args.cpus)
     drawn = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:

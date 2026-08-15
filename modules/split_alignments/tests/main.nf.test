@@ -1,0 +1,42 @@
+nextflow_process {
+
+    name "Test Process SPLIT_ALIGNMENTS"
+    script "../main.nf"
+    process "SPLIT_ALIGNMENTS"
+
+    tag "modules"
+    tag "split_alignments"
+
+    test("Should write one TSV per query") {
+
+        when {
+            process {
+                """
+                input[0] = file("${projectDir}/tests/data/plot_fixture.tsv", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.alignments.size() == 1 },
+                {
+                    def files = process.out.alignments.get(0)
+                    def paths = files instanceof Collection ? files : [files]
+                    def names = paths.collect { file(it).name }
+                    assert names.size() == 1
+                    def text = path(paths[0]).text
+                    assert text.contains('query_id')
+                    assert text.contains('X06694.1/9-124')
+                    assert text.readLines().drop(1).findAll { it }.size() == 1
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

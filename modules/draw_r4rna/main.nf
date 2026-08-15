@@ -1,5 +1,5 @@
 process DRAW_R4RNA {
-    tag "r4rna"
+    tag "${alignments.simpleName}"
     label 'process_medium'
 
     conda "${moduleDir}/environment.yml"
@@ -11,21 +11,22 @@ process DRAW_R4RNA {
     path alignments
 
     output:
-    path "plots_r4rna",  emit: plots
-    path "versions.yml", emit: versions
+    path "plots_r4rna_*", emit: plots
+    path "versions.yml",  emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
     def args = task.ext.args ?: ''
+    def plot_dir = "plots_r4rna_${alignments.simpleName}"
     """
-    mkdir -p plots_r4rna
+    mkdir -p ${plot_dir}
     plot_r4rna.py \\
         --alignments ${alignments} \\
-        --outdir plots_r4rna \\
+        --outdir ${plot_dir} \\
         --highlight-colour '${params.plot_highlight_colour}' \\
-        --max-plots ${params.plot_max} \\
+        --max-pairs ${params.plot_max_pairs} \\
         --cpus ${task.cpus} \\
         ${args}
 
@@ -37,9 +38,10 @@ process DRAW_R4RNA {
     """
 
     stub:
+    def plot_dir = "plots_r4rna_${alignments.simpleName}"
     """
-    mkdir -p plots_r4rna
-    touch plots_r4rna/.stub
+    mkdir -p ${plot_dir}
+    touch ${plot_dir}/.stub
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

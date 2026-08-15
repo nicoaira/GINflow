@@ -1,0 +1,14 @@
+{
+    "Should write one TSV per query": {
+        "content": [
+            [
+                "versions.yml:md5,6dfeb848bace1549b7a03aec83c1c332"
+            ]
+        ],
+        "timestamp": "2026-08-15T12:00:46.459020349",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}
