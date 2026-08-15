@@ -40,6 +40,7 @@ process WRITE_REPORT {
         ${r4_arg} \\
         ${sw_arg} \\
         --highlight-colour '${params.plot_highlight_colour}' \\
+        --logo ${projectDir}/docs/images/ginfinity.png \\
         --output report.html \\
         ${args}
 

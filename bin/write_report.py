@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import csv
 import json
 import math
@@ -436,6 +437,8 @@ body { min-height: 100vh; }
   padding: 2.2rem 6vw 1.6rem;
   border-bottom: 4px solid var(--pair);
 }
+.mast-brand { display: flex; align-items: center; gap: 1.35rem; margin: 0 0 .85rem; }
+.mast-logo { height: 4.8rem; width: auto; display: block; flex: 0 0 auto; }
 .mast-kicker {
   font-family: var(--mono);
   letter-spacing: .28em;
@@ -596,6 +599,7 @@ table.hits tr[hidden] { display: none; }
   .queries, .gel-wrap { position: static; max-height: none; border: 0; }
   .gel-wrap { display: none; }
   .span-row { grid-template-columns: 1fr; }
+  .mast-logo { height: 3.6rem; }
 }
 @media print {
   .queries, .controls, .gel-wrap, .mast { break-inside: avoid; }
@@ -727,6 +731,17 @@ JS = """
 """
 
 
+def logo_data_uri(path: Path | None) -> str:
+    if path is None or not path.is_file():
+        return ""
+    payload = base64.standard_b64encode(path.read_bytes()).decode("ascii")
+    suffix = path.suffix.lower()
+    mime = "image/svg+xml" if suffix == ".svg" else "image/png"
+    if suffix == ".jpg" or suffix == ".jpeg":
+        mime = "image/jpeg"
+    return f"data:{mime};base64,{payload}"
+
+
 def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, colour: str) -> str:
     n_align = len(hits)
     n_query = len(queries)
@@ -778,6 +793,15 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
     )
     lam_txt = f"{lam:.4g}" if isinstance(lam, (int, float)) else "—"
     k_txt = f"{k_value:.4g}" if isinstance(k_value, (int, float)) else "—"
+    logo = meta.get("logo", "")
+    brand = (
+        f'<div class="mast-brand">'
+        f'<img class="mast-logo" src="{logo}" alt="GINFINITY" width="160" height="112"/>'
+        f"<div>"
+        if logo else
+        ""
+    )
+    brand_end = "</div></div>" if logo else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -788,8 +812,10 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
 </head>
 <body>
 <header class="mast">
+  {brand}
   <p class="mast-kicker">ginflow</p>
   <h1>Search report</h1>
+  {brand_end}
   <p class="lede">Local GINFINITY-SW alignments ranked like BLAST, lowest database E-value first. The teal mark is the aligned span; gray is the rest of the molecule.</p>
   <ul class="stats">
     <li><b>{n_query}</b><span>queries</span></li>
@@ -872,6 +898,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--plots-r4rna", type=Path, nargs="*")
     parser.add_argument("--plots-sw", type=Path, nargs="*")
     parser.add_argument("--highlight-colour", default="#0E8F78")
+    parser.add_argument("--logo", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     return parser.parse_args(argv)
 
@@ -898,7 +925,10 @@ def main(argv: list[str] | None = None) -> int:
         hits,
         queries,
         evd,
-        {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")},
+        {
+            "generated": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+            "logo": logo_data_uri(args.logo),
+        },
         args.highlight_colour,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

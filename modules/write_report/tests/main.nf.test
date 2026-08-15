@@ -57,6 +57,8 @@ nextflow_process {
                     assert html.contains('value="100"')
                     assert html.contains('value="150"')
                     assert html.contains('#00AA88')
+                    assert html.contains('mast-logo')
+                    assert html.contains('alt="GINFINITY"')
                 },
                 {
                     assert snapshot(process.out.versions).match()

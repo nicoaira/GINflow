@@ -1,4 +1,8 @@
-# GINflow 🧬
+<p align="center">
+  <img src="docs/images/ginfinity.png" alt="GINFINITY" width="280">
+</p>
+
+# GINflow
 
 ---
 

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- GINFINITY logo in `docs/images/ginfinity.png`, the README header, and the search report masthead.
 - FAISS seed search: `GENERATE_WINDOWS` slices concatenated `w=11` windows, `BUILD_FAISS_INDEX` writes a reusable `IndexFlatIP` database, and `SEARCH_FAISS` returns seeds above `--seed_min_similarity`. Modes are inferred from `--input` / `--query` / `--database`.
 - Seed clustering (`CLUSTER_SEEDS`) and GINFINITY-SW alignment (`ALIGN_CLUSTERS`) on a padded crop of each cluster. The FAISS directory now also packs residue embeddings and sequences so query-only runs can align.
 - Database E-values: `ESTIMATE_EVD` fits Karlin–Altschul λ, K from reverse-sequence GINFINITY-SW scores; `ALIGN_CLUSTERS` ranks hits by ascending E = K m N exp(−λS).
