@@ -1,0 +1,2 @@
+cluster_id	query_id	target_id	seed_count	query_start	query_end	target_start	target_end	max_score	diagonal	diagonal_min	diagonal_max	diagonal_span
+0	Q1	T1	3	5	25	10	30	0.9	-5	-5	-5	0

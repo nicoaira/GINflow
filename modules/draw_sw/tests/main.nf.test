@@ -1,0 +1,53 @@
+nextflow_process {
+
+    name "Test Process DRAW_SW"
+    script "../main.nf"
+    process "DRAW_SW"
+
+    tag "modules"
+    tag "draw_sw"
+
+    test("Should draw cosine and score matrices from the SW fixture") {
+
+        when {
+            process {
+                """
+                input[0] = file("${moduleDir}/tests/data/alignments.tsv", checkIfExists: true)
+                input[1] = file("${moduleDir}/tests/data/clusters.tsv", checkIfExists: true)
+                input[2] = file("${moduleDir}/tests/data/query.npz", checkIfExists: true)
+                input[3] = file("${moduleDir}/tests/data/database", checkIfExists: true)
+                input[4] = file("${projectDir}/assets/alignment.json", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.plots.size() == 1 },
+                {
+                    def plotDir = file(process.out.plots.get(0))
+                    assert plotDir.isDirectory()
+                    def svgs = plotDir.listFiles().findAll { it.name.endsWith('.svg') }
+                    assert svgs.size() == 2
+                    def names = svgs*.name as Set
+                    assert names.any { it.endsWith('_similarity.svg') }
+                    assert names.any { it.endsWith('_scores.svg') }
+                    svgs.each { svg ->
+                        def text = svg.text
+                        assert text.contains('<svg')
+                        assert text.contains('data:image/png;base64,')
+                    }
+                    def scores = svgs.find { it.name.endsWith('_scores.svg') }.text
+                    assert scores.contains('polyline')
+                    assert scores.contains('#00AA88')
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

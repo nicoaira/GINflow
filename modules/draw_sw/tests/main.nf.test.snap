@@ -1,0 +1,14 @@
+{
+    "Should draw cosine and score matrices from the SW fixture": {
+        "content": [
+            [
+                "versions.yml:md5,a8b521aed70782305a5113ba69c87e3f"
+            ]
+        ],
+        "timestamp": "2026-08-15T11:45:27.664790749",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

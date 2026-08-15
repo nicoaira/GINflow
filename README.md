@@ -14,7 +14,7 @@ The current steps are:
 4. Slice sliding windows (default `w=11`, stride 1)
 5. Build a reusable FAISS database and/or search it for seeds
 6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, and rank by database E-value
-7. Optionally plot query/target 2Ds (`--plot_backend rnartistcore`, `r4rna`, or `both`)
+7. Optionally plot query/target 2Ds (`--plot_backend`) and/or SW matrices (`--plot_sw`)
 8. Write a standalone HTML search report (`report.html`)
 
 ---
