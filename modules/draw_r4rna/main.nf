@@ -1,5 +1,5 @@
 process DRAW_R4RNA {
-    tag "${alignments.simpleName}"
+    tag "${alignments.baseName}"
     label 'process_medium'
 
     conda "${moduleDir}/environment.yml"
@@ -19,7 +19,7 @@ process DRAW_R4RNA {
 
     script:
     def args = task.ext.args ?: ''
-    def plot_dir = "plots_r4rna_${alignments.simpleName}"
+    def plot_dir = "plots_r4rna_${alignments.baseName}"
     """
     mkdir -p ${plot_dir}
     plot_r4rna.py \\
@@ -38,7 +38,7 @@ process DRAW_R4RNA {
     """
 
     stub:
-    def plot_dir = "plots_r4rna_${alignments.simpleName}"
+    def plot_dir = "plots_r4rna_${alignments.baseName}"
     """
     mkdir -p ${plot_dir}
     touch ${plot_dir}/.stub

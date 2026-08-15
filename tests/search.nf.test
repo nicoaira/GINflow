@@ -44,6 +44,42 @@ nextflow_pipeline {
         }
     }
 
+    test("each slice is an independent query") {
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = "${projectDir}/tests/data/sliced_structures.tsv"
+                query      = "${projectDir}/tests/data/sliced_structures.tsv"
+                shard_size = 10
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/seeds.tsv").exists()
+            def seeds = path("${params.outdir}/seeds.tsv").readLines().drop(1).findAll { it }
+            def queryIds = seeds.collect { it.split('\t')[0] } as Set
+            assert queryIds.contains('X75790.1/378-471:150-244')
+            assert queryIds.contains('X58874.1/548-664:34-90')
+            assert queryIds.contains('X58874.1/548-664:40-95')
+            def selfHits = seeds.findAll { line ->
+                def cols = line.split('\t')
+                cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
+            }
+            assert selfHits.size() > 0
+            assert path("${params.outdir}/alignments.tsv").exists()
+            def hitRows = path("${params.outdir}/alignments.tsv").readLines().drop(1).findAll { it }
+            assert hitRows.size() > 0
+            def alignedIds = hitRows.collect { it.split('\t')[1] } as Set
+            assert alignedIds.intersect([
+                'X75790.1/378-471:150-244',
+                'X58874.1/548-664:34-90',
+                'X58874.1/548-664:40-95'
+            ] as Set).size() > 0
+        }
+    }
+
     test("query an existing database (stub)") {
 
         options "-stub"

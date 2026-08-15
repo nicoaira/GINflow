@@ -1,5 +1,5 @@
 process DRAW_RNARTISTCORE {
-    tag "${alignments.simpleName}"
+    tag "${alignments.baseName}"
     label 'process_medium'
 
     conda "${moduleDir}/environment.yml"
@@ -19,7 +19,7 @@ process DRAW_RNARTISTCORE {
 
     script:
     def args = task.ext.args ?: ''
-    def plot_dir = "plots_rnartistcore_${alignments.simpleName}"
+    def plot_dir = "plots_rnartistcore_${alignments.baseName}"
     """
     mkdir -p ${plot_dir}
     plot_rnartistcore.py \\
@@ -38,7 +38,7 @@ process DRAW_RNARTISTCORE {
     """
 
     stub:
-    def plot_dir = "plots_rnartistcore_${alignments.simpleName}"
+    def plot_dir = "plots_rnartistcore_${alignments.baseName}"
     """
     mkdir -p ${plot_dir}
     touch ${plot_dir}/.stub

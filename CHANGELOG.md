@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- Optional `start`/`end` columns on the structures table build GINFINITY sliced graphs (one independent subject/query per window, including several comma-separated windows on the same row). Defaults: `--keep_paired_neighbours` with `--context_hops 4`. Mixed examples are in `tests/data/sliced_structures.tsv`. Per-query alignment and plot filenames use `baseName` so two slices of the same accession do not collide.
 - GINflow logo in `docs/images/ginflow_logo.svg` (README header and search report masthead) and `docs/images/ginflow_icon.svg` (report favicon).
 - FAISS seed search: `GENERATE_WINDOWS` slices concatenated `w=11` windows, `BUILD_FAISS_INDEX` writes a reusable `IndexFlatIP` database, and `SEARCH_FAISS` returns seeds above `--seed_min_similarity`. Modes are inferred from `--input` / `--query` / `--database`.
 - Seed clustering (`CLUSTER_SEEDS`) and GINFINITY-SW alignment (`ALIGN_CLUSTERS`) on a padded crop of each cluster. The FAISS directory now also packs residue embeddings and sequences so query-only runs can align.
@@ -32,11 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### `Fixed`
 
 - Test TSVs now emit pair-closed, balanced `.()` full molecules so `ginfinity build-graphs` no longer dies on unmatched brackets.
+- Sliced FAISS records and alignments now drop pairs that cross the window, so GINFINITY-SW formatting and structure plots receive a balanced subject.
+- `scripts/bump_ginfinity_containers.py` no longer treats a published Wave image as a hard failure when the service reports `succeeded: false`, and it retries SIF HEAD 403s (Python-urllib User-Agent) with a ranged GET.
 - `-profile gpu` now passes `--allow-nondeterministic-cuda` to `ginfinity embed-graphs`, which GINFINITY requires on CUDA.
 - `-profile gpu` now follows the nf-core ribodetector pattern: `task.accelerator` switches `EMBED_RNA_GRAPHS` to `environment.gpu.yml` (`ginfinity` + `pytorch-gpu=2.6.0` + `cuda-version=12.6`) and the CUDA Wave image. The published ginfinity-only Wave tag is CPU PyTorch, which caused `CUDA was requested but is unavailable`.
 
 ### `Dependencies`
 
+- Graph and embed modules use `nicolas.aira::ginfinity=1.1.0` (sliced graphs).
 - FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`).
 - Alignment uses `nicolas.aira::ginfinity-sw=1.0.1`.
 - Plotting uses `nicolas.aira::rnartistcore=0.4.6` and `nicolas.aira::r-r4rna=2.0.9`.

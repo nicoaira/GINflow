@@ -23,8 +23,9 @@ input:
         type: file
         description: |
           Tab-delimited RNA table with default columns transcript_id,
-          sequence, and secondary_structure. Column names and delimiter
-          can be overridden with task.ext.args.
+          sequence, and secondary_structure. Optional start/end columns
+          build one sliced graph per window. Column names, delimiter,
+          and slice-context flags come from pipeline params.
         pattern: "*.{tsv,txt,csv}"
         ontologies: []
 
@@ -60,10 +61,10 @@ maintainers:
 containers:
   docker:
     linux/amd64:
-      name: community.wave.seqera.io/library/ginfinity:1.0.1--ec3ad584ab4c66db
-      build_id: bd-ec3ad584ab4c66db_1
+      name: community.wave.seqera.io/library/ginfinity:1.1.0--55be3b8c50d410c9
+      build_id: bd-55be3b8c50d410c9_1
   singularity:
     linux/amd64:
-      name: oras://community.wave.seqera.io/library/ginfinity:1.0.1--b0a8a9738401d060
-      build_id: bd-b0a8a9738401d060_1
-      https: https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/52/52aef85397c34ad4b14f3068d1881c5b09fd9df24ae5697900bb598e2dc892d0/data
+      name: oras://community.wave.seqera.io/library/ginfinity:1.1.0--1650c043b7cf2c96
+      build_id: bd-1650c043b7cf2c96_1
+      https: https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/65/6585e5731a92a6725c71af35c8462cfd871fbd4e9798e8a8144eec43343062ee/data

@@ -230,7 +230,14 @@ def run_wave(args: list[str], *, dry_run: bool) -> dict | None:
         die(f"Wave failed ({proc.returncode})\n{tail}")
     payload = parse_wave_json(proc.stdout)
     if payload.get("succeeded") is False:
-        die(f"Wave reported failure: {json.dumps(payload, indent=2)}")
+        image = payload.get("containerImage") or payload.get("targetImage")
+        if image:
+            info(
+                "Wave marked the build as failed, but published "
+                f"{image}; using that image"
+            )
+        else:
+            die(f"Wave reported failure: {json.dumps(payload, indent=2)}")
     return payload
 
 
@@ -291,13 +298,38 @@ def wait_for_sif(url: str, timeout_s: int = 180) -> int:
     deadline = time.time() + timeout_s
     last_error = "no response"
     while time.time() < deadline:
-        request = urllib.request.Request(url, method="HEAD")
+        request = urllib.request.Request(
+            url,
+            method="HEAD",
+            headers={"User-Agent": "ginflow-wave-bump/1.0"},
+        )
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 length = int(response.headers.get("Content-Length") or 0)
                 if response.status == 200 and length > 1_000_000:
                     return length
                 last_error = f"HTTP {response.status} length={length}"
+        except urllib.error.HTTPError as exc:
+            last_error = f"HTTP {exc.code}"
+            if exc.code == 403:
+                get_request = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "ginflow-wave-bump/1.0",
+                        "Range": "bytes=0-0",
+                    },
+                )
+                try:
+                    with urllib.request.urlopen(get_request, timeout=30) as response:
+                        length = int(response.headers.get("Content-Length") or 0)
+                        content_range = response.headers.get("Content-Range") or ""
+                        if content_range.startswith("bytes "):
+                            length = int(content_range.rsplit("/", 1)[-1])
+                        if response.status in {200, 206} and length > 1_000_000:
+                            return length
+                        last_error = f"HTTP {response.status} length={length}"
+                except (urllib.error.URLError, TimeoutError, ValueError) as get_exc:
+                    last_error = str(get_exc)
         except (urllib.error.URLError, TimeoutError, ValueError) as exc:
             last_error = str(exc)
         time.sleep(8)

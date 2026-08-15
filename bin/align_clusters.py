@@ -6,6 +6,7 @@ import argparse
 import csv
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,59 @@ import numpy as np
 from ginfinity_sw import Alignment, ScoringParameters, align, format_alignment
 
 LN2 = math.log(2.0)
+SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
+
+
+def parse_slice_id(identifier: str) -> tuple[int, int] | None:
+    match = SLICE_ID_RE.fullmatch(identifier)
+    if not match:
+        return None
+    return int(match["start"]), int(match["end"])
+
+
+def pair_table(structure: str) -> list[int]:
+    partners = [-1] * len(structure)
+    stack: list[int] = []
+    for index, char in enumerate(structure):
+        if char == "(":
+            stack.append(index)
+        elif char == ")":
+            if not stack:
+                continue
+            opening = stack.pop()
+            partners[opening] = index
+            partners[index] = opening
+    return partners
+
+
+def close_window_structure(structure: str, start: int, end: int) -> str:
+    """Keep only pairs whose both ends lie inside ``[start, end)``."""
+    partners = pair_table(structure)
+    out: list[str] = []
+    for index in range(start, end):
+        partner = partners[index]
+        if partner < start or partner >= end:
+            out.append(".")
+        else:
+            out.append("(" if partner > index else ")")
+    return "".join(out)
+
+
+def subject_sequence(identifier: str, sequence: str, structure: str) -> tuple[str, str]:
+    """Return the independent subject (core window, or the full molecule)."""
+    if len(sequence) != len(structure):
+        raise ValueError(f"{identifier} sequence/structure length mismatch")
+    span = parse_slice_id(identifier)
+    if span is None:
+        return sequence, structure
+    start, end = span
+    if end - start == len(sequence):
+        return sequence, close_window_structure(structure, 0, len(structure))
+    if not (0 <= start < end <= len(sequence)):
+        raise ValueError(
+            f"{identifier} slice [{start}, {end}) is outside a {len(sequence)} nt sequence"
+        )
+    return sequence[start:end], close_window_structure(structure, start, end)
 
 
 def bit_score(raw_score: float, lam: float, k_value: float) -> float:
@@ -130,7 +184,7 @@ def load_graph_records(paths: list[Path]) -> dict[str, tuple[str, str]]:
         for identifier, sequence, structure in zip(identifiers, sequences, structures):
             if identifier in records:
                 raise ValueError(f"duplicate record id {identifier!r} in {path}")
-            records[identifier] = (sequence, structure)
+            records[identifier] = subject_sequence(identifier, sequence, structure)
     return records
 
 
@@ -142,7 +196,10 @@ def load_records_tsv(path: Path) -> dict[str, tuple[str, str]]:
             raise ValueError(f"{path} must have columns {sorted(required)}")
         records = {}
         for row in reader:
-            records[row["transcript_id"]] = (row["sequence"], row["secondary_structure"])
+            identifier = row["transcript_id"]
+            records[identifier] = subject_sequence(
+                identifier, row["sequence"], row["secondary_structure"]
+            )
     return records
 
 

@@ -1,5 +1,5 @@
 process DRAW_SW {
-    tag "${alignments.simpleName}"
+    tag "${alignments.baseName}"
     label 'process_medium'
 
     conda "${moduleDir}/environment.yml"
@@ -23,7 +23,7 @@ process DRAW_SW {
 
     script:
     def args = task.ext.args ?: ''
-    def plot_dir = "plots_sw_${alignments.simpleName}"
+    def plot_dir = "plots_sw_${alignments.baseName}"
     """
     mkdir -p ${plot_dir}
     plot_sw.py \\
@@ -48,7 +48,7 @@ process DRAW_SW {
     """
 
     stub:
-    def plot_dir = "plots_sw_${alignments.simpleName}"
+    def plot_dir = "plots_sw_${alignments.baseName}"
     """
     mkdir -p ${plot_dir}
     touch ${plot_dir}/.stub

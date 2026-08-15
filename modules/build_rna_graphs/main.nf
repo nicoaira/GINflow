@@ -4,8 +4,8 @@ process BUILD_RNA_GRAPHS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/52/52aef85397c34ad4b14f3068d1881c5b09fd9df24ae5697900bb598e2dc892d0/data' :
-        'community.wave.seqera.io/library/ginfinity:1.0.1--ec3ad584ab4c66db' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/65/6585e5731a92a6725c71af35c8462cfd871fbd4e9798e8a8144eec43343062ee/data' :
+        'community.wave.seqera.io/library/ginfinity:1.1.0--55be3b8c50d410c9' }"
 
     input:
     tuple val(meta), path(structures)
@@ -18,8 +18,10 @@ process BUILD_RNA_GRAPHS {
     task.ext.when == null || task.ext.when
 
     script:
-    def args   = task.ext.args   ?: ''
-    def prefix = task.ext.prefix ?: "${meta.id}"
+    def args           = task.ext.args   ?: ''
+    def prefix         = task.ext.prefix ?: "${meta.id}"
+    def slice_args     = params.no_slices ? '--no-slices' : "--start-column ${params.start_column} --end-column ${params.end_column}"
+    def neighbour_args = (!params.no_slices && params.keep_paired_neighbours) ? "--keep-paired-neighbours --context-hops ${params.context_hops}" : ''
     """
     ginfinity \\
         build-graphs \\
@@ -30,6 +32,8 @@ process BUILD_RNA_GRAPHS {
         --sequence-column ${params.sequence_column} \\
         --structure-column ${params.structure_column} \\
         --delimiter '${params.delimiter}' \\
+        ${slice_args} \\
+        ${neighbour_args} \\
         --checksum \\
         ${args}
 

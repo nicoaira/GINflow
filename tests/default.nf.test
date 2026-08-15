@@ -37,4 +37,60 @@ nextflow_pipeline {
             assert !path("${params.outdir}/seeds.tsv").exists()
         }
     }
+
+    test("sliced graphs become independent FAISS subjects") {
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = "${projectDir}/tests/data/sliced_structures.tsv"
+                shard_size = 10
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/faiss/index.faiss").exists()
+            def records = path("${params.outdir}/faiss/records.tsv").readLines()
+            assert records[0] == 'transcript_id\tsequence\tsecondary_structure'
+            def rows = records.drop(1).findAll { it }
+            assert rows.size() == 5
+            def byId = rows.collectEntries { line ->
+                def cols = line.split('\t', 3)
+                [cols[0], cols]
+            }
+            assert byId.keySet() == [
+                'DQ508819.1/1-88',
+                'M34509.1/93-182',
+                'X75790.1/378-471:150-244',
+                'X58874.1/548-664:34-90',
+                'X58874.1/548-664:40-95'
+            ] as Set
+            assert byId['DQ508819.1/1-88'][1].length() == 88
+            assert byId['X75790.1/378-471:150-244'][1].length() == 94
+            assert byId['X58874.1/548-664:34-90'][1].length() == 56
+            assert byId['X58874.1/548-664:40-95'][1].length() == 55
+            assert byId['X58874.1/548-664:34-90'][1] != byId['X58874.1/548-664:40-95'][1]
+            assert byId['X58874.1/548-664:34-90'][2].length() == 56
+            assert byId['X58874.1/548-664:40-95'][2].length() == 55
+            byId.each { id, cols ->
+                assert cols[1].length() == cols[2].length()
+                def depth = 0
+                cols[2].each { ch ->
+                    if (ch == '(') depth += 1
+                    else if (ch == ')') depth -= 1
+                    assert depth >= 0
+                }
+                assert depth == 0
+            }
+            def meta = path("${params.outdir}/faiss/meta.json").json
+            assert meta.n_records == 5
+            assert meta.n_windows > 0
+            def windows = path("${params.outdir}/faiss/windows.tsv").readLines().drop(1).findAll { it }
+            assert windows.every { line ->
+                def cols = line.split('\t')
+                byId.containsKey(cols[1])
+            }
+        }
+    }
 }

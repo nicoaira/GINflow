@@ -58,7 +58,7 @@ def slice_npz(npz_path: Path, manifest: dict, window_size: int, stride: int) -> 
                 f"{identifier} has embedding dim {emb.shape[1]}, expected {embedding_dim}"
             )
         sliced = slice_record(emb, window_size, stride)
-        length = int(record.get("length", emb.shape[0]))
+        length = int(record.get("core_length", emb.shape[0]))
         if sliced.shape[0] == 0:
             skipped_short.append({"identifier": identifier, "length": length})
             continue

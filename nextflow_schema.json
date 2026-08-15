@@ -15,14 +15,14 @@
                     "format": "file-path",
                     "exists": true,
                     "pattern": "^\\S+\\.(tsv|txt|csv)$",
-                    "description": "Structures table used to build the FAISS database. Required columns: transcript_id, sequence, secondary_structure. Extra columns are allowed and ignored. Omit when searching an existing --database."
+                    "description": "Structures table used to build the FAISS database. Required columns: transcript_id, sequence, secondary_structure. Optional start/end columns (0-based half-open; comma-separated lists for several windows) build one independent subject per window. Extra columns are allowed. Omit when searching an existing --database."
                 },
                 "query": {
                     "type": "string",
                     "format": "file-path",
                     "exists": true,
                     "pattern": "^\\S+\\.(tsv|txt|csv)$",
-                    "description": "Structures table to search. Same columns as --input. Omit for a build-only run."
+                    "description": "Structures table to search. Same columns as --input, including optional start/end windows. Each window is an independent query. Omit for a build-only run."
                 },
                 "database": {
                     "type": "string",
@@ -45,7 +45,7 @@
                     "type": "integer",
                     "default": 50,
                     "minimum": 1,
-                    "description": "Maximum number of RNA records per BUILD_RNA_GRAPHS job."
+                    "description": "Maximum number of input TSV rows per BUILD_RNA_GRAPHS job. A row with several start/end windows expands to several graphs inside that shard."
                 },
                 "id_column": {
                     "type": "string",
@@ -61,6 +61,32 @@
                     "type": "string",
                     "default": "secondary_structure",
                     "description": "Column name for the dot-bracket secondary structure."
+                },
+                "start_column": {
+                    "type": "string",
+                    "default": "start",
+                    "description": "Optional 0-based half-open window start column. Empty cell = full molecule. A comma-separated list (e.g. 34,40) pairs with --end_column to make several independent subjects from one row."
+                },
+                "end_column": {
+                    "type": "string",
+                    "default": "end",
+                    "description": "Optional 0-based half-open window end column. Must be present whenever --start_column is. Same number of comma-separated values as start."
+                },
+                "no_slices": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Ignore start/end columns and encode every row as a full molecule."
+                },
+                "keep_paired_neighbours": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "For a start/end window, keep bases outside the core that are paired with a core nucleotide so they take part in message passing. Embeddings still contain only the core."
+                },
+                "context_hops": {
+                    "type": "integer",
+                    "default": 4,
+                    "minimum": 1,
+                    "description": "How far to expand around crossing-pair partners when --keep_paired_neighbours is set. 1 = the partner only; higher values also take neighbouring nucleotides. Does not change embedding length."
                 },
                 "delimiter": {
                     "type": "string",

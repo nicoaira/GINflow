@@ -51,4 +51,46 @@ nextflow_process {
 
     }
 
+    test("Should expand mixed full molecules and slices into independent graphs") {
+
+        when {
+            process {
+                """
+                input[0] = [
+                    [ id: 'sliced' ],
+                    file("${projectDir}/tests/data/sliced_structures.tsv", checkIfExists: true)
+                ]
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.graphs.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def metadata = path(process.out.graphs.get(0).get(2)).json
+                    assert metadata.record_count == 5
+                    assert metadata.identifiers == [
+                        'DQ508819.1/1-88',
+                        'M34509.1/93-182',
+                        'X75790.1/378-471:150-244',
+                        'X58874.1/548-664:34-90',
+                        'X58874.1/548-664:40-95'
+                    ]
+                    // Sidecar keeps the source molecule; context nodes make the graph larger than the cores.
+                    assert metadata.node_count > 88 + 332 + 94 + 56 + 55
+                    def sequences = metadata.sequences
+                    assert sequences[0].length() == 88
+                    assert sequences[1].length() == 332
+                    assert sequences[2].length() == 251
+                    assert sequences[3].length() == 349
+                    assert sequences[4] == sequences[3]
+                }
+            )
+        }
+
+    }
+
 }

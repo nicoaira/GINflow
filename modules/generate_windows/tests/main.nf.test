@@ -65,4 +65,59 @@ nextflow_process {
 
     }
 
+    test("Should window each slice using its core length") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'sliced' ],
+                        file("${projectDir}/tests/data/sliced_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+        }
+
+        when {
+            process {
+                """
+                input[0] = EMBED_RNA_GRAPHS.out.embeddings
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                {
+                    def windowManifest = path(process.out.windows.get(0).get(2)).json
+                    assert windowManifest.status == 'complete'
+                    assert windowManifest.records.size() == 5
+                    def byId = windowManifest.records.collectEntries { [it.identifier, it] }
+                    assert byId['DQ508819.1/1-88'].length == 88
+                    assert byId['DQ508819.1/1-88'].n_windows == 78
+                    assert byId['X75790.1/378-471:150-244'].length == 94
+                    assert byId['X75790.1/378-471:150-244'].n_windows == 84
+                    assert byId['X58874.1/548-664:34-90'].length == 56
+                    assert byId['X58874.1/548-664:34-90'].n_windows == 46
+                    assert byId['X58874.1/548-664:40-95'].length == 55
+                    assert byId['X58874.1/548-664:40-95'].n_windows == 45
+                    assert windowManifest.skipped_short.size() == 0
+                }
+            )
+        }
+
+    }
+
 }

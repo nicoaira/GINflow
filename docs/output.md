@@ -36,6 +36,8 @@ outdir/
 
 `faiss/` is published on build runs and now also contains residue `embeddings.npz` plus `records.tsv` so a later `--query --database` run can align. `seeds.tsv`, `clusters.tsv`, and `alignments.tsv` are published on query runs.
 
+When the input table has `start` / `end` windows, each window is stored under `{transcript_id}:{start}-{end}` and treated as its own molecule from embeddings onward. See [Sliced graphs](#sliced-graphs).
+
 ## samples.csv
 
 Index of every published shard. Columns: `id`, `graphs`, `metadata`, `embeddings`, `manifest`, `windows`, `windows_manifest`.
@@ -44,15 +46,15 @@ Index of every published shard. Columns: `id`, `graphs`, `metadata`, `embeddings
 
 One GINFINITY graph shard per input chunk (`--shard_size` records), in a subdirectory named after the shard id.
 
-- `*.safetensors` — node/edge tensors
-- `*.json` — identifiers, sequences, structures, graph spec, and a content checksum
+- `*.safetensors` — node/edge tensors (sliced shards also store `residue_index` and `node_roles`)
+- `*.json` — identifiers, full source sequences/structures, graph spec, and a content checksum. A sliced row is stored under `{transcript_id}:{start}-{end}`.
 
 ## embeddings/
 
 Per-nucleotide embeddings from `ginfinity embed-graphs`, one subdirectory per shard.
 
-- `*.npz` — one array per `transcript_id`, shape `(L, 128)`
-- `*.manifest.json` — package/model versions, device, and record shapes
+- `*.npz` — one array per identifier, shape `(L, 128)`. For a slice, `L` is the core window (`end - start`), not the source molecule.
+- `*.manifest.json` — package/model versions, device, and record shapes (`core_length`, and `start`/`end` when sliced)
 
 ## windows/
 
@@ -68,8 +70,8 @@ Reusable exact inner-product index (`IndexFlatIP`) of every database window.
 - `index.faiss` — FAISS index
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, and counts
-- `embeddings.npz` — per-nucleotide embeddings, one array per `transcript_id`
-- `records.tsv` — `transcript_id`, `sequence`, `secondary_structure`
+- `embeddings.npz` — per-nucleotide embeddings, one array per identifier
+- `records.tsv` — `transcript_id`, `sequence`, `secondary_structure`. For a slice the identifier is `{id}:{start}-{end}` and the sequence/structure are the core window (pairs that cross the cut are written as unpaired), so later search/alignment treat that window as its own molecule.
 - `evd.json` — Karlin–Altschul λ, K, database residue count, and the reverse-sequence null fit
 
 `--database` for a later search run should point at this directory.
@@ -84,7 +86,7 @@ Diagonal HSP clusters. A cluster starts at the highest-scoring unused seed and g
 
 ## alignments.tsv / alignments.txt
 
-GINFINITY-SW local alignments of each cluster crop, ranked by ascending database E-value. Coordinates are 0-based half-open on the original molecules. Extra columns: `bit_score`, `evalue` (K m N e^{−λS}), `evalue_pair` (same formula with the target length instead of the full database), the full `query_sequence` / `query_structure` / `target_sequence` / `target_structure`, and gapped `query_aligned` / `target_aligned` strings. `alignments.txt` is the six-line RNA rendering.
+GINFINITY-SW local alignments of each cluster crop, ranked by ascending database E-value. Coordinates are 0-based half-open on the independent subject (the full molecule, or the core window of a slice). Extra columns: `bit_score`, `evalue` (K m N e^{−λS}), `evalue_pair` (same formula with the target length instead of the full database), the subject `query_sequence` / `query_structure` / `target_sequence` / `target_structure`, and gapped `query_aligned` / `target_aligned` strings. `alignments.txt` is the six-line RNA rendering.
 
 ## report.html
 
@@ -97,3 +99,18 @@ Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`, and/or wh
 - `plots/rnartistcore/*.svg` — RNArtistCore 2Ds
 - `plots/r4rna/*.svg` — R4RNA alignment arc diagrams
 - `plots/sw/*.svg` — crop cosine and substitution-score heatmaps
+
+## Sliced graphs
+
+If `structures.tsv` included `start` / `end` columns, every published artifact uses the **expanded** subjects, not the original TSV rows.
+
+| Artifact | What you see for a window `[start, end)` |
+|---|---|
+| Identifier | `{transcript_id}:{start}-{end}` (full molecules keep the original id) |
+| `graphs/*.json` | Full source sequence/structure; the graph node set is core + optional pairing context |
+| `embeddings/*.npz` | One `(end - start, 128)` array — core nucleotides only |
+| `windows/*` | Sliding 11-nt seeds over that core embedding |
+| `faiss/records.tsv` | Core sequence and a pair-closed core structure (crossing pairs become `.`) |
+| `faiss/windows.tsv`, `seeds.tsv`, `alignments.tsv` | Coordinates are 0-based on the core: `0` is `sequence[start]`, not the 5′ end of the source RNA |
+
+Two overlapping windows on the same source row (`34,40` / `90,95`) appear as two ids, two embeddings, and two query groups in `report.html`. How to write the table: [usage.md — Sliced graphs](usage.md#sliced-graphs).

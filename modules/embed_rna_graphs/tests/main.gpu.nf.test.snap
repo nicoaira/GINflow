@@ -2,7 +2,7 @@
     "Should embed a graph shard on GPU from the smoke structures TSV": {
         "content": [
             [
-                "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+                "versions.yml:md5,b63870988bec0ceba70c4f7cea3b65a1"
             ]
         ],
         "timestamp": "2026-08-14T12:24:40.465892864",
@@ -24,7 +24,7 @@
                     ]
                 ],
                 "1": [
-                    "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+                    "versions.yml:md5,b63870988bec0ceba70c4f7cea3b65a1"
                 ],
                 "embeddings": [
                     [
@@ -36,7 +36,7 @@
                     ]
                 ],
                 "versions": [
-                    "versions.yml:md5,467d445cc3f1ca518495c561d79e7c1d"
+                    "versions.yml:md5,b63870988bec0ceba70c4f7cea3b65a1"
                 ]
             }
         ],
