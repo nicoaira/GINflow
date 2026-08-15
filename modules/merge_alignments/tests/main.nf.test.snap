@@ -1,0 +1,14 @@
+{
+    "Should rank concatenated alignment tables by E-value": {
+        "content": [
+            [
+                "versions.yml:md5,a1f1ff968d7d936340d42c269310d5fb"
+            ]
+        ],
+        "timestamp": "2026-08-15T12:25:10.186185442",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.6"
+        }
+    }
+}

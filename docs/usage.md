@@ -14,7 +14,7 @@ Extra columns (for example `rfam_family`) are allowed and ignored.
 
 Override names with `--id-column`, `--sequence-column`, `--structure-column`, and `--delimiter`.
 
-Large tables are split into shards of `--shard_size` records (default `50`) before graph construction.
+Large tables are split into shards of `--shard_size` records (default `50`) before graph construction. Query search uses the same size unless you set `--search_shard_size` (records per `SEARCH_FAISS` task).
 
 ## Run modes
 
@@ -36,6 +36,7 @@ Window search parameters:
 | `--window_stride` | `1` | Step between window starts |
 | `--seed_k` | `50` | Neighbours kept per query window before the threshold |
 | `--seed_min_similarity` | `0.8` | Minimum cosine similarity |
+| `--search_shard_size` | `--shard_size` | Query records per FAISS search task |
 
 Each window is the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so the FAISS inner product is cosine similarity.
 
@@ -52,15 +53,16 @@ Seeds are then clustered along nearby diagonals and each cluster is aligned with
 | `--evd_samples` | `1000` | Reverse-sequence null alignments used to fit λ and K |
 | `--evd_max_length` | `400` | Max null-sequence length during EVD calibration |
 
-Every search writes `report.html` — a standalone page of ranked hits, aligned spans, and (if requested) structure plots.
+Every search writes `report.html` — a standalone page of ranked hits, aligned spans, and (if requested) structure and SW-matrix plots. Hits are paginated (10 per page by default; 25, 50, 100, or 150). Plots sit in a two-column Query | Target panel, one row per type (RNArtistCore, R4RNA, alignment).
 
-Optional structure plots (`--plot_backend rnartistcore`, `r4rna`, or `both`) draw the query and target 2Ds. The aligned span is coloured (`--plot_highlight_colour`); the rest of the molecule is gray. Default is `none`. Plots are also inlined in the report. Each draw process uses `task.cpus` workers (6 with the default `process_medium` label).
+Optional structure plots (`--plot_backend rnartistcore`, `r4rna`, or `both`) draw the query and target 2Ds. The aligned span is coloured (`--plot_highlight_colour`); the rest of the molecule is gray. Default is `none`. `--plot_sw` adds the crop cosine matrix and the substitution-score matrix with the Smith–Waterman traceback. Each query runs its own draw task. `--plot_max_pairs` (default 25) is per query and counts alignment pairs; each pair writes both partners. Plots are also inlined in the report. Each draw process uses `task.cpus` workers (6 with the default `process_medium` label).
 
 | Flag | Default | Meaning |
 |---|---|---|
 | `--plot_backend` | `none` | `rnartistcore`, `r4rna`, `both`, or `none` |
-| `--plot_max` | `50` | Maximum SVGs (query and target each count as one) |
-| `--plot_highlight_colour` | `#00AA88` | Colour of the aligned span |
+| `--plot_sw` | `false` | Draw crop cosine + SW score matrices (traceback on the score plot) |
+| `--plot_max_pairs` | `25` | Max alignment pairs plotted per query; each pair draws both partners |
+| `--plot_highlight_colour` | `#00AA88` | Colour of the aligned span and SW traceback |
 
 Alignments are ranked by ascending database E-value. E = K m N exp(−λS), where m is the query length and N is the number of residues in the searchable database. λ and K are fit at database-build time from Smith–Waterman scores of reversed real embeddings (preserves local embedding correlation, destroys homology). The legacy `K = exp(−λμ)` conversion is not used; K comes from a length-aware Gumbel MLE so that μ = ln(Kmn)/λ.
 

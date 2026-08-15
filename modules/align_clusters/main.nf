@@ -1,5 +1,5 @@
 process ALIGN_CLUSTERS {
-    tag "align"
+    tag "${clusters.simpleName}"
     label 'process_medium'
 
     conda "${moduleDir}/environment.yml"
@@ -16,16 +16,17 @@ process ALIGN_CLUSTERS {
     path evd
 
     output:
-    path "alignments.tsv",     emit: alignments
-    path "alignments.txt",     emit: text
-    path "alignment_stats.json", emit: stats
-    path "versions.yml",       emit: versions
+    path "*.alignments.tsv",          emit: alignments
+    path "*.alignments.txt",          emit: text
+    path "*.alignment_stats.json",    emit: stats
+    path "versions.yml",              emit: versions
 
     when:
     task.ext.when == null || task.ext.when
 
     script:
     def args = task.ext.args ?: ''
+    def prefix = task.ext.prefix ?: clusters.simpleName
     """
     align_clusters.py \\
         --clusters ${clusters} \\
@@ -36,9 +37,9 @@ process ALIGN_CLUSTERS {
         --evd ${evd} \\
         --pad ${params.align_pad} \\
         --max-cells ${params.align_max_cells} \\
-        --output alignments.tsv \\
-        --alignment-text alignments.txt \\
-        --stats-json alignment_stats.json \\
+        --output ${prefix}.alignments.tsv \\
+        --alignment-text ${prefix}.alignments.txt \\
+        --stats-json ${prefix}.alignment_stats.json \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
@@ -49,10 +50,11 @@ process ALIGN_CLUSTERS {
     """
 
     stub:
+    def prefix = task.ext.prefix ?: clusters.simpleName
     """
-    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\tbit_score\\tevalue\\tevalue_pair\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tseed_count\\tmax_seed_score\\tquery_sequence\\tquery_structure\\ttarget_sequence\\ttarget_structure" > alignments.tsv
-    touch alignments.txt
-    echo '{}' > alignment_stats.json
+    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\tbit_score\\tevalue\\tevalue_pair\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tseed_count\\tmax_seed_score\\tquery_sequence\\tquery_structure\\ttarget_sequence\\ttarget_structure" > ${prefix}.alignments.tsv
+    touch ${prefix}.alignments.txt
+    echo '{}' > ${prefix}.alignment_stats.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

@@ -1,0 +1,43 @@
+nextflow_process {
+
+    name "Test Process MERGE_ALIGNMENTS"
+    script "../main.nf"
+    process "MERGE_ALIGNMENTS"
+
+    tag "modules"
+    tag "merge_alignments"
+
+    test("Should rank concatenated alignment tables by E-value") {
+
+        when {
+            process {
+                """
+                input[0] = [
+                    file("${projectDir}/tests/data/plot_fixture.tsv", checkIfExists: true),
+                    file("${moduleDir}/tests/data/second.tsv", checkIfExists: true)
+                ]
+                input[1] = []
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.alignments.size() == 1 },
+                {
+                    def lines = path(process.out.alignments.get(0)).readLines().findAll { it }
+                    assert lines[0].contains('evalue')
+                    def evals = lines.drop(1).collect { it.split('\t')[5] as double }
+                    assert evals == evals.toSorted()
+                    assert evals.size() == 2
+                },
+                {
+                    assert snapshot(process.out.versions).match()
+                }
+            )
+        }
+
+    }
+
+}

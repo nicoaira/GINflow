@@ -95,6 +95,7 @@ workflow {
     evd              = result.evd
     plots_rnartist   = result.plots_rnartist
     plots_r4rna      = result.plots_r4rna
+    plots_sw         = result.plots_sw
     report           = result.report
 }
 
@@ -141,6 +142,9 @@ output {
     }
     plots_r4rna {
         path 'plots/r4rna'
+    }
+    plots_sw {
+        path 'plots/sw'
     }
     report {
         path '.'

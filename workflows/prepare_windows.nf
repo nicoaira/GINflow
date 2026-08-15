@@ -6,13 +6,14 @@ workflow PREPARE_WINDOWS {
     take:
     structures
     prefix
+    shard_size
 
     main:
     ch_versions = channel.empty()
 
     ch_shards = channel
         .fromPath(structures, checkIfExists: true)
-        .splitText(by: params.shard_size, file: true, keepHeader: true)
+        .splitText(by: shard_size, file: true, keepHeader: true)
         .map { shard ->
             def id = prefix ? "${prefix}_${shard.baseName}" : shard.baseName
             tuple([id: id], shard)

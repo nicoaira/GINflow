@@ -6,8 +6,11 @@ include { CLUSTER_SEEDS }                    from '../modules/cluster_seeds/main
 include { ALIGN_CLUSTERS }                   from '../modules/align_clusters/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_BUILD } from '../modules/estimate_evd/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_QUERY } from '../modules/estimate_evd/main'
+include { SPLIT_ALIGNMENTS as SPLIT_CLUSTERS } from '../modules/split_alignments/main'
+include { MERGE_ALIGNMENTS }                 from '../modules/merge_alignments/main'
 include { DRAW_RNARTISTCORE }                from '../modules/draw_rnartistcore/main'
 include { DRAW_R4RNA }                       from '../modules/draw_r4rna/main'
+include { DRAW_SW }                          from '../modules/draw_sw/main'
 include { WRITE_REPORT }                     from '../modules/write_report/main'
 
 workflow GINFLOW {
@@ -36,11 +39,12 @@ workflow GINFLOW {
     ch_evd              = channel.empty()
     ch_plots_rnartist   = channel.empty()
     ch_plots_r4rna      = channel.empty()
+    ch_plots_sw         = channel.empty()
     ch_report           = channel.empty()
     alignment_params    = file("${projectDir}/assets/alignment.json", checkIfExists: true)
 
     if (structures) {
-        PREPARE_DB(structures, (queries && !reuse_windows) ? 'db' : '')
+        PREPARE_DB(structures, (queries && !reuse_windows) ? 'db' : '', params.shard_size)
         ch_versions   = ch_versions.mix(PREPARE_DB.out.versions)
         ch_graphs     = ch_graphs.mix(PREPARE_DB.out.graphs)
         ch_embeddings = ch_embeddings.mix(PREPARE_DB.out.embeddings)
@@ -86,7 +90,7 @@ workflow GINFLOW {
             ch_query_metadata   = PREPARE_DB.out.graphs
         }
         else {
-            PREPARE_QUERY(queries, structures ? 'query' : '')
+            PREPARE_QUERY(queries, structures ? 'query' : '', params.search_shard_size ?: params.shard_size)
             ch_versions         = ch_versions.mix(PREPARE_QUERY.out.versions)
             ch_graphs           = ch_graphs.mix(PREPARE_QUERY.out.graphs)
             ch_embeddings       = ch_embeddings.mix(PREPARE_QUERY.out.embeddings)
@@ -107,37 +111,60 @@ workflow GINFLOW {
         ch_clusters        = CLUSTER_SEEDS.out.clusters
         ch_cluster_members = CLUSTER_SEEDS.out.members
 
+        SPLIT_CLUSTERS(CLUSTER_SEEDS.out.clusters)
+        ch_versions = ch_versions.mix(SPLIT_CLUSTERS.out.versions)
+
         ALIGN_CLUSTERS(
-            CLUSTER_SEEDS.out.clusters,
+            SPLIT_CLUSTERS.out.alignments.flatten(),
             ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
             ch_query_metadata.map { meta, tensors, sidecar -> sidecar }.collect(),
             ch_search_database.collect(),
             alignment_params,
             ch_evd.collect()
         )
-        ch_versions       = ch_versions.mix(ALIGN_CLUSTERS.out.versions)
-        ch_alignments     = ALIGN_CLUSTERS.out.alignments
-        ch_alignment_text = ALIGN_CLUSTERS.out.text
+        ch_versions = ch_versions.mix(ALIGN_CLUSTERS.out.versions)
 
-        if (params.plot_backend in ['rnartistcore', 'both']) {
+        MERGE_ALIGNMENTS(
+            ALIGN_CLUSTERS.out.alignments.collect().ifEmpty([]),
+            ALIGN_CLUSTERS.out.text.collect().ifEmpty([])
+        )
+        ch_versions       = ch_versions.mix(MERGE_ALIGNMENTS.out.versions)
+        ch_alignments     = MERGE_ALIGNMENTS.out.alignments
+        ch_alignment_text = MERGE_ALIGNMENTS.out.text
+
+        def plot_rn = params.plot_backend in ['rnartistcore', 'both']
+        def plot_r4 = params.plot_backend in ['r4rna', 'both']
+        if (plot_rn) {
             DRAW_RNARTISTCORE(ALIGN_CLUSTERS.out.alignments)
             ch_versions       = ch_versions.mix(DRAW_RNARTISTCORE.out.versions)
-            ch_plots_rnartist = DRAW_RNARTISTCORE.out.plots
+            ch_plots_rnartist = DRAW_RNARTISTCORE.out.plots.collect()
         }
-        if (params.plot_backend in ['r4rna', 'both']) {
+        if (plot_r4) {
             DRAW_R4RNA(ALIGN_CLUSTERS.out.alignments)
             ch_versions    = ch_versions.mix(DRAW_R4RNA.out.versions)
-            ch_plots_r4rna = DRAW_R4RNA.out.plots
+            ch_plots_r4rna = DRAW_R4RNA.out.plots.collect()
+        }
+        if (params.plot_sw) {
+            DRAW_SW(
+                ALIGN_CLUSTERS.out.alignments,
+                CLUSTER_SEEDS.out.clusters,
+                ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
+                ch_search_database.collect(),
+                alignment_params
+            )
+            ch_versions = ch_versions.mix(DRAW_SW.out.versions)
+            ch_plots_sw = DRAW_SW.out.plots.collect()
         }
 
         WRITE_REPORT(
-            ALIGN_CLUSTERS.out.alignments,
-            ALIGN_CLUSTERS.out.text,
+            MERGE_ALIGNMENTS.out.alignments,
+            MERGE_ALIGNMENTS.out.text,
             ch_evd.collect(),
             CLUSTER_SEEDS.out.clusters,
             ch_seeds,
             ch_plots_rnartist.ifEmpty([]),
-            ch_plots_r4rna.ifEmpty([])
+            ch_plots_r4rna.ifEmpty([]),
+            ch_plots_sw.ifEmpty([])
         )
         ch_versions = ch_versions.mix(WRITE_REPORT.out.versions)
         ch_report   = WRITE_REPORT.out.report
@@ -156,6 +183,7 @@ workflow GINFLOW {
     evd              = ch_evd
     plots_rnartist   = ch_plots_rnartist
     plots_r4rna      = ch_plots_r4rna
+    plots_sw         = ch_plots_sw
     report           = ch_report
     versions         = ch_versions
 }

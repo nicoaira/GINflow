@@ -28,7 +28,8 @@ outdir/
 ├── report.html
 ├── plots/
 │   ├── rnartistcore/
-│   └── r4rna/
+│   ├── r4rna/
+│   └── sw/
 ├── samples.csv
 └── pipeline_info/
 ```
@@ -87,11 +88,12 @@ GINFINITY-SW local alignments of each cluster crop, ranked by ascending database
 
 ## report.html
 
-Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and each hit shows the aligned span on both molecules. Structure plots are inlined when `--plot_backend` was set.
+Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and paginated (10 / 25 / 50 / 100 / 150 per page, default 10). Each hit shows the aligned span on both molecules. Plots are a two-column Query | Target panel with one row per type (RNArtistCore, R4RNA, alignment cosine / SW scores) when those backends were requested.
 
 ## plots/
 
-Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`. Each alignment can produce a query SVG and a target SVG, up to `--plot_max`. The aligned span is coloured with `--plot_highlight_colour`; unaligned residues stay gray.
+Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`, and/or when `--plot_sw` is set. Each query gets its own draw task. Structure plots write a query SVG and a target SVG per pair. SW plots write a cosine SVG and a score SVG (traceback on the scores). `--plot_max_pairs` (default 25) is the number of alignment pairs per query, not the number of SVG files. The aligned span and SW path use `--plot_highlight_colour`; unaligned residues stay gray.
 
 - `plots/rnartistcore/*.svg` — RNArtistCore 2Ds
 - `plots/r4rna/*.svg` — R4RNA arc diagrams
+- `plots/sw/*.svg` — crop cosine and substitution-score heatmaps

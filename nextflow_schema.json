@@ -119,6 +119,11 @@
                     "minimum": -1,
                     "maximum": 1,
                     "description": "Minimum cosine similarity (L2-normalized window inner product) required to keep a seed."
+                },
+                "search_shard_size": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Query records per SEARCH_FAISS job. Defaults to --shard_size. Does not change database graph/embed shards. Ignored when --input and --query are the same file (search reuses the database shards)."
                 }
             }
         },
@@ -197,11 +202,16 @@
                     "enum": ["none", "rnartistcore", "r4rna", "both"],
                     "description": "Draw aligned regions with RNArtistCore 2Ds, R4RNA arc plots, both, or skip plotting."
                 },
-                "plot_max": {
+                "plot_sw": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Draw crop cosine and substitution-score matrices, with the Smith–Waterman traceback on the score plot."
+                },
+                "plot_max_pairs": {
                     "type": "integer",
-                    "default": 50,
+                    "default": 25,
                     "minimum": 1,
-                    "description": "Maximum number of SVGs to write (query and target each count as one)."
+                    "description": "Maximum alignment pairs to plot per query. Each pair writes both partners (query and target 2Ds, or cosine and score matrices)."
                 },
                 "plot_highlight_colour": {
                     "type": "string",
