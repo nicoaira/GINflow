@@ -32,9 +32,26 @@ def validate_run_mode() {
     }
 }
 
+def validate_faiss_gpu() {
+    if (!params.faiss_gpu) {
+        return
+    }
+    def gpu_types = ['FlatIP', 'FlatL2', 'IVFFlat', 'IVFPQ', 'IVFSQ'] as Set
+    def index_type = (params.faiss_index as String).trim()
+    // Search-only runs read the type from meta.json; Python rejects GPU-incompatible indexes.
+    if (params.input && !gpu_types.contains(index_type)) {
+        error "--faiss_gpu is not supported for --faiss_index ${index_type}. GPU indexes: ${gpu_types.sort().join(', ')}."
+    }
+    def profiles = workflow.profile.tokenize(',').collect { it.trim() }
+    if (!profiles.contains('gpu')) {
+        error "--faiss_gpu requires -profile gpu so BUILD_FAISS_INDEX and SEARCH_FAISS get the faiss-gpu image and NVIDIA runtime."
+    }
+}
+
 workflow {
     main:
     validate_run_mode()
+    validate_faiss_gpu()
 
     def input_path    = resolve_optional_path(params.input)
     def query_path    = resolve_optional_path(params.query)

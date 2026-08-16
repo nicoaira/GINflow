@@ -1,0 +1,12 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nf-core/modules/master/modules/environment-schema.json
+# CUDA 12.1 runtime: works with host drivers that report CUDA 12.1/12.2
+# (e.g. 535.x). conda-forge faiss-gpu 1.10 is CUDA 12.9-only.
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - conda-forge::python=3.12
+  - conda-forge::numpy=1.26.4
+  - pytorch::faiss-gpu=1.10.0=*_cuda12.1*

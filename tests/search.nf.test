@@ -44,6 +44,35 @@ nextflow_pipeline {
         }
     }
 
+    test("build and query with IVFFlat") {
+
+        when {
+            params {
+                outdir        = "$outputDir"
+                input         = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query         = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size    = 2
+                faiss_index   = 'IVFFlat'
+                faiss_nlist   = 4
+                faiss_nprobe  = 4
+            }
+        }
+
+        then {
+            assert workflow.success
+            def meta = path("${params.outdir}/faiss/meta.json").json
+            assert meta.index_type == 'IVFFlat'
+            assert meta.index_class == 'IndexIVFFlat'
+            assert meta.nlist == 4
+            assert meta.nprobe == 4
+            assert path("${params.outdir}/seeds.tsv").exists()
+            def rows = path("${params.outdir}/seeds.tsv").readLines().drop(1).findAll { it }
+            assert rows.size() > 0
+            assert path("${params.outdir}/alignments.tsv").exists()
+            assert path("${params.outdir}/report.html").exists()
+        }
+    }
+
     test("each slice is an independent query") {
 
         when {

@@ -11,6 +11,13 @@ from pathlib import Path
 import faiss
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from faiss_index import (
+    IndexOptions,
+    distances_to_similarity,
+    prepare_search_index,
+)
+
 
 COMPAT_KEYS = (
     ("window_size", "window_size"),
@@ -67,6 +74,8 @@ def search_shard(
     targets: list[tuple[str, int, int]],
     k: int,
     min_similarity: float,
+    metric: str = "inner_product",
+    lsh_nbits: int | None = None,
 ) -> list[tuple]:
     arrays = np.load(windows_path)
     window_size = int(manifest["window_size"])
@@ -84,7 +93,8 @@ def search_shard(
         if query.shape[0] == 0:
             continue
         distances, labels = index.search(query, search_k)
-        for offset, (scores, ids) in enumerate(zip(distances, labels)):
+        similarities = distances_to_similarity(distances, metric, lsh_nbits)
+        for offset, (scores, ids) in enumerate(zip(similarities, labels)):
             query_start = offset * stride
             query_end = query_start + window_size
             rank = 0
@@ -146,6 +156,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--k", type=int, default=50)
     parser.add_argument("--min-similarity", type=float, default=0.8)
+    parser.add_argument("--nprobe", type=int)
+    parser.add_argument("--hnsw-ef-search", type=int)
+    parser.add_argument("--gpu", action="store_true")
+    parser.add_argument("--gpu-device", type=int, default=0)
     return parser.parse_args(argv)
 
 
@@ -164,7 +178,23 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(
                 f"index ntotal={index.ntotal} does not match windows.tsv rows={len(targets)}"
             )
-        hits = search_shard(args.windows, query_manifest, index, targets, args.k, args.min_similarity)
+        search_options = IndexOptions(
+            nprobe=args.nprobe,
+            hnsw_ef_search=args.hnsw_ef_search,
+            gpu=args.gpu,
+            gpu_device=args.gpu_device,
+        )
+        index, metric, lsh_nbits = prepare_search_index(index, db_meta, search_options)
+        hits = search_shard(
+            args.windows,
+            query_manifest,
+            index,
+            targets,
+            args.k,
+            args.min_similarity,
+            metric,
+            lsh_nbits,
+        )
     except (OSError, KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

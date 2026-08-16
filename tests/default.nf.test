@@ -34,6 +34,7 @@ nextflow_pipeline {
             def meta = path("${params.outdir}/faiss/meta.json").json
             assert meta.window_size == 11
             assert meta.n_windows > 0
+            assert meta.index_type == 'FlatIP'
             assert !path("${params.outdir}/seeds.tsv").exists()
         }
     }

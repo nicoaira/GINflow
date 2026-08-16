@@ -1,0 +1,39 @@
+nextflow_pipeline {
+
+    name "Test FAISS GPU validation"
+    script "../main.nf"
+    tag "pipeline"
+    tag "faiss"
+
+    test("faiss_gpu without -profile gpu is an error") {
+
+        when {
+            params {
+                outdir    = "$outputDir"
+                input     = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                faiss_gpu = true
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
+    test("faiss_gpu is rejected for HNSW") {
+
+        when {
+            params {
+                outdir       = "$outputDir"
+                input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                faiss_gpu    = true
+                faiss_index  = 'HNSW'
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
+}

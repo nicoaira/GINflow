@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a FAISS IndexFlatIP database from window embedding shards."""
+"""Build a reusable FAISS window database from embedding shards."""
 from __future__ import annotations
 
 import argparse
@@ -11,6 +11,9 @@ from pathlib import Path
 
 import faiss
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from faiss_index import IndexOptions, build_populated_index, meta_from_details
 
 SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
 
@@ -123,7 +126,10 @@ def load_shard(npz_path: Path, manifest: dict) -> tuple[np.ndarray, list[tuple[s
     return stacked, rows
 
 
-def build_index(shards: list[tuple[Path, Path]]) -> tuple[faiss.Index, list[tuple[int, str, int, int]], dict]:
+def build_index(
+    shards: list[tuple[Path, Path]],
+    options: IndexOptions | None = None,
+) -> tuple[faiss.Index, list[tuple[int, str, int, int]], dict]:
     if not shards:
         raise ValueError("no window shards were provided")
 
@@ -158,8 +164,7 @@ def build_index(shards: list[tuple[Path, Path]]) -> tuple[faiss.Index, list[tupl
         raise ValueError("no windows to index (every sequence was shorter than --window-size)")
 
     xb = np.ascontiguousarray(np.concatenate(all_vectors, axis=0), dtype=np.float32)
-    index = faiss.IndexFlatIP(xb.shape[1])
-    index.add(xb)
+    index, details = build_populated_index(xb, options or IndexOptions())
 
     assert reference_manifest is not None
     meta = {
@@ -167,7 +172,6 @@ def build_index(shards: list[tuple[Path, Path]]) -> tuple[faiss.Index, list[tupl
         "window_stride": int(reference_manifest["stride"]),
         "embedding_dim": int(reference_manifest["embedding_dim"]),
         "window_dim": int(reference_manifest["window_dim"]),
-        "metric": "inner_product",
         "l2_normalized": True,
         "ginfinity_version": reference_manifest.get("ginfinity_version"),
         "model_version": reference_manifest.get("model_version"),
@@ -176,6 +180,7 @@ def build_index(shards: list[tuple[Path, Path]]) -> tuple[faiss.Index, list[tupl
         "n_windows": int(xb.shape[0]),
         "n_skipped_short": n_skipped,
     }
+    meta.update(meta_from_details(details))
     return index, mapping, meta
 
 
@@ -251,14 +256,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--embeddings", type=Path, nargs="*")
     parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--outdir", type=Path, required=True)
+    parser.add_argument("--index-type", default="FlatIP")
+    parser.add_argument("--nlist", type=int)
+    parser.add_argument("--nprobe", type=int)
+    parser.add_argument("--pq-m", type=int, default=16)
+    parser.add_argument("--pq-nbits", type=int, default=8)
+    parser.add_argument("--pq-m-refine", type=int, default=4)
+    parser.add_argument("--hnsw-m", type=int, default=32)
+    parser.add_argument("--hnsw-ef-construction", type=int, default=40)
+    parser.add_argument("--hnsw-ef-search", type=int, default=16)
+    parser.add_argument("--lsh-nbits", type=int)
+    parser.add_argument("--sq-type", default="8bit")
+    parser.add_argument("--gpu", action="store_true")
+    parser.add_argument("--gpu-device", type=int, default=0)
     return parser.parse_args(argv)
+
+
+def options_from_args(args: argparse.Namespace) -> IndexOptions:
+    return IndexOptions(
+        index_type=args.index_type,
+        nlist=args.nlist,
+        nprobe=args.nprobe,
+        pq_m=args.pq_m,
+        pq_nbits=args.pq_nbits,
+        pq_m_refine=args.pq_m_refine,
+        hnsw_m=args.hnsw_m,
+        hnsw_ef_construction=args.hnsw_ef_construction,
+        hnsw_ef_search=args.hnsw_ef_search,
+        lsh_nbits=args.lsh_nbits,
+        sq_type=args.sq_type,
+        gpu=args.gpu,
+        gpu_device=args.gpu_device,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         shards = pair_shards(args.windows, args.manifests)
-        index, mapping, meta = build_index(shards)
+        index, mapping, meta = build_index(shards, options_from_args(args))
         packed = None
         if args.embeddings or args.graph_metadata:
             if not args.embeddings or not args.graph_metadata:
@@ -268,7 +304,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     write_database(args.outdir, index, mapping, meta, packed)
-    print(json.dumps({"outdir": str(args.outdir), **{k: meta[k] for k in ("n_windows", "n_records", "window_dim") if k in meta}}))
+    keys = ("n_windows", "n_records", "window_dim", "index_type", "metric")
+    print(json.dumps({"outdir": str(args.outdir), **{k: meta[k] for k in keys if k in meta}}))
     return 0
 
 

@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- Additional FAISS index types (`--faiss_index`): `FlatIP` (default), `FlatL2`, `HNSW`, `IVFFlat`, `LSH`, `SQ`, `PQ`, `IVFSQ`, `IVFPQ`, `IVFPQR`, matching [Faiss indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes). IVF/PQ/HNSW/LSH/SQ knobs are `--faiss_nlist`, `--faiss_nprobe`, `--faiss_pq_m`, `--faiss_pq_nbits`, `--faiss_pq_m_refine`, `--faiss_hnsw_m`, `--faiss_hnsw_ef_construction`, `--faiss_hnsw_ef_search`, `--faiss_lsh_nbits`, `--faiss_sq_type`.
+- Optional FAISS GPU (`--faiss_gpu`) for `FlatIP`, `FlatL2`, `IVFFlat`, `IVFPQ`, and `IVFSQ`. Requires `-profile gpu` so `BUILD_FAISS_INDEX` / `SEARCH_FAISS` get `accelerator = 1` and the `faiss-gpu` image; otherwise the pipeline errors. GPU-incompatible types also error.
 - Optional `start`/`end` columns on the structures table build GINFINITY sliced graphs (one independent subject/query per window, including several comma-separated windows on the same row). Defaults: `--keep_paired_neighbours` with `--context_hops 4`. Mixed examples are in `tests/data/sliced_structures.tsv`. Per-query alignment and plot filenames use `baseName` so two slices of the same accession do not collide.
 - GINflow logo in `docs/images/ginflow_logo.svg` (README header and search report masthead) and `docs/images/ginflow_icon.svg` (report favicon).
 - Metro-map pipeline schematic (`docs/images/ginflow_metro.svg`) generated with [nf-metro](https://github.com/seqeralabs/nf-metro) from `docs/images/ginflow_metro.mmd`.
@@ -42,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### `Dependencies`
 
 - Graph and embed modules use `nicolas.aira::ginfinity=1.1.0` (sliced graphs).
-- FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`).
+- FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`). GPU FAISS uses `pytorch::faiss-gpu=1.10.0` (CUDA 12.1 runtime) so it runs on host drivers that report CUDA 12.1/12.2 (e.g. 535.x). conda-forge `faiss-gpu` 1.10 is CUDA 12.9-only.
 - Alignment uses `nicolas.aira::ginfinity-sw=1.0.1`.
 - Plotting uses `nicolas.aira::rnartistcore=0.4.6` and `nicolas.aira::r-r4rna=2.0.9`.
 

@@ -65,11 +65,11 @@ Sliding windows of the node embeddings (`--window_size`, default 11, stride 1).
 
 ## faiss/
 
-Reusable exact inner-product index (`IndexFlatIP`) of every database window.
+Reusable FAISS index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index FlatIP`). `meta.json` records `index_type`, `metric`, IVF/PQ/HNSW parameters, and whether the index was trained on GPU.
 
-- `index.faiss` — FAISS index
+- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build)
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
-- `meta.json` — window geometry, model fingerprint, and counts
+- `meta.json` — window geometry, model fingerprint, counts, and index settings
 - `embeddings.npz` — per-nucleotide embeddings, one array per identifier
 - `records.tsv` — `transcript_id`, `sequence`, `secondary_structure`. For a slice the identifier is `{id}:{start}-{end}` and the sequence/structure are the core window (pairs that cross the cut are written as unpaired), so later search/alignment treat that window as its own molecule.
 - `evd.json` — Karlin–Altschul λ, K, database residue count, and the reverse-sequence null fit

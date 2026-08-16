@@ -2,10 +2,10 @@ process SEARCH_FAISS {
     tag "${meta.id}"
     label 'process_low'
 
-    conda "${moduleDir}/environment.yml"
-    container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/79/7920d351ee6307611f471013dcddff6d8a5c7ec7bf723d854e99a545376b63d8/data' :
-        'community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:078dd4f35c795d6e' }"
+    conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
+    container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
+        (task.accelerator ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/40/405599a0a76073fa7c942f2773cad66490aabb99fb9825c79ba50ad1157e9a6a/data' : 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/79/7920d351ee6307611f471013dcddff6d8a5c7ec7bf723d854e99a545376b63d8/data') :
+        (task.accelerator ? 'community.wave.seqera.io/library/python_numpy_faiss-gpu:7382ed4d7c6e6258' : 'community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:078dd4f35c795d6e') }"
 
     input:
     tuple val(meta), path(windows), path(manifest)
@@ -19,8 +19,11 @@ process SEARCH_FAISS {
     task.ext.when == null || task.ext.when
 
     script:
-    def args   = task.ext.args   ?: ''
-    def prefix = task.ext.prefix ?: "${meta.id}"
+    def args      = task.ext.args   ?: ''
+    def prefix    = task.ext.prefix ?: "${meta.id}"
+    def gpu_flag  = task.accelerator ? '--gpu' : ''
+    def nprobe    = params.faiss_nprobe != null ? "--nprobe ${params.faiss_nprobe}" : ''
+    def ef_search = params.faiss_hnsw_ef_search != null ? "--hnsw-ef-search ${params.faiss_hnsw_ef_search}" : ''
     """
     search_faiss.py \\
         --windows ${windows} \\
@@ -29,6 +32,9 @@ process SEARCH_FAISS {
         --output ${prefix}.seeds.tsv \\
         --k ${params.seed_k} \\
         --min-similarity ${params.seed_min_similarity} \\
+        ${nprobe} \\
+        ${ef_search} \\
+        ${gpu_flag} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
