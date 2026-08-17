@@ -7,7 +7,7 @@ GINflow searches sliding windows of GINFINITY embeddings. Two words matter:
 | **Database** | The published directory (`--outdir/faiss/`, later `--database`). It holds the search structure plus `windows.tsv`, `meta.json`, packed residue embeddings, and sequences. |
 | **Index** | The nearest-neighbour structure *inside* that database. You choose the **library** (`--index`) and, for FAISS, the **structure** (`--faiss_index`). |
 
-`--database` is a path to an existing database. `--index` is not a path; it selects FAISS or ScaNN.
+`--database` is a path to an existing database. `--index` is not a path; it selects FAISS, ScaNN, or NGT.
 
 If you pass a flag that does not apply to the selected library or FAISS structure, the pipeline **warns at launch** and ignores it.
 
@@ -17,6 +17,7 @@ If you pass a flag that does not apply to the selected library or FAISS structur
 |---|---|---|---|
 | `faiss` (default) | Exact search, or a specific FAISS approximation (IVF, HNSW, PQ, LSH, SQ). Best documented path. | Optional (`--faiss_gpu`) for some types | `index.faiss` |
 | `scann` | Large window collections where ScaNN’s tree + anisotropic hashing is a better speed/recall trade-off than FAISS IVF/PQ. CPU only. | No | `scann/` |
+| `ngt` | NGT proximity graphs, including quantized graph variants. CPU only. | No | `ngt/` |
 
 Windows are 1408-d (`--window_size 11`) and L2-normalized. Both libraries search **cosine similarity** (FAISS inner product; ScaNN `dot_product`).
 
@@ -53,7 +54,35 @@ These always apply. They are not library-specific.
 | `--seed_min_similarity` | `0.8` | Minimum cosine to keep a seed |
 | `--search_shard_size` | `--shard_size` | Query records per search task |
 
-`FlatL2` and `LSH` return different raw distances; the pipeline converts them back to a cosine-like score before the threshold.
+`FlatL2`, `LSH`, and NGT’s distance-based modes return different raw distances; the pipeline converts them back to a cosine-like score before the threshold.
+
+## NGT: `--index ngt`
+
+[NGT](https://github.com/NGT-labs/NGT) is a CPU-only graph index. The NGT conda package is provided from the `nicolas.aira` channel because it includes the `qbg` command-line tool needed by QG and QBG.
+
+| `--ngt_index` | Structure | Notes |
+|---|---|---|
+| `NGT` (default) | Regular NGT graph | Uses normalized cosine distance. |
+| `QG` | Quantized graph | Builds a regular graph, then quantizes it with `qbg create-qg` / `qbg build-qg`. |
+| `QBG` | Quantized blob graph | Uses NGT’s L2 quantization and probing. This is usually the most memory-efficient option, with an approximate recall trade-off. |
+
+Build an NGT database:
+
+```bash
+nextflow run nicoaira/ginflow -profile docker \
+    --index ngt --ngt_index NGT \
+    --input structures.tsv --outdir results
+```
+
+Use QG or QBG by changing only the structure:
+
+```bash
+nextflow run nicoaira/ginflow -profile docker \
+    --index ngt --ngt_index QBG \
+    --input structures.tsv --query queries.tsv --outdir results
+```
+
+The database remains under `results/faiss/` for compatibility with the rest of the pipeline. NGT’s native files are in `results/faiss/ngt/`; `meta.json` records `backend: "ngt"` and the selected `index_type`. A later `--query --database results/faiss` run detects NGT automatically. NGT is CPU-only and does not use FAISS or ScaNN parameters.
 
 ## FAISS: `--index faiss`
 
@@ -152,7 +181,7 @@ WARN: Unused index parameters for --index faiss / --faiss_index FlatIP (ignored)
 
 Hard errors (not warnings):
 
-- `--index` not `faiss` or `scann`
+- `--index` not `faiss`, `scann`, or `ngt`
 - `--faiss_index ScaNN` (use `--index scann`)
 - `--index` disagrees with an existing `--database`
 - `--faiss_gpu` without `-profile gpu`

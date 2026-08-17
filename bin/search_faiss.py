@@ -17,6 +17,7 @@ from faiss_index import (
     distances_to_similarity,
     prepare_search_index,
 )
+from ngt_index import is_ngt_database, load_index as load_ngt_index
 from scann_index import (
     apply_search_params as apply_scann_search_params,
     is_scann_database,
@@ -69,7 +70,9 @@ def check_compatible(query_manifest: dict, db_meta: dict) -> None:
                 f"{query_key}={query_manifest.get(query_key)!r} vs {db_key}={db_meta.get(db_key)!r}"
             )
     if mismatches:
-        raise ValueError("query windows are incompatible with the FAISS database: " + "; ".join(mismatches))
+        raise ValueError(
+            "query windows are incompatible with the vector database: " + "; ".join(mismatches)
+        )
 
 
 def search_shard(
@@ -192,7 +195,10 @@ def main(argv: list[str] | None = None) -> int:
             gpu_device=args.gpu_device,
             scann_reorder=args.scann_reorder if args.scann_reorder is not None else 100,
         )
-        if is_scann_database(args.database, db_meta):
+        if is_ngt_database(args.database, db_meta):
+            index = load_ngt_index(args.database / "ngt", db_meta)
+            metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None
+        elif is_scann_database(args.database, db_meta):
             if args.gpu:
                 raise ValueError(
                     "--faiss_gpu is not supported for ScaNN. ScaNN is CPU-only (AVX/FMA)."

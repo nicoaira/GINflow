@@ -92,7 +92,7 @@ The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--da
 | `--query` + `--database` | Embed the query table and search an existing `faiss/` directory |
 | `--input` + `--query` | Build the database, search it, and publish it for later runs |
 
-`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and either `index.faiss` or `scann/`). If `--input` and `--query` are the same file, embeddings are computed once.
+`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `scann/`, or `ngt/`). If `--input` and `--query` are the same file, embeddings are computed once.
 
 Window search parameters:
 
@@ -103,8 +103,9 @@ Window search parameters:
 | `--seed_k` | `50` | Neighbours kept per query window before the threshold |
 | `--seed_min_similarity` | `0.8` | Minimum cosine similarity |
 | `--search_shard_size` | `--shard_size` | Query records per search task |
-| `--index` | `faiss` | Index **library**: `faiss` or `scann` |
+| `--index` | `faiss` | Index **library**: `faiss`, `scann`, or `ngt` |
 | `--faiss_index` | `FlatIP` | FAISS **structure** (only with `--index faiss`) |
+| `--ngt_index` | `NGT` | NGT **structure** (`NGT`, `QG`, or `QBG`) when `--index ngt` |
 
 Each window is the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is cosine similarity. These sliding windows are built **after** embedding; they are not the optional `start` / `end` columns on the structures table (see [Sliced graphs](#sliced-graphs)).
 

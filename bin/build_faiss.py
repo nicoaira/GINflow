@@ -14,6 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from faiss_index import IndexOptions, build_populated_index, meta_from_details
+from ngt_index import build_populated_index as build_ngt_index, meta_from_details as ngt_meta_from_details, serialize_index as serialize_ngt_index
 from scann_index import build_populated_searcher, is_scann_type, serialize_index
 
 SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
@@ -130,6 +131,8 @@ def load_shard(npz_path: Path, manifest: dict) -> tuple[np.ndarray, list[tuple[s
 def build_index(
     shards: list[tuple[Path, Path]],
     options: IndexOptions | None = None,
+    backend: str = "faiss",
+    ngt_index_type: str = "NGT",
 ) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
     if not shards:
         raise ValueError("no window shards were provided")
@@ -166,7 +169,9 @@ def build_index(
 
     xb = np.ascontiguousarray(np.concatenate(all_vectors, axis=0), dtype=np.float32)
     chosen = options or IndexOptions()
-    if is_scann_type(chosen.index_type):
+    if backend == "ngt":
+        index, details = build_ngt_index(xb, ngt_index_type)
+    elif is_scann_type(chosen.index_type):
         index, details = build_populated_searcher(xb, chosen)
     else:
         index, details = build_populated_index(xb, chosen)
@@ -185,7 +190,7 @@ def build_index(
         "n_windows": int(xb.shape[0]),
         "n_skipped_short": n_skipped,
     }
-    meta.update(meta_from_details(details))
+    meta.update(ngt_meta_from_details(details) if backend == "ngt" else meta_from_details(details))
     return index, mapping, meta
 
 
@@ -237,7 +242,9 @@ def write_database(
     packed: tuple[dict[str, np.ndarray], list[tuple[str, str, str]]] | None = None,
 ) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
-    if is_scann_type(str(meta.get("index_type") or "")):
+    if str(meta.get("backend") or "").lower() == "ngt":
+        serialize_ngt_index(index, outdir / "ngt")
+    elif is_scann_type(str(meta.get("index_type") or "")):
         serialize_index(index, outdir / "scann")
     else:
         import faiss
@@ -266,7 +273,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--embeddings", type=Path, nargs="*")
     parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--outdir", type=Path, required=True)
+    parser.add_argument("--backend", choices=("faiss", "scann", "ngt"), default="faiss")
     parser.add_argument("--index-type", default="FlatIP")
+    parser.add_argument("--ngt-index-type", default="NGT")
     parser.add_argument("--nlist", type=int)
     parser.add_argument("--nprobe", type=int)
     parser.add_argument("--pq-m", type=int, default=16)
@@ -318,7 +327,12 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         shards = pair_shards(args.windows, args.manifests)
-        index, mapping, meta = build_index(shards, options_from_args(args))
+        index, mapping, meta = build_index(
+            shards,
+            options_from_args(args),
+            backend=args.backend,
+            ngt_index_type=args.ngt_index_type,
+        )
         packed = None
         if args.embeddings or args.graph_metadata:
             if not args.embeddings or not args.graph_metadata:

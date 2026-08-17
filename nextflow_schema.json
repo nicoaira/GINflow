@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://raw.githubusercontent.com/nicoaira/ginflow/main/nextflow_schema.json",
     "title": "nicoaira/ginflow pipeline parameters",
-    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings and FAISS or ScaNN seeding.",
+    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings and FAISS, ScaNN, or NGT seeding.",
     "type": "object",
     "$defs": {
         "input_output_options": {
@@ -15,7 +15,7 @@
                     "format": "file-path",
                     "exists": true,
                     "pattern": "^\\S+\\.(tsv|txt|csv)$",
-                    "description": "Structures table used to build the FAISS database. Required columns: transcript_id, sequence, secondary_structure. Optional start/end columns (0-based half-open; comma-separated lists for several windows) build one independent subject per window. Extra columns are allowed. Omit when searching an existing --database."
+                    "description": "Structures table used to build the vector database. Required columns: transcript_id, sequence, secondary_structure. Optional start/end columns (0-based half-open; comma-separated lists for several windows) build one independent subject per window. Extra columns are allowed. Omit when searching an existing --database."
                 },
                 "query": {
                     "type": "string",
@@ -28,7 +28,7 @@
                     "type": "string",
                     "format": "directory-path",
                     "exists": true,
-                    "description": "Existing window database from a previous run (windows.tsv, meta.json, and either index.faiss or scann/). Use with --query. Do not combine with --input."
+                    "description": "Existing window database from a previous run (windows.tsv, meta.json, and a vector index). Use with --query. Do not combine with --input."
                 },
                 "outdir": {
                     "type": "string",
@@ -154,8 +154,14 @@
                 "index": {
                     "type": "string",
                     "default": "faiss",
-                    "enum": ["faiss", "scann"],
-                    "description": "Index library used to build and search the window database. faiss (default) uses --faiss_index for the FAISS structure. scann uses Google ScaNN. Unused library-specific flags are warned at launch. See docs/indexes.md."
+                    "enum": ["faiss", "scann", "ngt"],
+                    "description": "Index library used to build and search the window database. faiss (default) uses --faiss_index, scann uses Google ScaNN, and ngt uses --ngt_index. Unused library-specific flags are warned at launch. See docs/indexes.md."
+                },
+                "ngt_index": {
+                    "type": "string",
+                    "default": "NGT",
+                    "enum": ["NGT", "QG", "QBG"],
+                    "description": "NGT structure. NGT is the regular graph, QG is the quantized graph, and QBG is the quantized blob graph. Applies to --index ngt. CPU-only."
                 },
                 "faiss_index": {
                     "type": "string",

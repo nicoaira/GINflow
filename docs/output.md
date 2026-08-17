@@ -18,6 +18,7 @@ outdir/
 │       └── <shard>.windows.manifest.json
 ├── faiss/
 │   ├── index.faiss   # FAISS types
+│   └── ngt/          # NGT, QG, or QBG when --index ngt
 │   ├── scann/        # --index scann
 │   ├── windows.tsv
 │   └── meta.json
@@ -66,9 +67,10 @@ Sliding windows of the node embeddings (`--window_size`, default 11, stride 1).
 
 ## faiss/
 
-Reusable window index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index FlatIP`). `meta.json` records `index_type`, `metric`, IVF/PQ/HNSW or ScaNN parameters, and whether a FAISS index was trained on GPU.
+Reusable window index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index FlatIP`). `meta.json` records `backend`, `index_type`, `metric`, IVF/PQ/HNSW/ScaNN/NGT parameters, and whether a FAISS index was trained on GPU.
 
-- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build). Omitted for ScaNN
+- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build). Omitted for ScaNN and NGT.
+- `ngt/` — native NGT, QG, or QBG index directory when `backend` is `ngt`.
 - `scann/` — serialized ScaNN searcher when `--index scann`
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, counts, and index settings

@@ -61,7 +61,10 @@ def normalize_index_library(raw) {
     if (key in ['scann', 'scan']) {
         return 'scann'
     }
-    error "--index must be faiss or scann, got '${raw}'. See docs/indexes.md."
+    if (key in ['ngt', 'anng']) {
+        return 'ngt'
+    }
+    error "--index must be faiss, scann, or ngt, got '${raw}'. See docs/indexes.md."
 }
 
 def detect_database_library() {
@@ -77,6 +80,9 @@ def detect_database_library() {
             if (kind?.equalsIgnoreCase('ScaNN') || backend?.equalsIgnoreCase('scann')) {
                 return 'scann'
             }
+            if (backend?.equalsIgnoreCase('ngt') || ['NGT', 'QG', 'QBG'].contains(kind?.toUpperCase())) {
+                return 'ngt'
+            }
             if (backend?.equalsIgnoreCase('faiss') || kind) {
                 return 'faiss'
             }
@@ -87,6 +93,9 @@ def detect_database_library() {
     }
     if (file("${params.database}/scann").exists()) {
         return 'scann'
+    }
+    if (file("${params.database}/ngt").exists()) {
+        return 'ngt'
     }
     if (file("${params.database}/index.faiss").exists()) {
         return 'faiss'
@@ -115,8 +124,8 @@ def validate_faiss_gpu(library, kind) {
     if (!params.faiss_gpu) {
         return
     }
-    if (library == 'scann') {
-        error "--faiss_gpu is not supported with --index scann. ScaNN is CPU-only (AVX/FMA)."
+    if (library != 'faiss') {
+        error "--faiss_gpu applies only to --index faiss, not --index ${library}."
     }
     def gpu_types = ['FlatIP', 'FlatL2', 'IVFFlat', 'IVFPQ', 'IVFSQ'] as Set
     // Search-only runs read the type from meta.json; Python rejects GPU-incompatible indexes.
@@ -144,6 +153,7 @@ def warn_unused_index_params(library, kind) {
     def unused  = []
 
     if (library == 'scann') {
+        collect_if_unused(unused, 'ngt_index', 'NGT', false)
         collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
@@ -157,7 +167,28 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
         collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
     }
+    else if (library == 'ngt') {
+        collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
+        collect_if_unused(unused, 'faiss_gpu', false, false)
+        collect_if_unused(unused, 'faiss_nlist', null, false)
+        collect_if_unused(unused, 'faiss_nprobe', null, false)
+        collect_if_unused(unused, 'faiss_pq_m', 16, false)
+        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
+        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
+        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
+        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
+        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
+        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
+        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
+        collect_if_unused(unused, 'scann_reorder', 100, false)
+        collect_if_unused(unused, 'scann_ah_dim', 2, false)
+        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
+        collect_if_unused(unused, 'scann_soar', false, false)
+        collect_if_unused(unused, 'scann_leaves', null, false)
+        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
+    }
     else {
+        collect_if_unused(unused, 'ngt_index', 'NGT', false)
         collect_if_unused(unused, 'scann_reorder', 100, false)
         collect_if_unused(unused, 'scann_ah_dim', 2, false)
         collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
@@ -190,6 +221,7 @@ workflow {
     def kind    = faiss_index_kind()
     params.index = library
     params.use_scann = library == 'scann'
+    params.use_ngt = library == 'ngt'
     validate_faiss_gpu(library, kind)
     warn_unused_index_params(library, kind)
 
@@ -214,7 +246,7 @@ workflow {
     if (params.database) {
         def db = file(params.database, checkIfExists: true)
         if (!db.isDirectory()) {
-            error "--database must be a directory containing windows.tsv, meta.json, and either index.faiss or scann/."
+        error "--database must be a directory containing windows.tsv, meta.json, and a vector index."
         }
     }
 

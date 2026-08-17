@@ -2,7 +2,14 @@ def scann_requested() {
     return params.use_scann || ((params.index as String)?.trim()?.equalsIgnoreCase('scann'))
 }
 
+def ngt_requested() {
+    return params.use_ngt || ((params.index as String)?.trim()?.equalsIgnoreCase('ngt'))
+}
+
 def index_conda(moduleDir, task) {
+    if (ngt_requested()) {
+        return "${moduleDir}/environment.ngt.yml"
+    }
     if (scann_requested()) {
         return "${moduleDir}/environment.scann.yml"
     }
@@ -11,6 +18,11 @@ def index_conda(moduleDir, task) {
 
 def index_container(task) {
     def sif = workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
+    if (ngt_requested()) {
+        return sif
+            ? 'oras://community.wave.seqera.io/library/python_numpy_ngt:ff987f0bb9f59553'
+            : 'community.wave.seqera.io/library/python_numpy_ngt:9a0ca7a46e9c18b2'
+    }
     if (scann_requested()) {
         return sif
             ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e3/e39b53016c4ed7ede3a06391f841e0bf9d0711e35272ce1ab370ee149343a1fd/data'
@@ -47,10 +59,30 @@ process SEARCH_FAISS {
     script:
     def args     = task.ext.args   ?: ''
     def prefix   = task.ext.prefix ?: "${meta.id}"
-    def versions = scann_requested()
+    def versions = ngt_requested()
+        ? 'ngt: $(python3 -c "from importlib.metadata import version; print(version(\'ngt\'))")'
+        : scann_requested()
         ? 'scann: $(python3 -c "from importlib.metadata import version; print(version(\'scann\'))")'
         : 'faiss: $(python3 -c "import faiss; print(faiss.__version__)")'
-    if (scann_requested()) {
+    if (ngt_requested()) {
+        """
+        search_faiss.py \\
+            --windows ${windows} \\
+            --manifest ${manifest} \\
+            --database ${database} \\
+            --output ${prefix}.seeds.tsv \\
+            --k ${params.seed_k} \\
+            --min-similarity ${params.seed_min_similarity} \\
+            ${args}
+
+        cat <<-END_VERSIONS > versions.yml
+        "${task.process}":
+            ${versions}
+            numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+        END_VERSIONS
+        """
+    }
+    else if (scann_requested()) {
         def scann_lts = params.scann_leaves_to_search != null ? "--scann-leaves-to-search ${params.scann_leaves_to_search}" : ''
         """
         search_faiss.py \\
@@ -98,7 +130,9 @@ process SEARCH_FAISS {
 
     stub:
     def prefix   = task.ext.prefix ?: "${meta.id}"
-    def versions = scann_requested()
+    def versions = ngt_requested()
+        ? 'ngt: $(python3 -c "from importlib.metadata import version; print(version(\'ngt\'))")'
+        : scann_requested()
         ? 'scann: $(python3 -c "from importlib.metadata import version; print(version(\'scann\'))")'
         : 'faiss: $(python3 -c "import faiss; print(faiss.__version__)")'
     """
