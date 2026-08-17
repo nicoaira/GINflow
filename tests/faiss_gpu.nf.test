@@ -27,7 +27,7 @@ nextflow_pipeline {
                 outdir       = "$outputDir"
                 input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
                 faiss_gpu    = true
-                faiss_index  = 'HNSW'
+                faiss_index  = 'hnsw'
             }
         }
 
@@ -58,7 +58,7 @@ nextflow_pipeline {
             params {
                 outdir       = "$outputDir"
                 input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                faiss_index  = 'ScaNN'
+                faiss_index  = 'scann'
             }
         }
 

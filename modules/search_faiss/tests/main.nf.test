@@ -135,7 +135,7 @@ nextflow_process {
         when {
             params {
                 index = 'cuvs'
-                cuvs_index = 'CAGRA'
+                cuvs_index = 'cagra'
                 cuvs_intermediate_graph_degree = 32
                 cuvs_graph_degree = 16
                 seed_min_similarity = 0.99

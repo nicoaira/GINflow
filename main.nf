@@ -70,6 +70,68 @@ def normalize_index_library(raw) {
     error "--index must be faiss, scann, ngt, or cuvs, got '${raw}'. See docs/indexes.md."
 }
 
+def normalize_lowercase_choice(name, default_value, choices, aliases = [:]) {
+    def raw = params[name]
+    def value = raw == null ? default_value : (raw as String).trim().toLowerCase()
+    if (!value) {
+        value = default_value
+    }
+    if (aliases.containsKey(value)) {
+        value = aliases[value]
+    }
+    if (!(value in choices)) {
+        error "--${name} must be one of: ${choices.join(', ')} (lowercase), got '${raw}'. See docs/indexes.md."
+    }
+    params[name] = value
+    return value
+}
+
+def normalize_parameter_values() {
+    normalize_lowercase_choice('embed_device', 'cpu', ['cpu', 'cuda'])
+    normalize_lowercase_choice('ngt_index', 'ngt', ['ngt', 'qg', 'qbg'], [
+        anng: 'ngt',
+        quantizedgraph: 'qg',
+        'quantized-graph': 'qg',
+        quantizedblobgraph: 'qbg',
+        'quantized-blob-graph': 'qbg',
+    ])
+    normalize_lowercase_choice('cuvs_index', 'cagra', ['cagra', 'ivf', 'ivf-pq'], [
+        'ivf-flat': 'ivf',
+        ivfpq: 'ivf-pq',
+    ])
+    normalize_lowercase_choice('cuvs_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent', 'iterative_cagra_search', 'ace'])
+    if ((params.faiss_index as String)?.trim()?.equalsIgnoreCase('scann')) {
+        error "--faiss_index scann is not valid. FAISS and ScaNN are different index libraries. Use --index scann. See docs/indexes.md."
+    }
+    normalize_lowercase_choice('faiss_index', 'flatip', ['flatip', 'flatl2', 'hnsw', 'ivfflat', 'lsh', 'sq', 'pq', 'ivfsq', 'ivfpq', 'ivfpqr'], [
+        flat: 'flatip',
+        indexflatip: 'flatip',
+        indexflatl2: 'flatl2',
+        hnswflat: 'hnsw',
+        indexhnswflat: 'hnsw',
+        indexivfflat: 'ivfflat',
+        indexlsh: 'lsh',
+        scalarquantizer: 'sq',
+        indexscalarquantizer: 'sq',
+        indexpq: 'pq',
+        ivfscalarquantizer: 'ivfsq',
+        indexivfscalarquantizer: 'ivfsq',
+        indexivfpq: 'ivfpq',
+        indexivfpqr: 'ivfpqr',
+    ])
+    normalize_lowercase_choice('faiss_sq_type', '8bit', ['8bit', '6bit', '4bit', 'fp16'], [
+        '8': '8bit',
+        qt_8bit: '8bit',
+        '6': '6bit',
+        qt_6bit: '6bit',
+        '4': '4bit',
+        qt_4bit: '4bit',
+        qt_fp16: 'fp16',
+    ])
+    normalize_lowercase_choice('plot_backend', 'none', ['none', 'rnartistcore', 'r4rna', 'both'])
+    normalize_lowercase_choice('report_theme', 'light', ['light', 'dark'])
+}
+
 def detect_database_library() {
     if (!params.database) {
         return null
@@ -122,11 +184,23 @@ def resolve_index_library() {
 }
 
 def faiss_index_kind() {
-    def kind = (params.faiss_index as String)?.trim()
-    if (kind && kind.equalsIgnoreCase('ScaNN')) {
-        error "--faiss_index ScaNN is not valid. FAISS and ScaNN are different index libraries. Use --index scann. See docs/indexes.md."
+    def kind = (params.faiss_index as String)?.trim()?.toLowerCase()
+    if (kind == 'scann') {
+        error "--faiss_index scann is not valid. FAISS and ScaNN are different index libraries. Use --index scann. See docs/indexes.md."
     }
-    return kind ?: 'FlatIP'
+    def aliases = [
+        flatip: 'FlatIP',
+        flatl2: 'FlatL2',
+        hnsw: 'HNSW',
+        ivfflat: 'IVFFlat',
+        lsh: 'LSH',
+        sq: 'SQ',
+        pq: 'PQ',
+        ivfsq: 'IVFSQ',
+        ivfpq: 'IVFPQ',
+        ivfpqr: 'IVFPQR',
+    ]
+    return aliases[kind] ?: 'FlatIP'
 }
 
 def validate_faiss_gpu(library, kind) {
@@ -139,7 +213,7 @@ def validate_faiss_gpu(library, kind) {
     def gpu_types = ['FlatIP', 'FlatL2', 'IVFFlat', 'IVFPQ', 'IVFSQ'] as Set
     // Search-only runs read the type from meta.json; Python rejects GPU-incompatible indexes.
     if (params.input && !gpu_types.contains(kind)) {
-        error "--faiss_gpu is not supported for --faiss_index ${kind}. GPU FAISS indexes: ${gpu_types.sort().join(', ')}."
+        error "--faiss_gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: ${gpu_types.collect { it.toLowerCase() }.sort().join(', ')}."
     }
     def profiles = workflow.profile.tokenize(',').collect { it.trim() }
     if (!profiles.contains('gpu')) {
@@ -172,8 +246,8 @@ def warn_unused_index_params(library, kind) {
     def unused  = []
 
     if (library == 'scann') {
-        collect_if_unused(unused, 'ngt_index', 'NGT', false)
-        collect_if_unused(unused, 'cuvs_index', 'CAGRA', false)
+        collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
         collect_if_unused(unused, 'cuvs_n_lists', null, false)
         collect_if_unused(unused, 'cuvs_n_probes', null, false)
         collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
@@ -182,7 +256,7 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
         collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
         collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
-        collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
+        collect_if_unused(unused, 'faiss_index', 'flatip', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
         collect_if_unused(unused, 'faiss_nprobe', null, false)
@@ -196,7 +270,7 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
     }
     else if (library == 'ngt') {
-        collect_if_unused(unused, 'cuvs_index', 'CAGRA', false)
+        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
         collect_if_unused(unused, 'cuvs_n_lists', null, false)
         collect_if_unused(unused, 'cuvs_n_probes', null, false)
         collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
@@ -205,7 +279,7 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
         collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
         collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
-        collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
+        collect_if_unused(unused, 'faiss_index', 'flatip', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
         collect_if_unused(unused, 'faiss_nprobe', null, false)
@@ -225,8 +299,8 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'scann_leaves_to_search', null, false)
     }
     else if (library == 'cuvs') {
-        collect_if_unused(unused, 'ngt_index', 'NGT', false)
-        collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
+        collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'faiss_index', 'flatip', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
         collect_if_unused(unused, 'faiss_nprobe', null, false)
@@ -246,8 +320,8 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'scann_leaves_to_search', null, false)
     }
     else {
-        collect_if_unused(unused, 'ngt_index', 'NGT', false)
-        collect_if_unused(unused, 'cuvs_index', 'CAGRA', false)
+        collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
         collect_if_unused(unused, 'cuvs_n_lists', null, false)
         collect_if_unused(unused, 'cuvs_n_probes', null, false)
         collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
@@ -275,7 +349,7 @@ def warn_unused_index_params(library, kind) {
     }
 
     if (!unused.isEmpty()) {
-        def suffix = library == 'faiss' ? (' / --faiss_index ' + kind) : ''
+        def suffix = library == 'faiss' ? (' / --faiss_index ' + kind.toLowerCase()) : ''
         def plural = unused.size() == 1 ? '' : 's'
         log.warn "Unused index parameter${plural} for --index ${library}${suffix} (ignored): ${unused.join(', ')}. See docs/indexes.md."
     }
@@ -284,6 +358,7 @@ def warn_unused_index_params(library, kind) {
 workflow {
     main:
     validate_run_mode()
+    normalize_parameter_values()
     def library = resolve_index_library()
     def kind    = faiss_index_kind()
     params.index = library

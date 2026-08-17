@@ -114,7 +114,7 @@ nextflow_process {
 
         when {
             params {
-                faiss_index = 'IVFFlat'
+                faiss_index = 'ivfflat'
                 faiss_nlist = 4
                 faiss_nprobe = 4
             }
@@ -251,7 +251,7 @@ nextflow_process {
         when {
             params {
                 index = 'ngt'
-                ngt_index = 'QBG'
+                ngt_index = 'qbg'
             }
             process {
                 """
@@ -319,7 +319,7 @@ nextflow_process {
         when {
             params {
                 index = 'cuvs'
-                cuvs_index = 'CAGRA'
+                cuvs_index = 'cagra'
                 cuvs_intermediate_graph_degree = 32
                 cuvs_graph_degree = 16
             }

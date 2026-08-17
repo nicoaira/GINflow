@@ -52,7 +52,7 @@ nextflow_pipeline {
                 input         = "${projectDir}/tests/data/smoke_test_structures.tsv"
                 query         = "${projectDir}/tests/data/smoke_test_structures.tsv"
                 shard_size    = 2
-                faiss_index   = 'IVFFlat'
+                faiss_index   = 'ivfflat'
                 faiss_nlist   = 4
                 faiss_nprobe  = 4
             }

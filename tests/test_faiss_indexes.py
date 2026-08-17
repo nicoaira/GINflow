@@ -40,22 +40,36 @@ def unit_vectors(n: int, dim: int, seed: int = 0) -> np.ndarray:
 
 class TestHelpers(unittest.TestCase):
     def test_aliases(self) -> None:
-        self.assertEqual(normalize_index_type("flatip"), "FlatIP")
+        expected = {
+            "flatip": "FlatIP",
+            "flatl2": "FlatL2",
+            "hnsw": "HNSW",
+            "ivfflat": "IVFFlat",
+            "lsh": "LSH",
+            "sq": "SQ",
+            "pq": "PQ",
+            "ivfsq": "IVFSQ",
+            "ivfpq": "IVFPQ",
+            "ivfpqr": "IVFPQR",
+        }
+        for public_value, canonical in expected.items():
+            with self.subTest(public_value=public_value):
+                self.assertEqual(normalize_index_type(public_value), canonical)
         self.assertEqual(normalize_index_type("IndexIVFFlat"), "IVFFlat")
         self.assertEqual(normalize_index_type("hnsw_flat"), "HNSW")
         with self.assertRaises(ValueError):
             normalize_index_type("CAGRA")
 
     def test_gpu_matrix(self) -> None:
-        for kind in ("FlatIP", "FlatL2", "IVFFlat", "IVFPQ", "IVFSQ"):
+        for kind in ("flatip", "flatl2", "ivfflat", "ivfpq", "ivfsq"):
             self.assertTrue(supports_gpu(kind))
-        for kind in ("HNSW", "LSH", "PQ", "SQ", "IVFPQR"):
+        for kind in ("hnsw", "lsh", "pq", "sq", "ivfpqr"):
             self.assertFalse(supports_gpu(kind))
         self.assertTrue(GPU_INDEX_TYPES.issubset(set(INDEX_TYPES)))
 
     def test_require_gpu_rejects_hnsw(self) -> None:
         with self.assertRaises(ValueError) as ctx:
-            require_gpu("HNSW")
+            require_gpu("hnsw")
         self.assertIn("not supported", str(ctx.exception))
 
     def test_nlist_auto_and_bounds(self) -> None:
@@ -99,52 +113,52 @@ class TestBuildIndexes(unittest.TestCase):
             self.assertTrue(np.all(labels[:, 0] >= 0))
 
     def test_flatip_self_hit(self) -> None:
-        index, details = build_populated_index(self.xb, IndexOptions(index_type="FlatIP"))
+        index, details = build_populated_index(self.xb, IndexOptions(index_type="flatip"))
         self.assertEqual(details["metric"], "inner_product")
         scores, labels = index.search(self.xb[:5], 1)
         np.testing.assert_array_equal(labels[:, 0], np.arange(5))
         self.assertTrue(np.all(scores[:, 0] > 0.99))
 
     def test_flatl2(self) -> None:
-        self._roundtrip(IndexOptions(index_type="FlatL2"))
+        self._roundtrip(IndexOptions(index_type="flatl2"))
 
     def test_hnsw(self) -> None:
-        self._roundtrip(IndexOptions(index_type="HNSW", hnsw_m=8, hnsw_ef_search=16))
+        self._roundtrip(IndexOptions(index_type="hnsw", hnsw_m=8, hnsw_ef_search=16))
 
     def test_ivfflat(self) -> None:
-        self._roundtrip(IndexOptions(index_type="IVFFlat", nlist=4, nprobe=4))
+        self._roundtrip(IndexOptions(index_type="ivfflat", nlist=4, nprobe=4))
 
     def test_lsh(self) -> None:
-        self._roundtrip(IndexOptions(index_type="LSH", lsh_nbits=64))
+        self._roundtrip(IndexOptions(index_type="lsh", lsh_nbits=64))
 
     def test_sq(self) -> None:
-        self._roundtrip(IndexOptions(index_type="SQ", sq_type="8bit"))
+        self._roundtrip(IndexOptions(index_type="sq", sq_type="8bit"))
 
     def test_pq(self) -> None:
-        self._roundtrip(IndexOptions(index_type="PQ", pq_m=8, pq_nbits=8))
+        self._roundtrip(IndexOptions(index_type="pq", pq_m=8, pq_nbits=8))
 
     def test_ivfsq(self) -> None:
-        self._roundtrip(IndexOptions(index_type="IVFSQ", nlist=4, nprobe=4, sq_type="8bit"))
+        self._roundtrip(IndexOptions(index_type="ivfsq", nlist=4, nprobe=4, sq_type="8bit"))
 
     def test_ivfpq(self) -> None:
-        self._roundtrip(IndexOptions(index_type="IVFPQ", nlist=4, nprobe=4, pq_m=8, pq_nbits=8))
+        self._roundtrip(IndexOptions(index_type="ivfpq", nlist=4, nprobe=4, pq_m=8, pq_nbits=8))
 
     def test_ivfpqr(self) -> None:
         self._roundtrip(
-            IndexOptions(index_type="IVFPQR", nlist=4, nprobe=4, pq_m=8, pq_nbits=8, pq_m_refine=4)
+            IndexOptions(index_type="ivfpqr", nlist=4, nprobe=4, pq_m=8, pq_nbits=8, pq_m_refine=4)
         )
 
     def test_pq_too_few_vectors(self) -> None:
         tiny = unit_vectors(40, 32)
         with self.assertRaises(ValueError) as ctx:
-            build_populated_index(tiny, IndexOptions(index_type="PQ", pq_m=8, pq_nbits=8))
+            build_populated_index(tiny, IndexOptions(index_type="pq", pq_m=8, pq_nbits=8))
         self.assertIn("at least 256", str(ctx.exception))
 
     def test_gpu_without_runtime(self) -> None:
         if gpu_runtime_available() and gpu_device_count() > 0:
             self.skipTest("GPU FAISS is available in this environment")
         with self.assertRaises(ValueError) as ctx:
-            build_populated_index(self.xb, IndexOptions(index_type="FlatIP", gpu=True))
+            build_populated_index(self.xb, IndexOptions(index_type="flatip", gpu=True))
         message = str(ctx.exception)
         self.assertTrue("faiss-cpu" in message or "CUDA" in message or "gpu" in message.lower())
 
@@ -176,19 +190,19 @@ class TestGpuIndexes(unittest.TestCase):
             _ = metric, lsh_nbits
 
     def test_gpu_flatip(self) -> None:
-        self._roundtrip_gpu(IndexOptions(index_type="FlatIP", gpu=True))
+        self._roundtrip_gpu(IndexOptions(index_type="flatip", gpu=True))
 
     def test_gpu_flatl2(self) -> None:
-        self._roundtrip_gpu(IndexOptions(index_type="FlatL2", gpu=True))
+        self._roundtrip_gpu(IndexOptions(index_type="flatl2", gpu=True))
 
     def test_gpu_ivfflat(self) -> None:
-        self._roundtrip_gpu(IndexOptions(index_type="IVFFlat", nlist=4, nprobe=4, gpu=True))
+        self._roundtrip_gpu(IndexOptions(index_type="ivfflat", nlist=4, nprobe=4, gpu=True))
 
     def test_gpu_ivfpq(self) -> None:
-        self._roundtrip_gpu(IndexOptions(index_type="IVFPQ", nlist=4, nprobe=4, pq_m=8, pq_nbits=8, gpu=True))
+        self._roundtrip_gpu(IndexOptions(index_type="ivfpq", nlist=4, nprobe=4, pq_m=8, pq_nbits=8, gpu=True))
 
     def test_gpu_ivfsq(self) -> None:
-        self._roundtrip_gpu(IndexOptions(index_type="IVFSQ", nlist=4, nprobe=4, sq_type="8bit", gpu=True))
+        self._roundtrip_gpu(IndexOptions(index_type="ivfsq", nlist=4, nprobe=4, sq_type="8bit", gpu=True))
 
     def test_gpu_rejected_for_cpu_only_types(self) -> None:
         for kind in sorted(set(INDEX_TYPES) - set(GPU_INDEX_TYPES)):

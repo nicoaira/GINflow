@@ -104,13 +104,13 @@ Window search parameters:
 | `--seed_min_similarity` | `0.8` | Minimum cosine similarity |
 | `--search_shard_size` | `--shard_size` | Query records per search task |
 | `--index` | `faiss` | Index **library**: `faiss`, `scann`, `ngt`, or `cuvs` |
-| `--faiss_index` | `FlatIP` | FAISS **structure** (only with `--index faiss`) |
-| `--ngt_index` | `NGT` | NGT **structure** (`NGT`, `QG`, or `QBG`) when `--index ngt` |
-| `--cuvs_index` | `CAGRA` | cuVS **structure** (`CAGRA`, `IVF`, or `IVF-PQ`) when `--index cuvs`; requires `-profile gpu` |
+| `--faiss_index` | `flatip` | FAISS **structure** (only with `--index faiss`) |
+| `--ngt_index` | `ngt` | NGT **structure** (`ngt`, `qg`, or `qbg`) when `--index ngt` |
+| `--cuvs_index` | `cagra` | cuVS **structure** (`cagra`, `ivf`, or `ivf-pq`) when `--index cuvs`; requires `-profile gpu` |
 
 Each window is the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is cosine similarity. These sliding windows are built **after** embedding; they are not the optional `start` / `end` columns on the structures table (see [Sliced graphs](#sliced-graphs)).
 
-**Index library vs FAISS type, every library-specific flag, GPU, and unused-parameter warnings:** [Window indexes](indexes.md). Passing `--scann_*` with `--index faiss`, or `--faiss_nlist` with `FlatIP`, prints a launch warning and ignores the flag. `--faiss_index ScaNN` is an error; use `--index scann`.
+**Index library vs FAISS type, every library-specific flag, GPU, and unused-parameter warnings:** [Window indexes](indexes.md). Passing `--scann_*` with `--index faiss`, or `--faiss_nlist` with `flatip`, prints a launch warning and ignores the flag. `--faiss_index scann` is an error; use `--index scann`.
 
 Seeds are then clustered along nearby diagonals and each cluster is aligned with [GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW). Alignment runs on a padded crop of the cluster (`--align_pad`, default 32), not the full molecules.
 
@@ -184,7 +184,7 @@ nextflow run nicoaira/ginflow \
     -profile docker,gpu \
     --index faiss \
     --faiss_gpu \
-    --faiss_index IVFFlat \
+    --faiss_index ivfflat \
     --input structures.tsv \
     --outdir results
 ```
@@ -202,12 +202,12 @@ nextflow run nicoaira/ginflow \
     --outdir results
 ```
 
-cuVS is GPU-only and uses the RAPIDS/CuPy image for both index construction and search. Choose `CAGRA`, `IVF` (IVF-Flat), or `IVF-PQ` with `--cuvs_index`; all cuVS runs require `-profile gpu`:
+cuVS is GPU-only and uses the RAPIDS/CuPy image for both index construction and search. Choose `cagra`, `ivf` (IVF-Flat), or `ivf-pq` with `--cuvs_index`; all cuVS runs require `-profile gpu`:
 
 ```bash
 nextflow run nicoaira/ginflow \
     -profile docker,gpu \
-    --index cuvs --cuvs_index CAGRA \
+    --index cuvs --cuvs_index cagra \
     --input structures.tsv --query queries.tsv \
     --outdir results
 ```

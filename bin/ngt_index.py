@@ -25,7 +25,7 @@ _ALIASES = {
 def normalize_index_type(name: str) -> str:
     key = name.strip().replace("-", "").replace("_", "").upper()
     if key not in _ALIASES:
-        allowed = ", ".join(NGT_INDEX_TYPES)
+        allowed = ", ".join(kind.lower() for kind in NGT_INDEX_TYPES)
         raise ValueError(f"unknown NGT index type {name!r}. Choose one of: {allowed}")
     return _ALIASES[key]
 
@@ -136,7 +136,7 @@ def _build_regular(path: Path, vectors: np.ndarray) -> None:
 
 def build_populated_index(
     vectors: np.ndarray,
-    index_type: str = "NGT",
+    index_type: str = "ngt",
 ) -> tuple[NgtIndex, dict[str, Any]]:
     xb = np.ascontiguousarray(vectors, dtype=np.float32)
     if xb.ndim != 2 or xb.shape[0] == 0:
@@ -174,7 +174,7 @@ def build_populated_index(
 
 
 def load_index(path: Path, meta: dict[str, Any]) -> NgtIndex:
-    kind = normalize_index_type(str(meta.get("index_type") or "NGT"))
+    kind = normalize_index_type(str(meta.get("index_type") or "ngt"))
     ntotal = meta.get("n_windows")
     if ntotal is None:
         raise ValueError("NGT database metadata is missing n_windows")

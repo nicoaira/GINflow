@@ -139,7 +139,7 @@ process BUILD_FAISS_INDEX {
             --embeddings embeddings/*.npz \\
             --graph-metadata metadata/*.json \\
             --outdir faiss \\
-            --index-type ScaNN \\
+            --index-type scann \\
             --scann-reorder ${params.scann_reorder} \\
             --scann-ah-dim ${params.scann_ah_dim} \\
             --scann-anisotropic ${params.scann_anisotropic} \\

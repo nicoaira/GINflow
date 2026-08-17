@@ -32,6 +32,9 @@ def unit_vectors(n: int, dim: int, seed: int = 0) -> np.ndarray:
 
 class TestNgtHelpers(unittest.TestCase):
     def test_aliases(self) -> None:
+        self.assertEqual(normalize_index_type("ngt"), "NGT")
+        self.assertEqual(normalize_index_type("qg"), "QG")
+        self.assertEqual(normalize_index_type("qbg"), "QBG")
         self.assertEqual(normalize_index_type("anng"), "NGT")
         self.assertEqual(normalize_index_type("quantized-blob-graph"), "QBG")
         self.assertTrue(is_ngt_type("qg"))
@@ -54,7 +57,7 @@ class TestNgtIndexes(unittest.TestCase):
     def test_variants_search_and_roundtrip(self) -> None:
         for kind in NGT_INDEX_TYPES:
             with self.subTest(kind=kind):
-                index, details = build_populated_index(self.vectors, kind)
+                index, details = build_populated_index(self.vectors, kind.lower())
                 self.assertEqual(details["backend"], "ngt")
                 self.assertEqual(details["index_type"], kind)
                 distances, labels = index.search(self.vectors[:3], 5)

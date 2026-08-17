@@ -85,7 +85,7 @@ DEFAULT_HNSW_EF_SEARCH = 16
 
 @dataclass(frozen=True)
 class IndexOptions:
-    index_type: str = "FlatIP"
+    index_type: str = "flatip"
     nlist: int | None = None
     nprobe: int | None = None
     pq_m: int = DEFAULT_PQ_M
@@ -110,7 +110,7 @@ class IndexOptions:
 def normalize_index_type(name: str) -> str:
     key = name.strip().replace("-", "").replace("_", "").replace(",", "").upper()
     if key not in _ALIASES:
-        allowed = ", ".join(INDEX_TYPES)
+        allowed = ", ".join(kind.lower() for kind in INDEX_TYPES)
         raise ValueError(
             f"unknown FAISS index type {name!r}. Choose one of: {allowed} "
             "(or --index scann for ScaNN)"
@@ -148,10 +148,10 @@ def gpu_device_count() -> int:
 def require_gpu(index_type: str) -> None:
     kind = normalize_index_type(index_type)
     if kind not in GPU_INDEX_TYPES:
-        supported = ", ".join(sorted(GPU_INDEX_TYPES))
+        supported = ", ".join(sorted(kind.lower() for kind in GPU_INDEX_TYPES))
         raise ValueError(
-            f"--faiss_gpu is not supported for index type {kind}. "
-            f"GPU indexes: {supported}. Use CPU for {kind}."
+            f"--faiss_gpu is not supported for index type {kind.lower()}. "
+            f"GPU indexes: {supported}. Use CPU for {kind.lower()}."
         )
     if not gpu_runtime_available():
         raise ValueError(

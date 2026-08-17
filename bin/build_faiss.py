@@ -133,8 +133,8 @@ def build_index(
     shards: list[tuple[Path, Path]],
     options: IndexOptions | None = None,
     backend: str = "faiss",
-    ngt_index_type: str = "NGT",
-    cuvs_index_type: str = "CAGRA",
+    ngt_index_type: str = "ngt",
+    cuvs_index_type: str = "cagra",
     cuvs_options: dict[str, Any] | None = None,
 ) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
     if not shards:
@@ -286,9 +286,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--outdir", type=Path, required=True)
     parser.add_argument("--backend", choices=("faiss", "scann", "ngt", "cuvs"), default="faiss")
-    parser.add_argument("--index-type", default="FlatIP")
-    parser.add_argument("--ngt-index-type", default="NGT")
-    parser.add_argument("--cuvs-index-type", default="CAGRA")
+    parser.add_argument("--index-type", default="flatip")
+    parser.add_argument("--ngt-index-type", default="ngt")
+    parser.add_argument("--cuvs-index-type", default="cagra")
     parser.add_argument("--cuvs-n-lists", type=int)
     parser.add_argument("--cuvs-n-probes", type=int)
     parser.add_argument("--cuvs-pq-bits", type=int, default=8)

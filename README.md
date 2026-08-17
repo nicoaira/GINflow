@@ -16,7 +16,7 @@ The current steps are:
 2. Build GINFINITY graph shards (`*.safetensors` + `*.json`)
 3. Embed each shard (`*.npz` + manifest)
 4. Slice sliding windows (default `w=11`, stride 1)
-5. Build a reusable window database (`--index faiss --faiss_index FlatIP` by default; other FAISS types, `--index scann`, `--index ngt --ngt_index QG|QBG`, or GPU-only `--index cuvs --cuvs_index CAGRA|IVF|IVF-PQ`) and/or search it for seeds. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` needs `-profile gpu`; cuVS always needs `-profile gpu`.
+5. Build a reusable window database (`--index faiss --faiss_index flatip` by default; other FAISS types, `--index scann`, `--index ngt --ngt_index qg|qbg`, or GPU-only `--index cuvs --cuvs_index cagra|ivf|ivf-pq`) and/or search it for seeds. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` needs `-profile gpu`; cuVS always needs `-profile gpu`.
 6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, and rank by database E-value
 7. Optionally plot structures (`--plot_backend`: RNArtistCore 2Ds and/or a unified R4RNA alignment arc plot) and/or SW matrices (`--plot_sw`)
 8. Write a standalone HTML search report (`report.html`)

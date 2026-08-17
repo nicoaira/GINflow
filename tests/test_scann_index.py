@@ -75,7 +75,7 @@ class TestScannHelpers(unittest.TestCase):
     def test_gpu_rejected(self) -> None:
         xb = unit_vectors(8, 16)
         with self.assertRaises(ValueError) as ctx:
-            build_populated_searcher(xb, IndexOptions(index_type="ScaNN", gpu=True))
+            build_populated_searcher(xb, IndexOptions(index_type="scann", gpu=True))
         self.assertIn("not supported", str(ctx.exception))
 
 
@@ -86,7 +86,7 @@ class TestScannBuild(unittest.TestCase):
 
     def test_brute_force_self_hit(self) -> None:
         index, details = build_populated_searcher(
-            self.xb, IndexOptions(index_type="ScaNN", scann_num_neighbors=10)
+            self.xb, IndexOptions(index_type="scann", scann_num_neighbors=10)
         )
         self.assertEqual(details["index_type"], "ScaNN")
         self.assertEqual(details["scann_scoring"], "brute_force")
@@ -108,7 +108,7 @@ class TestScannBuild(unittest.TestCase):
 
     def test_ah_tree_roundtrip(self) -> None:
         options = IndexOptions(
-            index_type="ScaNN",
+            index_type="scann",
             scann_leaves=8,
             scann_leaves_to_search=4,
             scann_reorder=20,

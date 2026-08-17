@@ -21,7 +21,7 @@ _ALIASES = {
 def normalize_index_type(name: str) -> str:
     key = name.strip().replace("_", "").replace("-", "").upper()
     if key not in _ALIASES:
-        allowed = ", ".join(CUVS_INDEX_TYPES)
+        allowed = ", ".join(kind.lower() for kind in CUVS_INDEX_TYPES)
         raise ValueError(f"unknown cuVS index type {name!r}. Choose one of: {allowed}")
     return _ALIASES[key]
 
@@ -156,7 +156,7 @@ class CuvsIndex:
 
 def build_populated_index(
     vectors: np.ndarray,
-    index_type: str = "CAGRA",
+    index_type: str = "cagra",
     *,
     n_lists: int | None = None,
     n_probes: int | None = None,
@@ -246,7 +246,7 @@ def build_populated_index(
 
 
 def load_index(path: Path, meta: dict[str, Any], n_probes: int | None = None) -> CuvsIndex:
-    kind = normalize_index_type(str(meta.get("index_type") or "CAGRA"))
+    kind = normalize_index_type(str(meta.get("index_type") or "cagra"))
     ntotal = meta.get("n_windows")
     if ntotal is None:
         raise ValueError("cuVS database metadata is missing n_windows")

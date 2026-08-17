@@ -159,129 +159,129 @@
                 },
                 "ngt_index": {
                     "type": "string",
-                    "default": "NGT",
-                    "enum": ["NGT", "QG", "QBG"],
-                    "description": "NGT structure. NGT is the regular graph, QG is the quantized graph, and QBG is the quantized blob graph. Applies to --index ngt. CPU-only."
+                    "default": "ngt",
+                    "enum": ["ngt", "qg", "qbg"],
+                    "description": "NGT structure. ngt is the regular graph, qg is the quantized graph, and qbg is the quantized blob graph. Applies to --index ngt. CPU-only."
                 },
                 "cuvs_index": {
                     "type": "string",
-                    "default": "CAGRA",
-                    "enum": ["CAGRA", "IVF", "IVF-PQ"],
-                    "description": "cuVS GPU structure. CAGRA is a GPU graph, IVF is IVF-Flat, and IVF-PQ is compressed IVF. Applies to --index cuvs and requires -profile gpu."
+                    "default": "cagra",
+                    "enum": ["cagra", "ivf", "ivf-pq"],
+                    "description": "cuVS GPU structure. cagra is a GPU graph, ivf is IVF-Flat, and ivf-pq is compressed IVF. Applies to --index cuvs and requires -profile gpu."
                 },
                 "cuvs_n_lists": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "cuVS IVF coarse clusters. Applies to --index cuvs with IVF or IVF-PQ. Unset = min(4*sqrt(n), n)."
+                    "description": "cuVS IVF coarse clusters. Applies to --index cuvs with ivf or ivf-pq. Unset = min(4*sqrt(n), n)."
                 },
                 "cuvs_n_probes": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "cuVS IVF clusters searched per query. Applies to --index cuvs with IVF or IVF-PQ. Unset = min(20, n_lists)."
+                    "description": "cuVS IVF clusters searched per query. Applies to --index cuvs with ivf or ivf-pq. Unset = min(20, n_lists)."
                 },
                 "cuvs_pq_bits": {
                     "type": "integer",
                     "default": 8,
                     "enum": [4, 5, 6, 7, 8],
-                    "description": "Bits per product-quantization code. Applies to --index cuvs with IVF-PQ."
+                    "description": "Bits per product-quantization code. Applies to --index cuvs with ivf-pq."
                 },
                 "cuvs_pq_dim": {
                     "type": "integer",
                     "default": 0,
                     "minimum": 0,
-                    "description": "cuVS IVF-PQ compressed dimension. 0 selects the cuVS heuristic; otherwise use a dimension compatible with the vector dimension."
+                    "description": "cuVS ivf-pq compressed dimension. 0 selects the cuVS heuristic; otherwise use a dimension compatible with the vector dimension."
                 },
                 "cuvs_intermediate_graph_degree": {
                     "type": "integer",
                     "default": 128,
                     "minimum": 1,
-                    "description": "CAGRA intermediate graph degree. Higher values can improve recall at build-time memory cost."
+                    "description": "cagra intermediate graph degree. Higher values can improve recall at build-time memory cost."
                 },
                 "cuvs_graph_degree": {
                     "type": "integer",
                     "default": 64,
                     "minimum": 1,
-                    "description": "CAGRA final graph degree. Higher values can improve recall at search-time memory cost."
+                    "description": "cagra final graph degree. Higher values can improve recall at search-time memory cost."
                 },
                 "cuvs_build_algo": {
                     "type": "string",
                     "default": "nn_descent",
                     "enum": ["ivf_pq", "nn_descent", "iterative_cagra_search", "ace"],
-                    "description": "CAGRA initial graph builder. nn_descent is a practical GPU default; ace is for datasets that need partitioned builds."
+                    "description": "cagra initial graph builder. nn_descent is a practical GPU default; ace is for datasets that need partitioned builds."
                 },
                 "cuvs_itopk_size": {
                     "type": "integer",
                     "default": 64,
                     "minimum": 1,
-                    "description": "CAGRA intermediate search result count. Higher values usually improve recall at search-time cost."
+                    "description": "cagra intermediate search result count. Higher values usually improve recall at search-time cost."
                 },
                 "faiss_index": {
                     "type": "string",
-                    "default": "FlatIP",
-                    "enum": ["FlatIP", "FlatL2", "HNSW", "IVFFlat", "LSH", "SQ", "PQ", "IVFSQ", "IVFPQ", "IVFPQR"],
-                    "description": "FAISS index type. Applies to: --index faiss. Default FlatIP is exact cosine search. GPU (--faiss_gpu) supports FlatIP, FlatL2, IVFFlat, IVFPQ, and IVFSQ only. See docs/indexes.md."
+                    "default": "flatip",
+                    "enum": ["flatip", "flatl2", "hnsw", "ivfflat", "lsh", "sq", "pq", "ivfsq", "ivfpq", "ivfpqr"],
+                    "description": "FAISS index type. Applies to: --index faiss. Default flatip is exact cosine search. GPU (--faiss_gpu) supports flatip, flatl2, ivfflat, ivfpq, and ivfsq only. See docs/indexes.md."
                 },
                 "faiss_gpu": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Build and search the FAISS index on GPU when the type supports it. Applies to: --index faiss with FlatIP, FlatL2, IVFFlat, IVFPQ, or IVFSQ. Requires -profile gpu. Error if the profile is missing, the FAISS type has no GPU implementation, or --index is scann."
+                    "description": "Build and search the FAISS index on GPU when the type supports it. Applies to: --index faiss with flatip, flatl2, ivfflat, ivfpq, or ivfsq. Requires -profile gpu. Error if the profile is missing, the FAISS type has no GPU implementation, or --index is scann."
                 },
                 "faiss_nlist": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "IVF coarse centroids. Applies to: --index faiss with IVFFlat, IVFPQ, IVFSQ, IVFPQR. Unset = min(4*sqrt(n), n/39, n)."
+                    "description": "IVF coarse centroids. Applies to: --index faiss with ivfflat, ivfpq, ivfsq, ivfpqr. Unset = min(4*sqrt(n), n/39, n)."
                 },
                 "faiss_nprobe": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "IVF lists visited at search time. Applies to: --index faiss with IVFFlat, IVFPQ, IVFSQ, IVFPQR. Unset = min(8, nlist) at build, or the value stored in meta.json at search."
+                    "description": "IVF lists visited at search time. Applies to: --index faiss with ivfflat, ivfpq, ivfsq, ivfpqr. Unset = min(8, nlist) at build, or the value stored in meta.json at search."
                 },
                 "faiss_pq_m": {
                     "type": "integer",
                     "default": 16,
                     "minimum": 1,
-                    "description": "Product-quantizer subvectors. Applies to: --index faiss with PQ, IVFPQ, IVFPQR. Must divide the window dimension (1408 when --window_size 11)."
+                    "description": "Product-quantizer subvectors. Applies to: --index faiss with pq, ivfpq, ivfpqr. Must divide the window dimension (1408 when --window_size 11)."
                 },
                 "faiss_pq_nbits": {
                     "type": "integer",
                     "default": 8,
                     "enum": [4, 8, 12, 16],
-                    "description": "Bits per PQ subquantizer. Applies to: --index faiss with PQ, IVFPQ, IVFPQR."
+                    "description": "Bits per PQ subquantizer. Applies to: --index faiss with pq, ivfpq, ivfpqr."
                 },
                 "faiss_pq_m_refine": {
                     "type": "integer",
                     "default": 4,
                     "minimum": 1,
-                    "description": "Extra PQ codes used to rerank IVFPQR hits. Applies to: --index faiss with IVFPQR."
+                    "description": "Extra PQ codes used to rerank ivfpqr hits. Applies to: --index faiss with ivfpqr."
                 },
                 "faiss_hnsw_m": {
                     "type": "integer",
                     "default": 32,
                     "minimum": 2,
-                    "description": "HNSW graph neighbors per node (M). Applies to: --index faiss with HNSW."
+                    "description": "HNSW graph neighbors per node (M). Applies to: --index faiss with hnsw."
                 },
                 "faiss_hnsw_ef_construction": {
                     "type": "integer",
                     "default": 40,
                     "minimum": 1,
-                    "description": "HNSW construction exploration depth. Applies to: --index faiss with HNSW."
+                    "description": "HNSW construction exploration depth. Applies to: --index faiss with hnsw."
                 },
                 "faiss_hnsw_ef_search": {
                     "type": "integer",
                     "default": 16,
                     "minimum": 1,
-                    "description": "HNSW search exploration depth. Applies to: --index faiss with HNSW. Also applied at search time."
+                    "description": "HNSW search exploration depth. Applies to: --index faiss with hnsw. Also applied at search time."
                 },
                 "faiss_lsh_nbits": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "LSH code length in bits. Applies to: --index faiss with LSH. Unset = 2 * window_dim."
+                    "description": "LSH code length in bits. Applies to: --index faiss with lsh. Unset = 2 * window_dim."
                 },
                 "faiss_sq_type": {
                     "type": "string",
                     "default": "8bit",
                     "enum": ["8bit", "6bit", "4bit", "fp16"],
-                    "description": "Scalar quantizer width. Applies to: --index faiss with SQ or IVFSQ."
+                    "description": "Scalar quantizer width. Applies to: --index faiss with sq or ivfsq."
                 },
                 "scann_reorder": {
                     "type": "integer",

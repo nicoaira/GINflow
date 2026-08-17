@@ -36,8 +36,8 @@ class TestCuvsHelpers(unittest.TestCase):
         self.assertEqual(normalize_index_type("cagra"), "CAGRA")
         self.assertEqual(normalize_index_type("ivf-flat"), "IVF")
         self.assertEqual(normalize_index_type("ivfpq"), "IVF-PQ")
-        self.assertTrue(is_cuvs_type("IVF"))
-        self.assertFalse(is_cuvs_type("FlatIP"))
+        self.assertTrue(is_cuvs_type("ivf"))
+        self.assertFalse(is_cuvs_type("flatip"))
         self.assertEqual(set(CUVS_INDEX_TYPES), {"CAGRA", "IVF", "IVF-PQ"})
 
     def test_bounds(self) -> None:
@@ -92,7 +92,7 @@ class TestCuvsIndexes(unittest.TestCase):
 
     def test_cagra(self) -> None:
         self._roundtrip(
-            "CAGRA",
+            "cagra",
             intermediate_graph_degree=64,
             graph_degree=32,
             build_algo="nn_descent",
@@ -100,10 +100,10 @@ class TestCuvsIndexes(unittest.TestCase):
         )
 
     def test_ivf_flat(self) -> None:
-        self._roundtrip("IVF", n_lists=4, n_probes=4)
+        self._roundtrip("ivf", n_lists=4, n_probes=4)
 
     def test_ivf_pq(self) -> None:
-        self._roundtrip("IVF-PQ", n_lists=4, n_probes=4, pq_bits=8, pq_dim=8)
+        self._roundtrip("ivf-pq", n_lists=4, n_probes=4, pq_bits=8, pq_dim=8)
 
 
 if __name__ == "__main__":
