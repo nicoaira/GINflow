@@ -6,7 +6,14 @@ def ngt_requested() {
     return params.use_ngt || ((params.index as String)?.trim()?.equalsIgnoreCase('ngt'))
 }
 
+def cuvs_requested() {
+    return params.use_cuvs || ((params.index as String)?.trim()?.equalsIgnoreCase('cuvs'))
+}
+
 def index_conda(moduleDir, task) {
+    if (cuvs_requested()) {
+        return "${moduleDir}/environment.cuvs.yml"
+    }
     if (ngt_requested()) {
         return "${moduleDir}/environment.ngt.yml"
     }
@@ -18,6 +25,11 @@ def index_conda(moduleDir, task) {
 
 def index_container(task) {
     def sif = workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
+    if (cuvs_requested()) {
+        return sif
+            ? 'oras://community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:40ef78c1cb7c29cd'
+            : 'community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:93cd6db656f6b1e4'
+    }
     if (ngt_requested()) {
         return sif
             ? 'oras://community.wave.seqera.io/library/python_numpy_ngt:ff987f0bb9f59553'
@@ -60,12 +72,44 @@ process BUILD_FAISS_INDEX {
 
     script:
     def args     = task.ext.args ?: ''
-    def versions = ngt_requested()
+    def versions = cuvs_requested()
+        ? 'cuvs: $(python3 -c "from importlib.metadata import version; print(version(\'cuvs\'))")'
+        : ngt_requested()
         ? 'ngt: $(python3 -c "from importlib.metadata import version; print(version(\'ngt\'))")'
         : scann_requested()
         ? 'scann: $(python3 -c "from importlib.metadata import version; print(version(\'scann\'))")'
         : 'faiss: $(python3 -c "import faiss; print(faiss.__version__)")'
-    if (ngt_requested()) {
+    if (cuvs_requested()) {
+        def n_lists    = params.cuvs_n_lists != null ? "--cuvs-n-lists ${params.cuvs_n_lists}" : ''
+        def n_probes   = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
+        """
+        build_faiss.py \\
+            --windows windows/*.windows.npz \\
+            --manifests manifests/*.windows.manifest.json \\
+            --embeddings embeddings/*.npz \\
+            --graph-metadata metadata/*.json \\
+            --outdir faiss \\
+            --backend cuvs \\
+            --cuvs-index-type ${params.cuvs_index} \\
+            --cuvs-pq-bits ${params.cuvs_pq_bits} \\
+            --cuvs-pq-dim ${params.cuvs_pq_dim} \\
+            --cuvs-intermediate-graph-degree ${params.cuvs_intermediate_graph_degree} \\
+            --cuvs-graph-degree ${params.cuvs_graph_degree} \\
+            --cuvs-build-algo ${params.cuvs_build_algo} \\
+            --cuvs-itopk-size ${params.cuvs_itopk_size} \\
+            ${n_lists} \\
+            ${n_probes} \\
+            ${args}
+
+        cat <<-END_VERSIONS > versions.yml
+        "${task.process}":
+            ${versions}
+            cupy: \$(python3 -c "import cupy; print(cupy.__version__)")
+            numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+        END_VERSIONS
+        """
+    }
+    else if (ngt_requested()) {
         """
         build_faiss.py \\
             --windows windows/*.windows.npz \\
@@ -147,12 +191,14 @@ process BUILD_FAISS_INDEX {
     }
 
     stub:
-    def versions = ngt_requested()
+    def versions = cuvs_requested()
+        ? 'cuvs: $(python3 -c "from importlib.metadata import version; print(version(\'cuvs\'))")'
+        : ngt_requested()
         ? 'ngt: $(python3 -c "from importlib.metadata import version; print(version(\'ngt\'))")'
         : scann_requested()
         ? 'scann: $(python3 -c "from importlib.metadata import version; print(version(\'scann\'))")'
         : 'faiss: $(python3 -c "import faiss; print(faiss.__version__)")'
-    def stub_index_dir = ngt_requested() ? 'ngt' : 'scann'
+    def stub_index_dir = cuvs_requested() ? 'cuvs' : (ngt_requested() ? 'ngt' : 'scann')
     """
     mkdir -p faiss/${stub_index_dir}
     touch faiss/index.faiss

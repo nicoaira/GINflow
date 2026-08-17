@@ -5,9 +5,9 @@ GINflow searches sliding windows of GINFINITY embeddings. Two words matter:
 | Term | Meaning |
 |---|---|
 | **Database** | The published directory (`--outdir/faiss/`, later `--database`). It holds the search structure plus `windows.tsv`, `meta.json`, packed residue embeddings, and sequences. |
-| **Index** | The nearest-neighbour structure *inside* that database. You choose the **library** (`--index`) and, for FAISS, the **structure** (`--faiss_index`). |
+| **Index** | The nearest-neighbour structure *inside* that database. You choose the **library** (`--index`) and its library-specific structure (`--faiss_index`, `--ngt_index`, or `--cuvs_index`). |
 
-`--database` is a path to an existing database. `--index` is not a path; it selects FAISS, ScaNN, or NGT.
+`--database` is a path to an existing database. `--index` is not a path; it selects FAISS, ScaNN, NGT, or cuVS.
 
 If you pass a flag that does not apply to the selected library or FAISS structure, the pipeline **warns at launch** and ignores it.
 
@@ -18,8 +18,9 @@ If you pass a flag that does not apply to the selected library or FAISS structur
 | `faiss` (default) | Exact search, or a specific FAISS approximation (IVF, HNSW, PQ, LSH, SQ). Best documented path. | Optional (`--faiss_gpu`) for some types | `index.faiss` |
 | `scann` | Large window collections where ScaNN’s tree + anisotropic hashing is a better speed/recall trade-off than FAISS IVF/PQ. CPU only. | No | `scann/` |
 | `ngt` | NGT proximity graphs, including quantized graph variants. CPU only. | No | `ngt/` |
+| `cuvs` | GPU-optimized cuVS CAGRA, IVF-Flat, or IVF-PQ indexes. | Required | `cuvs/` |
 
-Windows are 1408-d (`--window_size 11`) and L2-normalized. Both libraries search **cosine similarity** (FAISS inner product; ScaNN `dot_product`).
+Windows are 1408-d (`--window_size 11`) and L2-normalized. All libraries search cosine similarity; FAISS/ScaNN use similarity directly, while NGT and cuVS use their cosine-distance output and convert it back before thresholding.
 
 ```bash
 # Exact FAISS (default)
@@ -42,7 +43,7 @@ nextflow run nicoaira/ginflow -profile docker \
 
 A later `--query --database results/faiss` run reads `meta.json` and picks the matching library. If you also pass `--index` and it disagrees with the database, the pipeline errors.
 
-## Shared flags (both libraries)
+## Shared search flags
 
 These always apply. They are not library-specific.
 
@@ -83,6 +84,36 @@ nextflow run nicoaira/ginflow -profile docker \
 ```
 
 The database remains under `results/faiss/` for compatibility with the rest of the pipeline. NGT’s native files are in `results/faiss/ngt/`; `meta.json` records `backend: "ngt"` and the selected `index_type`. A later `--query --database results/faiss` run detects NGT automatically. NGT is CPU-only and does not use FAISS or ScaNN parameters.
+
+## cuVS: `--index cuvs`
+
+[cuVS](https://docs.nvidia.com/cuvs/) is NVIDIA’s GPU-optimized vector-search library. It requires `-profile gpu` and a visible NVIDIA GPU for both building and searching. The environment uses RAPIDS `cuvs 24.10.00` with CUDA 11.8 and CuPy 13.0.0; the CUDA 11 runtime is intentional so the image works with NVIDIA 535.x drivers as well as newer drivers.
+
+| `--cuvs_index` | Structure | Use when |
+|---|---|---|
+| `CAGRA` (default) | GPU graph | You want high-throughput approximate search and the graph fits in GPU memory. |
+| `IVF` | IVF-Flat | You want coarse partitioning without product-quantizing stored vectors. |
+| `IVF-PQ` | IVF with product quantization | You need a smaller GPU-resident index and can trade some recall for compression. |
+
+Build and search with CAGRA:
+
+```bash
+nextflow run nicoaira/ginflow -profile docker,gpu \
+    --index cuvs --cuvs_index CAGRA \
+    --input structures.tsv --query queries.tsv --outdir results
+```
+
+For IVF or IVF-PQ, set the coarse-list and probe parameters as needed:
+
+```bash
+nextflow run nicoaira/ginflow -profile docker,gpu \
+    --index cuvs --cuvs_index IVF-PQ \
+    --cuvs_n_lists 4096 --cuvs_n_probes 32 \
+    --cuvs_pq_bits 8 --cuvs_pq_dim 256 \
+    --input structures.tsv --outdir results
+```
+
+The cuVS database is stored in `results/faiss/cuvs/index.bin` and includes the dataset in the serialized index so a later GPU search can load it. `meta.json` records the cuVS type, metric, list/probe settings, and CAGRA graph settings. Search-only runs detect `backend: "cuvs"` from `meta.json`, but still require `-profile gpu`.
 
 ## FAISS: `--index faiss`
 
@@ -181,8 +212,9 @@ WARN: Unused index parameters for --index faiss / --faiss_index FlatIP (ignored)
 
 Hard errors (not warnings):
 
-- `--index` not `faiss`, `scann`, or `ngt`
+- `--index` not `faiss`, `scann`, `ngt`, or `cuvs`
 - `--faiss_index ScaNN` (use `--index scann`)
 - `--index` disagrees with an existing `--database`
 - `--faiss_gpu` without `-profile gpu`
-- `--faiss_gpu` with `--index scann` or a CPU-only FAISS type
+- `--faiss_gpu` with `--index scann`, `ngt`, `cuvs`, or a CPU-only FAISS type
+- `--index cuvs` without `-profile gpu`

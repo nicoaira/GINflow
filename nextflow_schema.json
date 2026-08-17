@@ -2,7 +2,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "https://raw.githubusercontent.com/nicoaira/ginflow/main/nextflow_schema.json",
     "title": "nicoaira/ginflow pipeline parameters",
-    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings and FAISS, ScaNN, or NGT seeding.",
+    "description": "Nextflow pipeline for BLAST-style search over RNA secondary structures using GINFINITY embeddings and FAISS, ScaNN, NGT, or cuVS seeding.",
     "type": "object",
     "$defs": {
         "input_output_options": {
@@ -154,14 +154,66 @@
                 "index": {
                     "type": "string",
                     "default": "faiss",
-                    "enum": ["faiss", "scann", "ngt"],
-                    "description": "Index library used to build and search the window database. faiss (default) uses --faiss_index, scann uses Google ScaNN, and ngt uses --ngt_index. Unused library-specific flags are warned at launch. See docs/indexes.md."
+                    "enum": ["faiss", "scann", "ngt", "cuvs"],
+                    "description": "Index library used to build and search the window database. faiss (default) uses --faiss_index, scann uses Google ScaNN, ngt uses --ngt_index, and cuvs uses --cuvs_index. Unused library-specific flags are warned at launch. See docs/indexes.md."
                 },
                 "ngt_index": {
                     "type": "string",
                     "default": "NGT",
                     "enum": ["NGT", "QG", "QBG"],
                     "description": "NGT structure. NGT is the regular graph, QG is the quantized graph, and QBG is the quantized blob graph. Applies to --index ngt. CPU-only."
+                },
+                "cuvs_index": {
+                    "type": "string",
+                    "default": "CAGRA",
+                    "enum": ["CAGRA", "IVF", "IVF-PQ"],
+                    "description": "cuVS GPU structure. CAGRA is a GPU graph, IVF is IVF-Flat, and IVF-PQ is compressed IVF. Applies to --index cuvs and requires -profile gpu."
+                },
+                "cuvs_n_lists": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "cuVS IVF coarse clusters. Applies to --index cuvs with IVF or IVF-PQ. Unset = min(4*sqrt(n), n)."
+                },
+                "cuvs_n_probes": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "cuVS IVF clusters searched per query. Applies to --index cuvs with IVF or IVF-PQ. Unset = min(20, n_lists)."
+                },
+                "cuvs_pq_bits": {
+                    "type": "integer",
+                    "default": 8,
+                    "enum": [4, 5, 6, 7, 8],
+                    "description": "Bits per product-quantization code. Applies to --index cuvs with IVF-PQ."
+                },
+                "cuvs_pq_dim": {
+                    "type": "integer",
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "cuVS IVF-PQ compressed dimension. 0 selects the cuVS heuristic; otherwise use a dimension compatible with the vector dimension."
+                },
+                "cuvs_intermediate_graph_degree": {
+                    "type": "integer",
+                    "default": 128,
+                    "minimum": 1,
+                    "description": "CAGRA intermediate graph degree. Higher values can improve recall at build-time memory cost."
+                },
+                "cuvs_graph_degree": {
+                    "type": "integer",
+                    "default": 64,
+                    "minimum": 1,
+                    "description": "CAGRA final graph degree. Higher values can improve recall at search-time memory cost."
+                },
+                "cuvs_build_algo": {
+                    "type": "string",
+                    "default": "nn_descent",
+                    "enum": ["ivf_pq", "nn_descent", "iterative_cagra_search", "ace"],
+                    "description": "CAGRA initial graph builder. nn_descent is a practical GPU default; ace is for datasets that need partitioned builds."
+                },
+                "cuvs_itopk_size": {
+                    "type": "integer",
+                    "default": 64,
+                    "minimum": 1,
+                    "description": "CAGRA intermediate search result count. Higher values usually improve recall at search-time cost."
                 },
                 "faiss_index": {
                     "type": "string",

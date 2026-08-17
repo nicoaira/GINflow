@@ -440,6 +440,8 @@ def distances_to_similarity(
         return scores
     if metric == "ngt_cosine":
         return 1.0 - scores
+    if metric == "cuvs_cosine":
+        return 1.0 - scores
     if metric == "l2":
         return 1.0 - (scores / np.float32(2.0))
     if metric == "hamming":

@@ -67,4 +67,19 @@ nextflow_pipeline {
         }
     }
 
+    test("cuVS without -profile gpu is an error") {
+
+        when {
+            params {
+                outdir = "$outputDir"
+                input  = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                index  = 'cuvs'
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
 }

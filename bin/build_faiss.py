@@ -14,6 +14,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from faiss_index import IndexOptions, build_populated_index, meta_from_details
+from cuvs_index import build_populated_index as build_cuvs_index, meta_from_details as cuvs_meta_from_details, serialize_index as serialize_cuvs_index
 from ngt_index import build_populated_index as build_ngt_index, meta_from_details as ngt_meta_from_details, serialize_index as serialize_ngt_index
 from scann_index import build_populated_searcher, is_scann_type, serialize_index
 
@@ -133,6 +134,8 @@ def build_index(
     options: IndexOptions | None = None,
     backend: str = "faiss",
     ngt_index_type: str = "NGT",
+    cuvs_index_type: str = "CAGRA",
+    cuvs_options: dict[str, Any] | None = None,
 ) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
     if not shards:
         raise ValueError("no window shards were provided")
@@ -171,6 +174,8 @@ def build_index(
     chosen = options or IndexOptions()
     if backend == "ngt":
         index, details = build_ngt_index(xb, ngt_index_type)
+    elif backend == "cuvs":
+        index, details = build_cuvs_index(xb, cuvs_index_type, **(cuvs_options or {}))
     elif is_scann_type(chosen.index_type):
         index, details = build_populated_searcher(xb, chosen)
     else:
@@ -190,7 +195,12 @@ def build_index(
         "n_windows": int(xb.shape[0]),
         "n_skipped_short": n_skipped,
     }
-    meta.update(ngt_meta_from_details(details) if backend == "ngt" else meta_from_details(details))
+    if backend == "ngt":
+        meta.update(ngt_meta_from_details(details))
+    elif backend == "cuvs":
+        meta.update(cuvs_meta_from_details(details))
+    else:
+        meta.update(meta_from_details(details))
     return index, mapping, meta
 
 
@@ -244,6 +254,8 @@ def write_database(
     outdir.mkdir(parents=True, exist_ok=True)
     if str(meta.get("backend") or "").lower() == "ngt":
         serialize_ngt_index(index, outdir / "ngt")
+    elif str(meta.get("backend") or "").lower() == "cuvs":
+        serialize_cuvs_index(index, outdir / "cuvs")
     elif is_scann_type(str(meta.get("index_type") or "")):
         serialize_index(index, outdir / "scann")
     else:
@@ -273,9 +285,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--embeddings", type=Path, nargs="*")
     parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--outdir", type=Path, required=True)
-    parser.add_argument("--backend", choices=("faiss", "scann", "ngt"), default="faiss")
+    parser.add_argument("--backend", choices=("faiss", "scann", "ngt", "cuvs"), default="faiss")
     parser.add_argument("--index-type", default="FlatIP")
     parser.add_argument("--ngt-index-type", default="NGT")
+    parser.add_argument("--cuvs-index-type", default="CAGRA")
+    parser.add_argument("--cuvs-n-lists", type=int)
+    parser.add_argument("--cuvs-n-probes", type=int)
+    parser.add_argument("--cuvs-pq-bits", type=int, default=8)
+    parser.add_argument("--cuvs-pq-dim", type=int, default=0)
+    parser.add_argument("--cuvs-intermediate-graph-degree", type=int, default=128)
+    parser.add_argument("--cuvs-graph-degree", type=int, default=64)
+    parser.add_argument("--cuvs-build-algo", default="nn_descent")
+    parser.add_argument("--cuvs-itopk-size", type=int, default=64)
     parser.add_argument("--nlist", type=int)
     parser.add_argument("--nprobe", type=int)
     parser.add_argument("--pq-m", type=int, default=16)
@@ -323,6 +344,19 @@ def options_from_args(args: argparse.Namespace) -> IndexOptions:
     )
 
 
+def cuvs_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "n_lists": args.cuvs_n_lists,
+        "n_probes": args.cuvs_n_probes,
+        "pq_bits": args.cuvs_pq_bits,
+        "pq_dim": args.cuvs_pq_dim,
+        "intermediate_graph_degree": args.cuvs_intermediate_graph_degree,
+        "graph_degree": args.cuvs_graph_degree,
+        "build_algo": args.cuvs_build_algo,
+        "itopk_size": args.cuvs_itopk_size,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -332,6 +366,8 @@ def main(argv: list[str] | None = None) -> int:
             options_from_args(args),
             backend=args.backend,
             ngt_index_type=args.ngt_index_type,
+            cuvs_index_type=args.cuvs_index_type,
+            cuvs_options=cuvs_options_from_args(args),
         )
         packed = None
         if args.embeddings or args.graph_metadata:

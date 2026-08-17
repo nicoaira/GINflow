@@ -6,7 +6,14 @@ def ngt_requested() {
     return params.use_ngt || ((params.index as String)?.trim()?.equalsIgnoreCase('ngt'))
 }
 
+def cuvs_requested() {
+    return params.use_cuvs || ((params.index as String)?.trim()?.equalsIgnoreCase('cuvs'))
+}
+
 def index_conda(moduleDir, task) {
+    if (cuvs_requested()) {
+        return "${moduleDir}/environment.cuvs.yml"
+    }
     if (ngt_requested()) {
         return "${moduleDir}/environment.ngt.yml"
     }
@@ -18,6 +25,11 @@ def index_conda(moduleDir, task) {
 
 def index_container(task) {
     def sif = workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
+    if (cuvs_requested()) {
+        return sif
+            ? 'oras://community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:40ef78c1cb7c29cd'
+            : 'community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:93cd6db656f6b1e4'
+    }
     if (ngt_requested()) {
         return sif
             ? 'oras://community.wave.seqera.io/library/python_numpy_ngt:ff987f0bb9f59553'
@@ -59,12 +71,37 @@ process SEARCH_FAISS {
     script:
     def args     = task.ext.args   ?: ''
     def prefix   = task.ext.prefix ?: "${meta.id}"
-    def versions = ngt_requested()
+    def versions = cuvs_requested()
+        ? 'cuvs: $(python3 -c "from importlib.metadata import version; print(version(\'cuvs\'))")'
+        : ngt_requested()
         ? 'ngt: $(python3 -c "from importlib.metadata import version; print(version(\'ngt\'))")'
         : scann_requested()
         ? 'scann: $(python3 -c "from importlib.metadata import version; print(version(\'scann\'))")'
         : 'faiss: $(python3 -c "import faiss; print(faiss.__version__)")'
-    if (ngt_requested()) {
+    if (cuvs_requested()) {
+        def gpu_flag = task.accelerator ? '--gpu' : ''
+        def n_probes = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
+        """
+        search_faiss.py \\
+            --windows ${windows} \\
+            --manifest ${manifest} \\
+            --database ${database} \\
+            --output ${prefix}.seeds.tsv \\
+            --k ${params.seed_k} \\
+            --min-similarity ${params.seed_min_similarity} \\
+            ${n_probes} \\
+            ${gpu_flag} \\
+            ${args}
+
+        cat <<-END_VERSIONS > versions.yml
+        "${task.process}":
+            ${versions}
+            cupy: \$(python3 -c "import cupy; print(cupy.__version__)")
+            numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+        END_VERSIONS
+        """
+    }
+    else if (ngt_requested()) {
         """
         search_faiss.py \\
             --windows ${windows} \\
@@ -130,7 +167,9 @@ process SEARCH_FAISS {
 
     stub:
     def prefix   = task.ext.prefix ?: "${meta.id}"
-    def versions = ngt_requested()
+    def versions = cuvs_requested()
+        ? 'cuvs: $(python3 -c "from importlib.metadata import version; print(version(\'cuvs\'))")'
+        : ngt_requested()
         ? 'ngt: $(python3 -c "from importlib.metadata import version; print(version(\'ngt\'))")'
         : scann_requested()
         ? 'scann: $(python3 -c "from importlib.metadata import version; print(version(\'scann\'))")'

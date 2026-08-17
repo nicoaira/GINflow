@@ -64,7 +64,10 @@ def normalize_index_library(raw) {
     if (key in ['ngt', 'anng']) {
         return 'ngt'
     }
-    error "--index must be faiss, scann, or ngt, got '${raw}'. See docs/indexes.md."
+    if (key == 'cuvs') {
+        return 'cuvs'
+    }
+    error "--index must be faiss, scann, ngt, or cuvs, got '${raw}'. See docs/indexes.md."
 }
 
 def detect_database_library() {
@@ -83,6 +86,9 @@ def detect_database_library() {
             if (backend?.equalsIgnoreCase('ngt') || ['NGT', 'QG', 'QBG'].contains(kind?.toUpperCase())) {
                 return 'ngt'
             }
+            if (backend?.equalsIgnoreCase('cuvs') || ['CAGRA', 'IVF', 'IVF-PQ'].contains(kind?.toUpperCase())) {
+                return 'cuvs'
+            }
             if (backend?.equalsIgnoreCase('faiss') || kind) {
                 return 'faiss'
             }
@@ -96,6 +102,9 @@ def detect_database_library() {
     }
     if (file("${params.database}/ngt").exists()) {
         return 'ngt'
+    }
+    if (file("${params.database}/cuvs").exists()) {
+        return 'cuvs'
     }
     if (file("${params.database}/index.faiss").exists()) {
         return 'faiss'
@@ -138,6 +147,16 @@ def validate_faiss_gpu(library, kind) {
     }
 }
 
+def validate_cuvs_gpu(library) {
+    if (library != 'cuvs') {
+        return
+    }
+    def profiles = workflow.profile.tokenize(',').collect { it.trim() }
+    if (!profiles.contains('gpu')) {
+        error "--index cuvs requires -profile gpu so BUILD_FAISS_INDEX and SEARCH_FAISS get the cuVS image and NVIDIA runtime."
+    }
+}
+
 def collect_if_unused(unused, name, default_value, applies) {
     if (!applies && parameter_explicit(name, default_value)) {
         unused.add('--' + name)
@@ -154,6 +173,15 @@ def warn_unused_index_params(library, kind) {
 
     if (library == 'scann') {
         collect_if_unused(unused, 'ngt_index', 'NGT', false)
+        collect_if_unused(unused, 'cuvs_index', 'CAGRA', false)
+        collect_if_unused(unused, 'cuvs_n_lists', null, false)
+        collect_if_unused(unused, 'cuvs_n_probes', null, false)
+        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
+        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
+        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
+        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
+        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
+        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
         collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
@@ -168,6 +196,36 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
     }
     else if (library == 'ngt') {
+        collect_if_unused(unused, 'cuvs_index', 'CAGRA', false)
+        collect_if_unused(unused, 'cuvs_n_lists', null, false)
+        collect_if_unused(unused, 'cuvs_n_probes', null, false)
+        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
+        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
+        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
+        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
+        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
+        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
+        collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
+        collect_if_unused(unused, 'faiss_gpu', false, false)
+        collect_if_unused(unused, 'faiss_nlist', null, false)
+        collect_if_unused(unused, 'faiss_nprobe', null, false)
+        collect_if_unused(unused, 'faiss_pq_m', 16, false)
+        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
+        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
+        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
+        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
+        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
+        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
+        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
+        collect_if_unused(unused, 'scann_reorder', 100, false)
+        collect_if_unused(unused, 'scann_ah_dim', 2, false)
+        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
+        collect_if_unused(unused, 'scann_soar', false, false)
+        collect_if_unused(unused, 'scann_leaves', null, false)
+        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
+    }
+    else if (library == 'cuvs') {
+        collect_if_unused(unused, 'ngt_index', 'NGT', false)
         collect_if_unused(unused, 'faiss_index', 'FlatIP', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
@@ -189,6 +247,15 @@ def warn_unused_index_params(library, kind) {
     }
     else {
         collect_if_unused(unused, 'ngt_index', 'NGT', false)
+        collect_if_unused(unused, 'cuvs_index', 'CAGRA', false)
+        collect_if_unused(unused, 'cuvs_n_lists', null, false)
+        collect_if_unused(unused, 'cuvs_n_probes', null, false)
+        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
+        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
+        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
+        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
+        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
+        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
         collect_if_unused(unused, 'scann_reorder', 100, false)
         collect_if_unused(unused, 'scann_ah_dim', 2, false)
         collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
@@ -222,7 +289,9 @@ workflow {
     params.index = library
     params.use_scann = library == 'scann'
     params.use_ngt = library == 'ngt'
+    params.use_cuvs = library == 'cuvs'
     validate_faiss_gpu(library, kind)
+    validate_cuvs_gpu(library)
     warn_unused_index_params(library, kind)
 
     def input_path    = resolve_optional_path(params.input)

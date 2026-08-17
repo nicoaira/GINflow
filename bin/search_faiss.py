@@ -17,6 +17,7 @@ from faiss_index import (
     distances_to_similarity,
     prepare_search_index,
 )
+from cuvs_index import is_cuvs_database, load_index as load_cuvs_index
 from ngt_index import is_ngt_database, load_index as load_ngt_index
 from scann_index import (
     apply_search_params as apply_scann_search_params,
@@ -170,6 +171,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--k", type=int, default=50)
     parser.add_argument("--min-similarity", type=float, default=0.8)
     parser.add_argument("--nprobe", type=int)
+    parser.add_argument("--cuvs-n-probes", type=int)
     parser.add_argument("--hnsw-ef-search", type=int)
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--gpu-device", type=int, default=0)
@@ -195,7 +197,12 @@ def main(argv: list[str] | None = None) -> int:
             gpu_device=args.gpu_device,
             scann_reorder=args.scann_reorder if args.scann_reorder is not None else 100,
         )
-        if is_ngt_database(args.database, db_meta):
+        if is_cuvs_database(args.database, db_meta):
+            if not args.gpu:
+                raise ValueError("cuVS databases require GPU search; use -profile gpu")
+            index = load_cuvs_index(args.database / "cuvs", db_meta, args.cuvs_n_probes)
+            metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None
+        elif is_ngt_database(args.database, db_meta):
             index = load_ngt_index(args.database / "ngt", db_meta)
             metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None
         elif is_scann_database(args.database, db_meta):

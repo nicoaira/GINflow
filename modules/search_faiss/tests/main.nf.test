@@ -87,4 +87,84 @@ nextflow_process {
 
     }
 
+    test("Should search a cuVS CAGRA index") {
+
+        tag "cuvs"
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+            run("GENERATE_WINDOWS") {
+                script "../../generate_windows/main.nf"
+                process {
+                    """
+                    input[0] = EMBED_RNA_GRAPHS.out.embeddings
+                    """
+                }
+            }
+            run("BUILD_FAISS_INDEX") {
+                script "../../build_faiss_index/main.nf"
+                process {
+                    """
+                    input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
+                    input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
+                    input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+                    input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
+                    """
+                }
+            }
+        }
+
+        when {
+            params {
+                index = 'cuvs'
+                cuvs_index = 'CAGRA'
+                cuvs_intermediate_graph_degree = 32
+                cuvs_graph_degree = 16
+                seed_min_similarity = 0.99
+            }
+            process {
+                """
+                input[0] = GENERATE_WINDOWS.out.windows
+                input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.seeds.size() == 1 },
+                {
+                    def seeds = path(process.out.seeds.get(0).get(1)).readLines()
+                    assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
+                    def rows = seeds.drop(1).findAll { it }
+                    assert rows.size() > 0
+                    assert rows.any { line ->
+                        def cols = line.split('\t')
+                        cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1' && (cols[6] as double) > 0.999
+                    }
+                }
+            )
+        }
+
+    }
+
 }
