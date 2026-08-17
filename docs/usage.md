@@ -88,11 +88,11 @@ The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--da
 
 | Flags | Mode |
 |---|---|
-| `--input` | Build a FAISS database from the structures table |
+| `--input` | Build a window database from the structures table |
 | `--query` + `--database` | Embed the query table and search an existing `faiss/` directory |
 | `--input` + `--query` | Build the database, search it, and publish it for later runs |
 
-`--database` must be a previous run's `faiss/` directory (`index.faiss`, `windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`). If `--input` and `--query` are the same file, embeddings are computed once.
+`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and either `index.faiss` or `scann/`). If `--input` and `--query` are the same file, embeddings are computed once.
 
 Window search parameters:
 
@@ -102,23 +102,13 @@ Window search parameters:
 | `--window_stride` | `1` | Step between window starts |
 | `--seed_k` | `50` | Neighbours kept per query window before the threshold |
 | `--seed_min_similarity` | `0.8` | Minimum cosine similarity |
-| `--search_shard_size` | `--shard_size` | Query records per FAISS search task |
-| `--faiss_index` | `FlatIP` | Index type ([Faiss indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes)): `FlatIP`, `FlatL2`, `HNSW`, `IVFFlat`, `LSH`, `SQ`, `PQ`, `IVFSQ`, `IVFPQ`, `IVFPQR` |
-| `--faiss_gpu` | `false` | Train/search on GPU when the type supports it. **Requires `-profile gpu`**; the pipeline errors otherwise |
-| `--faiss_nlist` | auto | IVF centroids. Unset = `min(4√n, n/39, n)` |
-| `--faiss_nprobe` | auto | IVF lists probed at search. Unset = `min(8, nlist)` |
-| `--faiss_pq_m` | `16` | PQ subvectors (`window_dim` must be divisible by this; 16 works for the default 1408-d windows) |
-| `--faiss_pq_nbits` | `8` | Bits per PQ code (`4`, `8`, `12`, `16`) |
-| `--faiss_pq_m_refine` | `4` | Extra PQ codes for `IVFPQR` rerank |
-| `--faiss_hnsw_m` | `32` | HNSW neighbors per node |
-| `--faiss_hnsw_ef_construction` | `40` | HNSW build exploration |
-| `--faiss_hnsw_ef_search` | `16` | HNSW search exploration |
-| `--faiss_lsh_nbits` | `2 × dim` | LSH code length |
-| `--faiss_sq_type` | `8bit` | Scalar quantizer for `SQ` / `IVFSQ`: `8bit`, `6bit`, `4bit`, `fp16` |
+| `--search_shard_size` | `--shard_size` | Query records per search task |
+| `--index` | `faiss` | Index **library**: `faiss` or `scann` |
+| `--faiss_index` | `FlatIP` | FAISS **structure** (only with `--index faiss`) |
 
-Each window is the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so a FAISS inner product is cosine similarity. `FlatL2` and `LSH` return different raw distances; the pipeline converts them back to a similarity in `[−∞, 1]` before `--seed_min_similarity`. These sliding windows are built **after** embedding; they are not the optional `start` / `end` columns on the structures table (see [Sliced graphs](#sliced-graphs)).
+Each window is the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is cosine similarity. These sliding windows are built **after** embedding; they are not the optional `start` / `end` columns on the structures table (see [Sliced graphs](#sliced-graphs)).
 
-`--faiss_index FlatIP` is exact. The other types trade recall for speed or memory (IVF cell-probe, HNSW graphs, PQ/SQ compression, LSH Hamming codes). `IVFPQR` is L2-only in FAISS 1.10; scores are converted back to a cosine-like similarity. GPU acceleration (`--faiss_gpu`) is implemented for `FlatIP`, `FlatL2`, `IVFFlat`, `IVFPQ`, and `IVFSQ`. `HNSW`, `LSH`, `PQ`, `SQ`, and `IVFPQR` stay on CPU; asking for GPU with those types raises an error. The on-disk `index.faiss` is always a CPU index (GPU is used only inside the task). PQ/IVFPQ/IVFPQR training needs at least `2^nbits` windows (256 when `--faiss_pq_nbits 8`).
+**Index library vs FAISS type, every library-specific flag, GPU, and unused-parameter warnings:** [Window indexes](indexes.md). Passing `--scann_*` with `--index faiss`, or `--faiss_nlist` with `FlatIP`, prints a launch warning and ignores the flag. `--faiss_index ScaNN` is an error; use `--index scann`.
 
 Seeds are then clustered along nearby diagonals and each cluster is aligned with [GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW). Alignment runs on a padded crop of the cluster (`--align_pad`, default 32), not the full molecules.
 
@@ -128,7 +118,7 @@ Seeds are then clustered along nearby diagonals and each cluster is aligned with
 | `--cluster_min_seeds` | `2` | Drop singleton clusters |
 | `--cluster_diagonal_tolerance` | `12` | Allowed diagonal drift when adding a seed |
 | `--cluster_max_diagonal_span` | `96` | Max diagonal breadth of one cluster |
-| `--cluster_max_seed_rank` | `10` | Ignore FAISS hits worse than this rank |
+| `--cluster_max_seed_rank` | `10` | Ignore seed hits worse than this rank |
 | `--align_pad` | `32` | Extra nucleotides on each side of the cluster crop |
 | `--evd_samples` | `1000` | Reverse-sequence null alignments used to fit λ and K |
 | `--evd_max_length` | `400` | Max null-sequence length during EVD calibration |
@@ -190,6 +180,7 @@ FAISS GPU is **opt-in** and separate from embedding:
 ```bash
 nextflow run nicoaira/ginflow \
     -profile docker,gpu \
+    --index faiss \
     --faiss_gpu \
     --faiss_index IVFFlat \
     --input structures.tsv \
@@ -197,6 +188,17 @@ nextflow run nicoaira/ginflow \
 ```
 
 `--faiss_gpu` without `-profile gpu` is a pipeline error. With both, `BUILD_FAISS_INDEX` and `SEARCH_FAISS` switch to `environment.gpu.yml` (`pytorch::faiss-gpu=1.10.0`, CUDA 12.1 runtime) and the FAISS GPU Wave image. That runtime matches host drivers that report CUDA 12.1 or 12.2 (for example NVIDIA driver 535.x). A newer conda-forge CUDA 12.9 build will not start on those drivers.
+
+ScaNN is CPU-only and uses its own image (`environment.scann.yml`, `scann==1.4.2`):
+
+```bash
+nextflow run nicoaira/ginflow \
+    -profile docker \
+    --index scann \
+    --input structures.tsv \
+    --query queries.tsv \
+    --outdir results
+```
 
 ## Outputs
 

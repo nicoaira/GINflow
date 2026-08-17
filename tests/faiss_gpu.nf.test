@@ -36,4 +36,35 @@ nextflow_pipeline {
         }
     }
 
+    test("faiss_gpu is rejected for ScaNN") {
+
+        when {
+            params {
+                outdir    = "$outputDir"
+                input     = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                faiss_gpu = true
+                index     = 'scann'
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
+    test("faiss_index ScaNN is an error") {
+
+        when {
+            params {
+                outdir       = "$outputDir"
+                input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                faiss_index  = 'ScaNN'
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
 }

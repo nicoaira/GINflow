@@ -7,8 +7,8 @@ import csv
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
-import faiss
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -16,6 +16,11 @@ from faiss_index import (
     IndexOptions,
     distances_to_similarity,
     prepare_search_index,
+)
+from scann_index import (
+    apply_search_params as apply_scann_search_params,
+    is_scann_database,
+    load_index as load_scann_index,
 )
 
 
@@ -70,7 +75,7 @@ def check_compatible(query_manifest: dict, db_meta: dict) -> None:
 def search_shard(
     windows_path: Path,
     manifest: dict,
-    index: faiss.Index,
+    index: Any,
     targets: list[tuple[str, int, int]],
     k: int,
     min_similarity: float,
@@ -152,7 +157,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--windows", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
-    parser.add_argument("--database", type=Path, required=True, help="Directory with index.faiss, windows.tsv, meta.json")
+    parser.add_argument(
+        "--database",
+        type=Path,
+        required=True,
+        help="Directory with windows.tsv, meta.json, and either index.faiss or scann/",
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--k", type=int, default=50)
     parser.add_argument("--min-similarity", type=float, default=0.8)
@@ -160,6 +170,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--hnsw-ef-search", type=int)
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--gpu-device", type=int, default=0)
+    parser.add_argument("--scann-reorder", type=int)
+    parser.add_argument("--scann-leaves-to-search", type=int)
     return parser.parse_args(argv)
 
 
@@ -172,19 +184,41 @@ def main(argv: list[str] | None = None) -> int:
         query_manifest = load_json(args.manifest)
         db_meta = load_json(args.database / "meta.json")
         check_compatible(query_manifest, db_meta)
-        index = faiss.read_index(str(args.database / "index.faiss"))
         targets = load_targets(args.database / "windows.tsv")
-        if index.ntotal != len(targets):
-            raise ValueError(
-                f"index ntotal={index.ntotal} does not match windows.tsv rows={len(targets)}"
-            )
         search_options = IndexOptions(
             nprobe=args.nprobe,
             hnsw_ef_search=args.hnsw_ef_search,
             gpu=args.gpu,
             gpu_device=args.gpu_device,
+            scann_reorder=args.scann_reorder if args.scann_reorder is not None else 100,
         )
-        index, metric, lsh_nbits = prepare_search_index(index, db_meta, search_options)
+        if is_scann_database(args.database, db_meta):
+            if args.gpu:
+                raise ValueError(
+                    "--faiss_gpu is not supported for ScaNN. ScaNN is CPU-only (AVX/FMA)."
+                )
+            ntotal = db_meta.get("n_windows")
+            index = load_scann_index(
+                args.database / "scann",
+                ntotal=int(ntotal) if ntotal is not None else None,
+                leaves_to_search=db_meta.get("nprobe"),
+                reorder=db_meta.get("scann_reorder"),
+            )
+            apply_scann_search_params(
+                index,
+                nprobe=args.scann_leaves_to_search,
+                reorder=args.scann_reorder,
+            )
+            metric, lsh_nbits = "inner_product", None
+        else:
+            import faiss
+
+            index = faiss.read_index(str(args.database / "index.faiss"))
+            index, metric, lsh_nbits = prepare_search_index(index, db_meta, search_options)
+        if index.ntotal != len(targets):
+            raise ValueError(
+                f"index ntotal={index.ntotal} does not match windows.tsv rows={len(targets)}"
+            )
         hits = search_shard(
             args.windows,
             query_manifest,

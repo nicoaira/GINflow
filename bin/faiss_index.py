@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import faiss
+try:
+    import faiss
+except ImportError:  # pragma: no cover - ScaNN image has no FAISS
+    faiss = None  # type: ignore[assignment]
+
 import numpy as np
 
 
@@ -94,13 +98,23 @@ class IndexOptions:
     sq_type: str = "8bit"
     gpu: bool = False
     gpu_device: int = 0
+    scann_reorder: int = 100
+    scann_ah_dim: int = 2
+    scann_anisotropic: float = 0.2
+    scann_soar: bool = False
+    scann_num_neighbors: int = 100
+    scann_leaves: int | None = None
+    scann_leaves_to_search: int | None = None
 
 
 def normalize_index_type(name: str) -> str:
     key = name.strip().replace("-", "").replace("_", "").replace(",", "").upper()
     if key not in _ALIASES:
         allowed = ", ".join(INDEX_TYPES)
-        raise ValueError(f"unknown FAISS index type {name!r}. Choose one of: {allowed}")
+        raise ValueError(
+            f"unknown FAISS index type {name!r}. Choose one of: {allowed} "
+            "(or --index scann for ScaNN)"
+        )
     return _ALIASES[key]
 
 
@@ -109,7 +123,7 @@ def supports_gpu(index_type: str) -> bool:
 
 
 def gpu_runtime_available() -> bool:
-    return hasattr(faiss, "StandardGpuResources")
+    return faiss is not None and hasattr(faiss, "StandardGpuResources")
 
 
 def cuda_device_visible() -> bool:
@@ -122,7 +136,7 @@ def cuda_device_visible() -> bool:
 def gpu_device_count() -> int:
     if not cuda_device_visible():
         return 0
-    getter = getattr(faiss, "get_num_gpus", None)
+    getter = getattr(faiss, "get_num_gpus", None) if faiss is not None else None
     if getter is None:
         return 0
     try:
@@ -219,7 +233,12 @@ def default_lsh_nbits(dim: int, requested: int | None) -> int:
     return requested
 
 
-def make_cpu_index(dim: int, n_vectors: int, options: IndexOptions) -> tuple[faiss.Index, dict[str, Any]]:
+def make_cpu_index(dim: int, n_vectors: int, options: IndexOptions) -> tuple[Any, dict[str, Any]]:
+    if faiss is None:
+        raise ValueError(
+            "FAISS is not installed in this environment. Use --index scann "
+            "or the FAISS container."
+        )
     kind = normalize_index_type(options.index_type)
     if dim < 1:
         raise ValueError(f"embedding dimension must be >= 1, got {dim}")
@@ -444,6 +463,14 @@ def meta_from_details(details: dict[str, Any]) -> dict[str, Any]:
         "hnsw_ef_search": details.get("hnsw_ef_search"),
         "lsh_nbits": details.get("lsh_nbits"),
         "sq_type": details.get("sq_type"),
+        "backend": details.get("backend", "faiss"),
+        "scann_scoring": details.get("scann_scoring"),
+        "scann_partitioned": details.get("scann_partitioned"),
+        "scann_reorder": details.get("scann_reorder"),
+        "scann_ah_dim": details.get("scann_ah_dim"),
+        "scann_anisotropic": details.get("scann_anisotropic"),
+        "scann_soar": details.get("scann_soar"),
+        "scann_num_neighbors": details.get("scann_num_neighbors"),
     }
 
 

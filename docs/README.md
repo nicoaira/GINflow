@@ -4,6 +4,8 @@ The nicoaira/ginflow documentation is split into the following pages:
 
 - [Usage](usage.md)
   - How to run the pipeline, the structures table, [sliced graphs](usage.md#sliced-graphs) (`start` / `end` windows), and every command-line flag.
+- [Window indexes](indexes.md)
+  - FAISS vs ScaNN, how to choose a type, which flags apply to each, and unused-parameter warnings.
 - [Output](output.md)
   - An overview of the different results produced by the pipeline and how to interpret them.
 - [Pipeline schematic](images/ginflow_metro.svg)

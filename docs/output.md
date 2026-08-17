@@ -17,7 +17,8 @@ outdir/
 │       ├── <shard>.windows.npz
 │       └── <shard>.windows.manifest.json
 ├── faiss/
-│   ├── index.faiss
+│   ├── index.faiss   # FAISS types
+│   ├── scann/        # --index scann
 │   ├── windows.tsv
 │   └── meta.json
 ├── seeds.tsv
@@ -65,9 +66,10 @@ Sliding windows of the node embeddings (`--window_size`, default 11, stride 1).
 
 ## faiss/
 
-Reusable FAISS index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index FlatIP`). `meta.json` records `index_type`, `metric`, IVF/PQ/HNSW parameters, and whether the index was trained on GPU.
+Reusable window index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index FlatIP`). `meta.json` records `index_type`, `metric`, IVF/PQ/HNSW or ScaNN parameters, and whether a FAISS index was trained on GPU.
 
-- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build)
+- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build). Omitted for ScaNN
+- `scann/` — serialized ScaNN searcher when `--index scann`
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, counts, and index settings
 - `embeddings.npz` — per-nucleotide embeddings, one array per identifier

@@ -1,0 +1,13 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nf-core/modules/master/modules/environment-schema.json
+# ScaNN is CPU-only (AVX/FMA on x86, NEON on ARM). pip scann==1.4.2 needs
+# Python 3.9–3.13, numpy~=2.0, and libstdc++ 3.4.23+.
+channels:
+  - conda-forge
+dependencies:
+  - conda-forge::python=3.12
+  - conda-forge::numpy=2.2.6
+  - conda-forge::libstdcxx-ng>=13
+  - conda-forge::pip
+  - pip:
+      - scann==1.4.2

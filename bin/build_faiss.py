@@ -8,12 +8,13 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
-import faiss
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from faiss_index import IndexOptions, build_populated_index, meta_from_details
+from scann_index import build_populated_searcher, is_scann_type, serialize_index
 
 SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
 
@@ -129,7 +130,7 @@ def load_shard(npz_path: Path, manifest: dict) -> tuple[np.ndarray, list[tuple[s
 def build_index(
     shards: list[tuple[Path, Path]],
     options: IndexOptions | None = None,
-) -> tuple[faiss.Index, list[tuple[int, str, int, int]], dict]:
+) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
     if not shards:
         raise ValueError("no window shards were provided")
 
@@ -164,7 +165,11 @@ def build_index(
         raise ValueError("no windows to index (every sequence was shorter than --window-size)")
 
     xb = np.ascontiguousarray(np.concatenate(all_vectors, axis=0), dtype=np.float32)
-    index, details = build_populated_index(xb, options or IndexOptions())
+    chosen = options or IndexOptions()
+    if is_scann_type(chosen.index_type):
+        index, details = build_populated_searcher(xb, chosen)
+    else:
+        index, details = build_populated_index(xb, chosen)
 
     assert reference_manifest is not None
     meta = {
@@ -226,13 +231,18 @@ def pack_records(embedding_paths: list[Path], metadata_paths: list[Path]) -> tup
 
 def write_database(
     outdir: Path,
-    index: faiss.Index,
+    index: Any,
     mapping: list[tuple[int, str, int, int]],
     meta: dict,
     packed: tuple[dict[str, np.ndarray], list[tuple[str, str, str]]] | None = None,
 ) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
-    faiss.write_index(index, str(outdir / "index.faiss"))
+    if is_scann_type(str(meta.get("index_type") or "")):
+        serialize_index(index, outdir / "scann")
+    else:
+        import faiss
+
+        faiss.write_index(index, str(outdir / "index.faiss"))
     with (outdir / "windows.tsv").open("w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["faiss_id", "transcript_id", "start", "end"])
@@ -269,6 +279,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sq-type", default="8bit")
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--gpu-device", type=int, default=0)
+    parser.add_argument("--scann-reorder", type=int, default=100)
+    parser.add_argument("--scann-ah-dim", type=int, default=2)
+    parser.add_argument("--scann-anisotropic", type=float, default=0.2)
+    parser.add_argument("--scann-soar", action="store_true")
+    parser.add_argument("--scann-leaves", type=int)
+    parser.add_argument("--scann-leaves-to-search", type=int)
+    parser.add_argument("--num-neighbors", type=int, default=100)
     return parser.parse_args(argv)
 
 
@@ -287,6 +304,13 @@ def options_from_args(args: argparse.Namespace) -> IndexOptions:
         sq_type=args.sq_type,
         gpu=args.gpu,
         gpu_device=args.gpu_device,
+        scann_reorder=args.scann_reorder,
+        scann_ah_dim=args.scann_ah_dim,
+        scann_anisotropic=args.scann_anisotropic,
+        scann_soar=args.scann_soar,
+        scann_num_neighbors=args.num_neighbors,
+        scann_leaves=args.scann_leaves,
+        scann_leaves_to_search=args.scann_leaves_to_search,
     )
 
 

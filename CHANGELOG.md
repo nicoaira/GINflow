@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- ScaNN seed search (`--index scann`): [Google ScaNN](https://github.com/google-research/google-research/tree/master/scann) (`scann==1.4.2`) as a CPU-only alternative to FAISS. Auto-selects brute-force (<20k windows), AH+reorder (<100k), or tree+AH+reorder. ScaNN knobs are `--scann_leaves`, `--scann_leaves_to_search`, `--scann_reorder`, `--scann_ah_dim`, `--scann_anisotropic`, `--scann_soar`. Artifacts go to `faiss/scann/` instead of `index.faiss`. `--faiss_gpu` with ScaNN is an error.
+- Launch warning when a library-specific flag does not apply to `--index` / `--faiss_index` (for example `--scann_reorder` with FAISS, or `--faiss_nlist` with `FlatIP`). Guide: [docs/indexes.md](docs/indexes.md).
 - Additional FAISS index types (`--faiss_index`): `FlatIP` (default), `FlatL2`, `HNSW`, `IVFFlat`, `LSH`, `SQ`, `PQ`, `IVFSQ`, `IVFPQ`, `IVFPQR`, matching [Faiss indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes). IVF/PQ/HNSW/LSH/SQ knobs are `--faiss_nlist`, `--faiss_nprobe`, `--faiss_pq_m`, `--faiss_pq_nbits`, `--faiss_pq_m_refine`, `--faiss_hnsw_m`, `--faiss_hnsw_ef_construction`, `--faiss_hnsw_ef_search`, `--faiss_lsh_nbits`, `--faiss_sq_type`.
 - Optional FAISS GPU (`--faiss_gpu`) for `FlatIP`, `FlatL2`, `IVFFlat`, `IVFPQ`, and `IVFSQ`. Requires `-profile gpu` so `BUILD_FAISS_INDEX` / `SEARCH_FAISS` get `accelerator = 1` and the `faiss-gpu` image; otherwise the pipeline errors. GPU-incompatible types also error.
 - Optional `start`/`end` columns on the structures table build GINFINITY sliced graphs (one independent subject/query per window, including several comma-separated windows on the same row). Defaults: `--keep_paired_neighbours` with `--context_hops 4`. Mixed examples are in `tests/data/sliced_structures.tsv`. Per-query alignment and plot filenames use `baseName` so two slices of the same accession do not collide.
@@ -25,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Changed`
 
+- Index selection is `--index faiss|scann` plus FAISS-only `--faiss_index`. `--faiss_index ScaNN` is rejected; use `--index scann`. ScaNN tree size is `--scann_leaves` / `--scann_leaves_to_search`, not `--faiss_nlist` / `--faiss_nprobe`.
 - R4RNA plots are now one alignment-coordinate SVG per pair (query arcs up, target arcs flipped down, shared x, identity ribbon). The report shows that figure full-width instead of separate query and target diagrams. `alignments.tsv` keeps gapped `query_aligned` / `target_aligned` strings.
 - Default git branch is `main` (`manifest.defaultBranch` and the schema `$id`).
 - `--plot_max` is now `--plot_max_pairs` (default 25): max alignment pairs **per query**. Each pair plots both partners. `DRAW_R4RNA`, `DRAW_SW`, and `DRAW_RNARTISTCORE` run once per query.
