@@ -1,11 +1,11 @@
-process SEARCH_FAISS {
+process SEARCH_SCANN {
     tag "${meta.id}"
     label 'process_low'
 
-    conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
+    conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        (task.accelerator ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/40/405599a0a76073fa7c942f2773cad66490aabb99fb9825c79ba50ad1157e9a6a/data' : 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/79/7920d351ee6307611f471013dcddff6d8a5c7ec7bf723d854e99a545376b63d8/data') :
-        (task.accelerator ? 'community.wave.seqera.io/library/python_numpy_faiss-gpu:7382ed4d7c6e6258' : 'community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:078dd4f35c795d6e') }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e3/e39b53016c4ed7ede3a06391f841e0bf9d0711e35272ce1ab370ee149343a1fd/data' :
+        'community.wave.seqera.io/library/python_numpy_libstdcxx-ng_pip_scann:b1bc94cdc1825d91' }"
 
     input:
     tuple val(meta), path(windows), path(manifest)
@@ -21,9 +21,7 @@ process SEARCH_FAISS {
     script:
     def args      = task.ext.args   ?: ''
     def prefix    = task.ext.prefix ?: "${meta.id}"
-    def gpu_flag  = task.accelerator ? '--gpu' : ''
-    def nprobe    = params.faiss_nprobe != null ? "--nprobe ${params.faiss_nprobe}" : ''
-    def ef_search = params.faiss_hnsw_ef_search != null ? "--hnsw-ef-search ${params.faiss_hnsw_ef_search}" : ''
+    def scann_lts = params.scann_leaves_to_search != null ? "--scann-leaves-to-search ${params.scann_leaves_to_search}" : ''
     """
     search_faiss.py \\
         --windows ${windows} \\
@@ -32,14 +30,13 @@ process SEARCH_FAISS {
         --output ${prefix}.seeds.tsv \\
         --k ${params.seed_k} \\
         --min-similarity ${params.seed_min_similarity} \\
-        ${nprobe} \\
-        ${ef_search} \\
-        ${gpu_flag} \\
+        --scann-reorder ${params.scann_reorder} \\
+        ${scann_lts} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        faiss: \$(python3 -c "import faiss; print(faiss.__version__)")
+        scann: \$(python3 -c "from importlib.metadata import version; print(version('scann'))")
         numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
     END_VERSIONS
     """
@@ -51,7 +48,7 @@ process SEARCH_FAISS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        faiss: \$(python3 -c "import faiss; print(faiss.__version__)")
+        scann: \$(python3 -c "from importlib.metadata import version; print(version('scann'))")
         numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
     END_VERSIONS
     """

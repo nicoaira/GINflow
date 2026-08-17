@@ -16,7 +16,7 @@ Optional `start` / `end` columns select **sliced graphs** — see [Sliced graphs
 
 Override column names with `--id_column`, `--sequence_column`, `--structure_column`, and `--delimiter`.
 
-Large tables are split into shards of `--shard_size` **input rows** (default `50`) before graph construction. A row that lists several windows expands to several graphs inside that shard. Query search uses the same size unless you set `--search_shard_size` (input rows per `SEARCH_FAISS` task).
+Large tables are split into shards of `--shard_size` **input rows** (default `50`) before graph construction. A row that lists several windows expands to several graphs inside that shard. Query search uses the same size unless you set `--search_shard_size` (input rows per index-search task).
 
 ## Sliced graphs
 

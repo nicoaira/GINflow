@@ -57,7 +57,7 @@ class NgtIndex:
         except ImportError as exc:  # pragma: no cover - exercised in task images
             raise ValueError(
                 "NGT was requested but ngtpy is not installed. Re-run with "
-                "--index ngt so BUILD_FAISS_INDEX and SEARCH_FAISS use the NGT image."
+                "--index ngt so BUILD_NGT_INDEX and SEARCH_NGT use the NGT image."
             ) from exc
 
         self.path = Path(path)

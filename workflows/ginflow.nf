@@ -2,6 +2,12 @@ include { PREPARE_WINDOWS as PREPARE_DB }    from './prepare_windows'
 include { PREPARE_WINDOWS as PREPARE_QUERY } from './prepare_windows'
 include { BUILD_FAISS_INDEX }                from '../modules/build_faiss_index/main'
 include { SEARCH_FAISS }                     from '../modules/search_faiss/main'
+include { BUILD_SCANN_INDEX }                from '../modules/build_scann_index/main'
+include { SEARCH_SCANN }                     from '../modules/search_scann/main'
+include { BUILD_NGT_INDEX }                  from '../modules/build_ngt_index/main'
+include { SEARCH_NGT }                       from '../modules/search_ngt/main'
+include { BUILD_CUVS_INDEX }                 from '../modules/build_cuvs_index/main'
+include { SEARCH_CUVS }                      from '../modules/search_cuvs/main'
 include { CLUSTER_SEEDS }                    from '../modules/cluster_seeds/main'
 include { ALIGN_CLUSTERS }                   from '../modules/align_clusters/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_BUILD } from '../modules/estimate_evd/main'
@@ -21,6 +27,7 @@ workflow GINFLOW {
     database
     reuse_windows
     evd_existing
+    index_library
 
     main:
     ch_versions        = channel.empty()
@@ -29,6 +36,7 @@ workflow GINFLOW {
     ch_windows         = channel.empty()
     ch_built_database  = channel.empty()
     ch_search_database = channel.empty()
+    ch_seed_shards     = channel.empty()
     ch_seeds           = channel.empty()
     ch_clusters        = channel.empty()
     ch_cluster_members = channel.empty()
@@ -57,17 +65,37 @@ workflow GINFLOW {
             }
             .set { ch_db_win }
 
-        BUILD_FAISS_INDEX(
-            ch_db_win.npz.collect(),
-            ch_db_win.manifest.collect(),
-            PREPARE_DB.out.embeddings.map { meta, npz, manifest -> npz }.collect(),
-            PREPARE_DB.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
-        )
-        ch_versions        = ch_versions.mix(BUILD_FAISS_INDEX.out.versions)
-        ch_built_database  = BUILD_FAISS_INDEX.out.database
-        ch_search_database = BUILD_FAISS_INDEX.out.database
+        ch_db_windows   = ch_db_win.npz.collect()
+        ch_db_manifests = ch_db_win.manifest.collect()
+        ch_db_embeddings = PREPARE_DB.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+        ch_db_metadata   = PREPARE_DB.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
 
-        ESTIMATE_EVD_BUILD(BUILD_FAISS_INDEX.out.database, alignment_params)
+        if (index_library == 'faiss') {
+            BUILD_FAISS_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
+            ch_versions       = ch_versions.mix(BUILD_FAISS_INDEX.out.versions)
+            ch_built_database = BUILD_FAISS_INDEX.out.database
+        }
+        else if (index_library == 'scann') {
+            BUILD_SCANN_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
+            ch_versions       = ch_versions.mix(BUILD_SCANN_INDEX.out.versions)
+            ch_built_database = BUILD_SCANN_INDEX.out.database
+        }
+        else if (index_library == 'ngt') {
+            BUILD_NGT_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
+            ch_versions       = ch_versions.mix(BUILD_NGT_INDEX.out.versions)
+            ch_built_database = BUILD_NGT_INDEX.out.database
+        }
+        else if (index_library == 'cuvs') {
+            BUILD_CUVS_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
+            ch_versions       = ch_versions.mix(BUILD_CUVS_INDEX.out.versions)
+            ch_built_database = BUILD_CUVS_INDEX.out.database
+        }
+        else {
+            error "Unsupported index library: ${index_library}"
+        }
+        ch_search_database = ch_built_database
+
+        ESTIMATE_EVD_BUILD(ch_built_database, alignment_params)
         ch_versions = ch_versions.mix(ESTIMATE_EVD_BUILD.out.versions)
         ch_evd      = ESTIMATE_EVD_BUILD.out.evd
     }
@@ -100,9 +128,30 @@ workflow GINFLOW {
             ch_query_metadata   = PREPARE_QUERY.out.graphs
         }
 
-        SEARCH_FAISS(ch_query_windows, ch_search_database.collect())
-        ch_versions = ch_versions.mix(SEARCH_FAISS.out.versions)
-        ch_seeds = SEARCH_FAISS.out.seeds
+        if (index_library == 'faiss') {
+            SEARCH_FAISS(ch_query_windows, ch_search_database.collect())
+            ch_versions    = ch_versions.mix(SEARCH_FAISS.out.versions)
+            ch_seed_shards = SEARCH_FAISS.out.seeds
+        }
+        else if (index_library == 'scann') {
+            SEARCH_SCANN(ch_query_windows, ch_search_database.collect())
+            ch_versions    = ch_versions.mix(SEARCH_SCANN.out.versions)
+            ch_seed_shards = SEARCH_SCANN.out.seeds
+        }
+        else if (index_library == 'ngt') {
+            SEARCH_NGT(ch_query_windows, ch_search_database.collect())
+            ch_versions    = ch_versions.mix(SEARCH_NGT.out.versions)
+            ch_seed_shards = SEARCH_NGT.out.seeds
+        }
+        else if (index_library == 'cuvs') {
+            SEARCH_CUVS(ch_query_windows, ch_search_database.collect())
+            ch_versions    = ch_versions.mix(SEARCH_CUVS.out.versions)
+            ch_seed_shards = SEARCH_CUVS.out.seeds
+        }
+        else {
+            error "Unsupported index library: ${index_library}"
+        }
+        ch_seeds = ch_seed_shards
             .map { meta, tsv -> tsv }
             .collectFile(name: 'seeds.tsv', keepHeader: true, skip: 1, sort: true)
 

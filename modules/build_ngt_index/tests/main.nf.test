@@ -1,0 +1,90 @@
+nextflow_process {
+
+    name "Test Process BUILD_NGT_INDEX"
+    script "../main.nf"
+    process "BUILD_NGT_INDEX"
+
+    tag "modules"
+    tag "build_ngt_index"
+    tag "ngt"
+
+    test("Should build an NGT QBG database with packed records") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+            run("GENERATE_WINDOWS") {
+                script "../../generate_windows/main.nf"
+                process {
+                    """
+                    input[0] = EMBED_RNA_GRAPHS.out.embeddings
+                    """
+                }
+            }
+        }
+
+        when {
+            params {
+                index     = 'ngt'
+                ngt_index = 'qbg'
+            }
+            process {
+                """
+                input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
+                input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
+                input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+                input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.database.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def db = path(process.out.database.get(0))
+                    assert db.resolve('ngt').exists()
+                    assert !db.resolve('index.faiss').exists()
+                    assert db.resolve('windows.tsv').exists()
+                    assert db.resolve('embeddings.npz').exists()
+                    assert db.resolve('records.tsv').exists()
+                    def meta = db.resolve('meta.json').json
+                    assert meta.backend == 'ngt'
+                    assert meta.index_type == 'QBG'
+                    assert meta.index_class == 'QBG'
+                    assert meta.metric == 'l2'
+                    assert meta.gpu == false
+                    assert meta.n_records == 10
+                    assert (meta.n_windows as int) > 0
+                    assert meta.has_residue_embeddings == true
+                },
+                {
+                    def versions = path(process.out.versions.get(0)).readLines().join('\n')
+                    assert versions.contains('ngt:')
+                    assert versions.contains('numpy:')
+                }
+            )
+        }
+
+    }
+
+}

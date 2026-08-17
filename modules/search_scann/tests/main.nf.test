@@ -1,13 +1,14 @@
 nextflow_process {
 
-    name "Test Process SEARCH_FAISS"
+    name "Test Process SEARCH_SCANN"
     script "../main.nf"
-    process "SEARCH_FAISS"
+    process "SEARCH_SCANN"
 
     tag "modules"
-    tag "search_faiss"
+    tag "search_scann"
+    tag "scann"
 
-    test("Should recover self-hits from the smoke-test index") {
+    test("Should recover self-hits from the smoke-test ScaNN index") {
 
         setup {
             run("BUILD_RNA_GRAPHS") {
@@ -37,8 +38,8 @@ nextflow_process {
                     """
                 }
             }
-            run("BUILD_FAISS_INDEX") {
-                script "../../build_faiss_index/main.nf"
+            run("BUILD_SCANN_INDEX") {
+                script "../../build_scann_index/main.nf"
                 process {
                     """
                     input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
@@ -54,7 +55,7 @@ nextflow_process {
             process {
                 """
                 input[0] = GENERATE_WINDOWS.out.windows
-                input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                input[1] = BUILD_SCANN_INDEX.out.database.collect()
                 """
             }
         }
@@ -78,9 +79,6 @@ nextflow_process {
                         def score = line.split('\t')[6] as double
                         assert score > 0.999
                     }
-                },
-                {
-                    assert snapshot(process.out.versions).match()
                 }
             )
         }

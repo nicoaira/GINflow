@@ -17,6 +17,7 @@ from faiss_index import distances_to_similarity  # noqa: E402
 from cuvs_index import (  # noqa: E402
     CUVS_INDEX_TYPES,
     build_populated_index,
+    is_cuvs_database,
     is_cuvs_type,
     load_index,
     normalize_index_type,
@@ -53,6 +54,18 @@ class TestCuvsHelpers(unittest.TestCase):
             distances_to_similarity(np.array([[0.0, 0.25]], dtype=np.float32), "cuvs_cosine"),
             [[1.0, 0.75]],
         )
+
+    def test_database_detection_prefers_explicit_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.assertFalse(is_cuvs_database(root, {"index_type": "IVFFlat"}))
+            self.assertTrue(is_cuvs_database(root, {"backend": "cuvs"}))
+            self.assertTrue(is_cuvs_database(root, {"index_type": "IVF"}))
+            (root / "cuvs").mkdir()
+            self.assertFalse(
+                is_cuvs_database(root, {"backend": "faiss", "index_type": "IVFFlat"})
+            )
+            self.assertTrue(is_cuvs_database(root))
 
 
 def gpu_ready() -> bool:

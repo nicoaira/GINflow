@@ -227,7 +227,7 @@ def validate_cuvs_gpu(library) {
     }
     def profiles = workflow.profile.tokenize(',').collect { it.trim() }
     if (!profiles.contains('gpu')) {
-        error "--index cuvs requires -profile gpu so BUILD_FAISS_INDEX and SEARCH_FAISS get the cuVS image and NVIDIA runtime."
+        error "--index cuvs requires -profile gpu so BUILD_CUVS_INDEX and SEARCH_CUVS get the cuVS image and NVIDIA runtime."
     }
 }
 
@@ -362,9 +362,6 @@ workflow {
     def library = resolve_index_library()
     def kind    = faiss_index_kind()
     params.index = library
-    params.use_scann = library == 'scann'
-    params.use_ngt = library == 'ngt'
-    params.use_cuvs = library == 'cuvs'
     validate_faiss_gpu(library, kind)
     validate_cuvs_gpu(library)
     warn_unused_index_params(library, kind)
@@ -399,7 +396,8 @@ workflow {
         params.query    ?: [],
         params.database ?: [],
         reuse_windows,
-        evd_existing
+        evd_existing,
+        library
     )
 
     samples_ch = result.graphs

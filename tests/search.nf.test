@@ -143,6 +143,28 @@ nextflow_pipeline {
         }
     }
 
+    test("dispatch NGT build and search") {
+
+        tag "ngt"
+        options "-stub"
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size = 2
+                index      = 'ngt'
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/faiss/ngt/.stub").exists()
+            assert path("${params.outdir}/seeds.tsv").exists()
+        }
+    }
+
     test("query an existing database (stub)") {
 
         tag "stub"

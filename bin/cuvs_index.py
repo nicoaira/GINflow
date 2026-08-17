@@ -37,9 +37,12 @@ def is_cuvs_type(name: str | None) -> bool:
 
 
 def is_cuvs_database(directory: Path, meta: dict[str, Any] | None = None) -> bool:
-    if str((meta or {}).get("backend") or "").strip().lower() == "cuvs":
-        return True
-    if is_cuvs_type(str((meta or {}).get("index_type") or "")):
+    backend = str((meta or {}).get("backend") or "").strip().lower()
+    if backend:
+        return backend == "cuvs"
+    index_type = str((meta or {}).get("index_type") or "").strip().upper()
+    # IVFFlat and IVFPQ are FAISS names, so only canonical cuVS types are safe here.
+    if index_type in CUVS_INDEX_TYPES:
         return True
     return (directory / "cuvs").is_dir()
 
@@ -59,7 +62,7 @@ def require_gpu() -> None:
     except ImportError as exc:
         raise ValueError(
             "cuVS was requested but CuPy is not installed. Re-run with --index cuvs "
-            "so BUILD_FAISS_INDEX and SEARCH_FAISS use the cuVS GPU image."
+            "so BUILD_CUVS_INDEX and SEARCH_CUVS use the cuVS GPU image."
         ) from exc
     if not gpu_available():
         raise ValueError(

@@ -149,7 +149,7 @@
                 "search_shard_size": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "Query records per SEARCH_FAISS job. Defaults to --shard_size. Does not change database graph/embed shards. Ignored when --input and --query are the same file (search reuses the database shards)."
+                    "description": "Query records per index-search job. Defaults to --shard_size. Does not change database graph/embed shards. Ignored when --input and --query are the same file (search reuses the database shards)."
                 },
                 "index": {
                     "type": "string",
@@ -314,12 +314,6 @@
                     "type": "integer",
                     "minimum": 1,
                     "description": "ScaNN leaves visited at search time. Applies to: --index scann when a tree is used. Unset = min(8, leaves)."
-                },
-                "use_scann": {
-                    "type": "boolean",
-                    "default": false,
-                    "hidden": true,
-                    "description": "Internal. Set automatically when --index is scann or the --database was built with ScaNN."
                 }
             }
         },

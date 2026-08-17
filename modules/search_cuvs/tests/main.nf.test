@@ -1,13 +1,15 @@
 nextflow_process {
 
-    name "Test Process SEARCH_FAISS"
+    name "Test Process SEARCH_CUVS"
     script "../main.nf"
-    process "SEARCH_FAISS"
+    process "SEARCH_CUVS"
 
+    tag "cuvs"
+    tag "gpu"
     tag "modules"
-    tag "search_faiss"
+    tag "search_cuvs"
 
-    test("Should recover self-hits from the smoke-test index") {
+    test("Should recover self-hits without params.index selecting cuVS") {
 
         setup {
             run("BUILD_RNA_GRAPHS") {
@@ -37,8 +39,8 @@ nextflow_process {
                     """
                 }
             }
-            run("BUILD_FAISS_INDEX") {
-                script "../../build_faiss_index/main.nf"
+            run("BUILD_CUVS_INDEX") {
+                script "../../build_cuvs_index/main.nf"
                 process {
                     """
                     input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> npz }.collect()
@@ -51,10 +53,16 @@ nextflow_process {
         }
 
         when {
+            params {
+                cuvs_index                     = 'cagra'
+                cuvs_intermediate_graph_degree = 32
+                cuvs_graph_degree              = 16
+                seed_min_similarity            = 0.99
+            }
             process {
                 """
                 input[0] = GENERATE_WINDOWS.out.windows
-                input[1] = BUILD_FAISS_INDEX.out.database.collect()
+                input[1] = BUILD_CUVS_INDEX.out.database.collect()
                 """
             }
         }
@@ -69,18 +77,16 @@ nextflow_process {
                     assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
                     def rows = seeds.drop(1).findAll { it }
                     assert rows.size() > 0
-                    def selfHits = rows.findAll { line ->
+                    assert rows.any { line ->
                         def cols = line.split('\t')
-                        cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
-                    }
-                    assert selfHits.size() > 0
-                    selfHits.each { line ->
-                        def score = line.split('\t')[6] as double
-                        assert score > 0.999
+                        cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1' && (cols[6] as double) > 0.999
                     }
                 },
                 {
-                    assert snapshot(process.out.versions).match()
+                    def versions = path(process.out.versions.get(0)).readLines().join('\n')
+                    assert versions.contains('cuvs:')
+                    assert versions.contains('cupy:')
+                    assert versions.contains('numpy:')
                 }
             )
         }

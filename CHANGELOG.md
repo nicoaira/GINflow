@@ -27,12 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Changed`
 
-- Index selection is `--index faiss|scann` plus FAISS-only `--faiss_index`. `--faiss_index scann` is rejected; use `--index scann`. ScaNN tree size is `--scann_leaves` / `--scann_leaves_to_search`, not `--faiss_nlist` / `--faiss_nprobe`.
+- Index construction and search now use a dedicated process pair for each backend: FAISS, ScaNN, NGT, and cuVS. Each pair owns only its backend environment, container, parameters, and accelerator requirements.
+- Index selection is `--index faiss|scann|ngt|cuvs` plus the matching backend-specific index option. `--faiss_index scann` is rejected; use `--index scann`. ScaNN tree size is `--scann_leaves` / `--scann_leaves_to_search`, not `--faiss_nlist` / `--faiss_nprobe`.
 - String-valued parameter choices are lowercase, including all `--faiss_index`, `--ngt_index`, `--cuvs_index`, embedding, plotting, and report-theme values.
 - R4RNA plots are now one alignment-coordinate SVG per pair (query arcs up, target arcs flipped down, shared x, identity ribbon). The report shows that figure full-width instead of separate query and target diagrams. `alignments.tsv` keeps gapped `query_aligned` / `target_aligned` strings.
 - Default git branch is `main` (`manifest.defaultBranch` and the schema `$id`).
 - `--plot_max` is now `--plot_max_pairs` (default 25): max alignment pairs **per query**. Each pair plots both partners. `DRAW_R4RNA`, `DRAW_SW`, and `DRAW_RNARTISTCORE` run once per query.
-- `ALIGN_CLUSTERS` and plot processes run per query (`SPLIT_CLUSTERS` then `MERGE_ALIGNMENTS` for the shared `alignments.tsv` / `report.html`). `SEARCH_FAISS` stays batched; `--search_shard_size` sets query records per search task (default: `--shard_size`).
+- `ALIGN_CLUSTERS` and plot processes run per query (`SPLIT_CLUSTERS` then `MERGE_ALIGNMENTS` for the shared `alignments.tsv` / `report.html`). Index search stays batched by query shard; `--search_shard_size` sets query records per search task (default: `--shard_size`).
 - `report.html` plot panel is a two-column Query | Target grid (one row per RNArtistCore, R4RNA, and alignment plot). Results are paginated: 10 per page by default, or 25 / 50 / 100 / 150.
 - README, R4RNA / RNArtistCore plots, and `report.html` use the nf-core palette (green `#24B064`, yellow `#ECDC86`, brown `#3F2B29`, dark green `#396E35`, Bootstrap grays). `--plot_highlight_colour` now defaults to `#24B064`.
 - `report.html` is a light theme by default. `--report_theme dark` writes a gray-900 report; a masthead toggle switches themes in the browser.

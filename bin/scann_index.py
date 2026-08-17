@@ -41,7 +41,7 @@ def _import_scann():
     except ImportError as exc:
         raise ValueError(
             "ScaNN was requested but the scann package is not installed. "
-            "Re-run with --index scann so BUILD_FAISS_INDEX and SEARCH_FAISS "
+            "Re-run with --index scann so BUILD_SCANN_INDEX and SEARCH_SCANN "
             "use the ScaNN image."
         ) from exc
     return scann
@@ -242,7 +242,7 @@ def build_populated_searcher(
 def serialize_index(index: ScannIndex, directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     # relative_path=True stores asset names (dataset.npy) instead of the build
-    # workdir path, so SEARCH_FAISS can load the staged copy.
+    # workdir path, so SEARCH_SCANN can load the staged copy.
     index.searcher.serialize(str(directory.resolve()), True)
 
 

@@ -5,7 +5,7 @@
 %%metro legend: bl
 %%metro compact_offsets: true
 %%metro directional: true
-%%metro caption: GINFINITY graphs · FAISS seeds · GINFINITY-SW alignments
+%%metro caption: GINFINITY graphs · vector-index seeds · GINFINITY-SW alignments
 %%metro line_order: definition
 %%metro diamond_style: symmetric
 %%metro section_y_gap: 70
@@ -38,9 +38,9 @@
 %%metro process: q_graphs | PREPARE_QUERY:BUILD_RNA_GRAPHS
 %%metro process: q_embed | PREPARE_QUERY:EMBED_RNA_GRAPHS
 %%metro process: q_windows | PREPARE_QUERY:GENERATE_WINDOWS
-%%metro process: build_faiss | BUILD_FAISS_INDEX
+%%metro process: build_index | BUILD_(FAISS|SCANN|NGT|CUVS)_INDEX
 %%metro process: estimate_evd | ESTIMATE_EVD
-%%metro process: search_faiss | SEARCH_FAISS
+%%metro process: search_index | SEARCH_(FAISS|SCANN|NGT|CUVS)
 %%metro process: cluster_seeds | CLUSTER_SEEDS
 %%metro process: split_clusters | SPLIT_CLUSTERS
 %%metro process: align_clusters | ALIGN_CLUSTERS
@@ -80,19 +80,19 @@ graph LR
 
     subgraph index [Index]
         faiss_in[ ]
-        build_faiss[Build FAISS]
+        build_index[Build index]
         estimate_evd[Estimate EVD]
         faiss_out[ ]
         faiss_in -->|existing| estimate_evd
-        build_faiss -->|index,search| estimate_evd
+        build_index -->|index,search| estimate_evd
         estimate_evd -->|index| faiss_out
     end
 
     subgraph retrieve [Search]
-        search_faiss[Search FAISS]
+        search_index[Search index]
         cluster_seeds[Cluster seeds]
         split_clusters[Split clusters]
-        search_faiss -->|search,existing| cluster_seeds
+        search_index -->|search,existing| cluster_seeds
         cluster_seeds -->|search,existing| split_clusters
     end
 
@@ -117,9 +117,9 @@ graph LR
     end
 
     %% Inter-section edges
-    db_windows -->|index,search| build_faiss
-    q_windows -->|search,existing| search_faiss
-    estimate_evd -->|search,existing| search_faiss
+    db_windows -->|index,search| build_index
+    q_windows -->|search,existing| search_index
+    estimate_evd -->|search,existing| search_index
     split_clusters -->|search,existing| align_clusters
     merge_alignments -->|search,existing| write_report
     merge_alignments -->|rnartist| draw_rnartist
