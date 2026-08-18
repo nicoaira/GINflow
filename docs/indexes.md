@@ -77,8 +77,6 @@ because the window vectors are already L2-normalized.
 | `--ngt_edge_size_for_creation` | `10` | Initial graph edges per node during construction. Higher values can improve recall at build-time and index-size cost. |
 | `--ngt_edge_size_for_search` | `40` | Graph edges explored per node during search and stored as the regular graph's search edge setting. |
 | `--ngt_num_threads` | `8` | Threads used by `ngtpy` batch insertion/index construction. |
-| `distance_type` *(fixed)* | `Cosine` | Distance used to build the graph. Input windows are already L2-normalized. |
-| `object_type` *(fixed)* | `Float` | NGT storage type used by the adapter. |
 
 #### Search parameters
 
@@ -175,8 +173,6 @@ attached so a later search-only run can load the database.
 | `--cuvs_graph_degree` | `64` | Number of neighbours retained in the final graph. Higher values improve recall at graph-memory and search cost. It cannot exceed the intermediate degree. |
 | `--cuvs_build_algo` | `nn_descent` | Initial graph builder. Choices are `ivf_pq`, `nn_descent`, `iterative_cagra_search`, and `ace`. |
 | `--cuvs_itopk_size` | `64` | Intermediate candidate count persisted with the CAGRA database for later searches. The runtime raises it to at least `--seed_k`. |
-| `metric` *(fixed)* | `cosine` | CAGRA uses cosine distance because GINflow windows are L2-normalized. |
-| `attach_dataset_on_build` *(fixed)* | `true` | The serialized index includes its dataset, which is required for the current search-only workflow. |
 
 #### Search parameters
 
@@ -185,7 +181,6 @@ attached so a later search-only run can load the database.
 | `--cuvs_itopk_size` | `64` | Intermediate candidate count for CAGRA search. It is stored in `meta.json` at build time and is raised to at least `--seed_k` for an actual query. Increase it for recall at throughput cost. |
 | `--seed_k` | `50` | Final neighbours requested from CAGRA per query window. |
 | `--seed_min_similarity` | `0.8` | Cosine-like threshold after converting cuVS cosine distance. |
-| `max_queries`, `max_iterations`, `algo`, `team_size`, `search_width`, and other CAGRA search controls | not exposed | The current pinned Python adapter does not expose these upstream fields as Nextflow parameters. |
 
 The upstream CAGRA API also has options such as `metric_arg`, `compression`,
 `graph_build_params`, and `guarantee_connectivity`. They are not silently
@@ -202,7 +197,6 @@ schema change.
 | `--cuvs_index` | `ivf` | Selects cuVS IVF-Flat. |
 | `--cuvs_n_lists` | `min(4 * sqrt(n), n)` | Number of coarse IVF lists. The resolved value is capped at the number of indexed windows. |
 | `--cuvs_n_probes` | `min(20, n_lists)` | Lists searched per query by default. The resolved value is stored in `meta.json` and can be overridden for a later search. |
-| `metric` *(fixed)* | `cosine` | Distance metric used by cuVS IVF-Flat. |
 
 #### Search parameters
 
@@ -223,7 +217,6 @@ schema change.
 | `--cuvs_n_probes` | `min(20, n_lists)` | Default lists searched per query. The resolved value is stored in `meta.json`. |
 | `--cuvs_pq_bits` | `8` | Bits per product-quantization code. Supported values are `4`, `5`, `6`, `7`, and `8`. |
 | `--cuvs_pq_dim` | `0` | Compressed dimension. `0` delegates the choice to cuVS; otherwise choose a dimension compatible with the window dimension. |
-| `metric` *(fixed)* | `cosine` | Distance metric used by cuVS IVF-PQ. |
 
 #### Search parameters
 
@@ -269,7 +262,6 @@ the value of `--faiss_pq_nbits`. With the default `n=8`, that is 256 windows.
 |---|---:|---|
 | `--faiss_index` | `flatip` | Selects exact inner-product search. |
 | `--faiss_gpu` | `false` | Build on GPU when `true`; requires `-profile gpu`. |
-| `metric` *(fixed)* | inner product | L2-normalized windows make inner product equivalent to cosine similarity. |
 
 #### Search parameters
 
@@ -287,7 +279,6 @@ the value of `--faiss_pq_nbits`. With the default `n=8`, that is 256 windows.
 |---|---:|---|
 | `--faiss_index` | `flatl2` | Selects exact squared-L2 search. |
 | `--faiss_gpu` | `false` | Build on GPU when `true`; requires `-profile gpu`. |
-| `metric` *(fixed)* | squared L2 | The adapter converts squared L2 distances to cosine-like scores. |
 
 #### Search parameters
 
@@ -422,7 +413,6 @@ the value of `--faiss_pq_nbits`. With the default `n=8`, that is 256 windows.
 |---|---:|---|
 | `--faiss_index` | `lsh` | Selects FAISS locality-sensitive hashing. |
 | `--faiss_lsh_nbits` | `2 * window_dim` | Hamming code length. Larger codes increase memory and can change recall. |
-| `metric` *(fixed)* | Hamming | Hamming distance is converted to a cosine-like score for thresholding. |
 
 #### Search parameters
 
@@ -444,7 +434,6 @@ the value of `--faiss_pq_nbits`. With the default `n=8`, that is 256 windows.
 | `--faiss_pq_m` | `16` | Number of primary PQ subvectors; must divide the window dimension. |
 | `--faiss_pq_nbits` | `8` | Bits per primary PQ subquantizer: `4`, `8`, `12`, or `16`. |
 | `--faiss_pq_m_refine` | `4` | Number of extra PQ subvectors used for refinement. |
-| `metric` *(fixed)* | squared L2 | FAISS 1.10 implements the IVFPQR path as L2; scores are converted to cosine-like values. |
 
 #### Search parameters
 
