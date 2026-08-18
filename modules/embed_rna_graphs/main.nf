@@ -4,8 +4,8 @@ process EMBED_RNA_GRAPHS {
 
     conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        (task.accelerator ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/6b/6b4bdbc4205729d72e9cd7bba9ec992386928246f0fd0546f74d771adcd2b7b9/data' : 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/65/6585e5731a92a6725c71af35c8462cfd871fbd4e9798e8a8144eec43343062ee/data') :
-        (task.accelerator ? 'community.wave.seqera.io/library/ginfinity_pytorch-gpu_cuda-version:055fb9718f25c342' : 'community.wave.seqera.io/library/ginfinity:1.1.0--55be3b8c50d410c9') }"
+        (task.accelerator ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/30/30bd42d8856c1e86b0d195aa80b1100979719942fc21b56759e3b7735e28b6dd/data' : 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/9a/9af1d5c2bf9cb29fac6bef4b49ac1c9d3bf0c0885dc4f8f3f44109e8832737bb/data') :
+        (task.accelerator ? 'community.wave.seqera.io/library/ginfinity_pytorch-gpu_cuda-version:2bfaf62f521c8200' : 'community.wave.seqera.io/library/ginfinity:1.2.1--18305a26eeaa0fcb') }"
 
     input:
     tuple val(meta), path(graphs), path(metadata)

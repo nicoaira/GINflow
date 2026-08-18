@@ -4,8 +4,8 @@ process BUILD_RNA_GRAPHS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/65/6585e5731a92a6725c71af35c8462cfd871fbd4e9798e8a8144eec43343062ee/data' :
-        'community.wave.seqera.io/library/ginfinity:1.1.0--55be3b8c50d410c9' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/9a/9af1d5c2bf9cb29fac6bef4b49ac1c9d3bf0c0885dc4f8f3f44109e8832737bb/data' :
+        'community.wave.seqera.io/library/ginfinity:1.2.1--18305a26eeaa0fcb' }"
 
     input:
     tuple val(meta), path(structures)

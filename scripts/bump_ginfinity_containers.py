@@ -425,7 +425,7 @@ def replace_agents(
     cuda_version: str,
 ) -> str:
     text, n = re.subn(
-        r"nicolas\.aira::ginfinity==\S+",
+        r"nicolas\.aira::ginfinity==[^`\s]+",
         f"nicolas.aira::ginfinity=={version}",
         text,
         count=1,

@@ -4,6 +4,6 @@ channels:
   - conda-forge
   - nicolas.aira
 dependencies:
-  - nicolas.aira::ginfinity=1.1.0
+  - nicolas.aira::ginfinity=1.2.1
   - conda-forge::pytorch-gpu=2.6.0
   - conda-forge::cuda-version=12.6

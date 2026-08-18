@@ -2,10 +2,10 @@
     "Should build a graph shard from a structures TSV with extra columns": {
         "content": [
             [
-                "versions.yml:md5,b0dbd42c8068b7e0d90cfeb06c4c60d9"
+                "versions.yml:md5,8abfd4bee05136f18d8fe04eebbdade7"
             ]
         ],
-        "timestamp": "2026-08-15T15:04:59.365913067",
+        "timestamp": "2026-08-18T17:36:36.991565647",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.04.6"

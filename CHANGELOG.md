@@ -48,7 +48,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Dependencies`
 
-- Graph and embed modules use `nicolas.aira::ginfinity=1.1.0` (sliced graphs).
+- Graph and embed modules use `nicolas.aira::ginfinity=1.2.1` (sliced graphs; float16 embeddings).
 - FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`). GPU FAISS uses `pytorch::faiss-gpu=1.10.0` (CUDA 12.1 runtime) so it runs on host drivers that report CUDA 12.1/12.2 (e.g. 535.x). conda-forge `faiss-gpu` 1.10 is CUDA 12.9-only.
 - Alignment uses `nicolas.aira::ginfinity-sw=1.0.1`.
 - Plotting uses `nicolas.aira::rnartistcore=0.4.6` and `nicolas.aira::r-r4rna=2.0.9`.
