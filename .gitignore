@@ -13,8 +13,13 @@ work/
 null/
 .lineage/
 .repowise/
+.firecrawl/
 ro-crate-metadata.json
 results*
+!benchmarks/results_common.py
+!benchmarks/results-template.md
+!benchmarks/tests/fixtures/
+!benchmarks/tests/fixtures/results_valid.jsonl
 scripts/build_test_structures.py
 test_search/
 
