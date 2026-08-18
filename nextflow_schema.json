@@ -163,6 +163,89 @@
                     "enum": ["ngt", "qg", "qbg"],
                     "description": "NGT structure. ngt is the regular graph, qg is the quantized graph, and qbg is the quantized blob graph. Applies to --index ngt. CPU-only."
                 },
+                "ngt_edge_size_for_creation": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 1,
+                    "description": "Initial graph edges per node during NGT construction. Higher values can improve recall at build-time and index-size cost. Applies to --index ngt with ngt or qg."
+                },
+                "ngt_edge_size_for_search": {
+                    "type": "integer",
+                    "default": 40,
+                    "minimum": 1,
+                    "description": "Graph edges explored per node during NGT search, and the regular-graph search edge setting written at build time. Applies to all NGT structures; the build-time setting is used by ngt and qg."
+                },
+                "ngt_num_threads": {
+                    "type": "integer",
+                    "default": 8,
+                    "minimum": 1,
+                    "description": "Threads used by ngtpy batch insertion/index construction. Applies to --index ngt with ngt or qg."
+                },
+                "ngt_max_no_of_edges": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Maximum NGT edges explored at search time; when building qg/qbg it is also passed to qbg build-qg/build -E and used as the QBG Python loader's max_no_of_edges. Unset uses --ngt_edge_size_for_search for search and the current QBG loader fallback of 128. Applies to all NGT structures."
+                },
+                "ngt_num_of_search_objects": {
+                    "type": "integer",
+                    "default": 20,
+                    "minimum": 1,
+                    "description": "Initial candidate objects explored by NGT's two-stage search. Higher values generally improve recall at search-time cost. Applies to all NGT structures."
+                },
+                "ngt_search_range_coefficient": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "NGT search epsilon/search-range coefficient. Unset uses the binding default (0.1 for regular NGT, 0.02 for QG/QBG). Applies to all NGT structures."
+                },
+                "ngt_blob_search_range_coefficient": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Additional QBG blob-stage search epsilon. Unset leaves the QBG binding default. Applies only to qbg."
+                },
+                "ngt_search_radius": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Optional maximum NGT distance/radius for search. Unset means no radius limit. Applies to all NGT structures."
+                },
+                "ngt_result_expansion": {
+                    "type": "number",
+                    "minimum": 0,
+                    "description": "Expansion ratio for approximate quantized search candidates. Higher values can improve recall at search-time cost. Applies to qg and qbg; unset preserves binding defaults."
+                },
+                "ngt_exploration_size": {
+                    "type": "integer",
+                    "default": 256,
+                    "minimum": 1,
+                    "description": "QBG exploration size for the blob-graph search. Higher values can improve recall at search-time cost. Applies only to qbg."
+                },
+                "ngt_exact_result_expansion": {
+                    "type": "number",
+                    "default": 0.0,
+                    "minimum": 0,
+                    "description": "QBG exact-result expansion factor used after approximate search. Applies only to qbg."
+                },
+                "ngt_num_of_probes": {
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1,
+                    "description": "QBG probe count for the two-stage search. One probe avoids empty results on small collections with current NGT releases; higher values can improve recall at cost. Applies only to qbg."
+                },
+                "ngt_qg_subvector_dimensions": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "QG quantizer subvector dimension passed to qbg create-qg -Q. Unset uses qbg's dimension heuristic. Applies only to qg."
+                },
+                "ngt_qbg_subvectors": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "QBG local quantizer division/subvector count passed to qbg create -N. Unset uses qbg's default. Applies only to qbg."
+                },
+                "ngt_qbg_cluster_data_type": {
+                    "type": "string",
+                    "default": "pq4",
+                    "enum": ["pq4", "sq8"],
+                    "description": "QBG cluster/codebook storage type passed to qbg create -C. pq4 is compact; sq8 can improve quantization fidelity at higher storage cost. Applies only to qbg."
+                },
                 "cuvs_index": {
                     "type": "string",
                     "default": "cagra",

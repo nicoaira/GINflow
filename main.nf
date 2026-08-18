@@ -95,6 +95,7 @@ def normalize_parameter_values() {
         quantizedblobgraph: 'qbg',
         'quantized-blob-graph': 'qbg',
     ])
+    normalize_lowercase_choice('ngt_qbg_cluster_data_type', 'pq4', ['pq4', 'sq8'])
     normalize_lowercase_choice('cuvs_index', 'cagra', ['cagra', 'ivf', 'ivf-pq'], [
         'ivf-flat': 'ivf',
         ivfpq: 'ivf-pq',
@@ -247,6 +248,21 @@ def warn_unused_index_params(library, kind) {
 
     if (library == 'scann') {
         collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
+        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
+        collect_if_unused(unused, 'ngt_num_threads', 8, false)
+        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
+        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
+        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_search_radius', null, false)
+        collect_if_unused(unused, 'ngt_result_expansion', null, false)
+        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
+        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
+        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
+        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
+        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
+        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
         collect_if_unused(unused, 'cuvs_index', 'cagra', false)
         collect_if_unused(unused, 'cuvs_n_lists', null, false)
         collect_if_unused(unused, 'cuvs_n_probes', null, false)
@@ -270,6 +286,24 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
     }
     else if (library == 'ngt') {
+        def ngt_kind = (params.ngt_index as String).trim().toUpperCase()
+        def regular_graph = ['NGT', 'QG'].contains(ngt_kind)
+        def qbg = ngt_kind == 'QBG'
+        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, regular_graph)
+        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, true)
+        collect_if_unused(unused, 'ngt_num_threads', 8, regular_graph)
+        collect_if_unused(unused, 'ngt_max_no_of_edges', null, true)
+        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, true)
+        collect_if_unused(unused, 'ngt_search_range_coefficient', null, true)
+        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, qbg)
+        collect_if_unused(unused, 'ngt_search_radius', null, true)
+        collect_if_unused(unused, 'ngt_result_expansion', null, ['QG', 'QBG'].contains(ngt_kind))
+        collect_if_unused(unused, 'ngt_exploration_size', 256, qbg)
+        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, qbg)
+        collect_if_unused(unused, 'ngt_num_of_probes', 1, qbg)
+        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, ngt_kind == 'QG')
+        collect_if_unused(unused, 'ngt_qbg_subvectors', null, qbg)
+        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', qbg)
         collect_if_unused(unused, 'cuvs_index', 'cagra', false)
         collect_if_unused(unused, 'cuvs_n_lists', null, false)
         collect_if_unused(unused, 'cuvs_n_probes', null, false)
@@ -300,6 +334,21 @@ def warn_unused_index_params(library, kind) {
     }
     else if (library == 'cuvs') {
         collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
+        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
+        collect_if_unused(unused, 'ngt_num_threads', 8, false)
+        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
+        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
+        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_search_radius', null, false)
+        collect_if_unused(unused, 'ngt_result_expansion', null, false)
+        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
+        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
+        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
+        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
+        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
+        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
         collect_if_unused(unused, 'faiss_index', 'flatip', false)
         collect_if_unused(unused, 'faiss_gpu', false, false)
         collect_if_unused(unused, 'faiss_nlist', null, false)
@@ -321,6 +370,21 @@ def warn_unused_index_params(library, kind) {
     }
     else {
         collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
+        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
+        collect_if_unused(unused, 'ngt_num_threads', 8, false)
+        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
+        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
+        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_search_radius', null, false)
+        collect_if_unused(unused, 'ngt_result_expansion', null, false)
+        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
+        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
+        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
+        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
+        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
+        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
         collect_if_unused(unused, 'cuvs_index', 'cagra', false)
         collect_if_unused(unused, 'cuvs_n_lists', null, false)
         collect_if_unused(unused, 'cuvs_n_probes', null, false)

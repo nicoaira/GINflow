@@ -73,6 +73,9 @@ nextflow_process {
                     assert meta.index_class == 'QBG'
                     assert meta.metric == 'l2'
                     assert meta.gpu == false
+                    assert meta.ngt_edge_size_for_search == 40
+                    assert meta.ngt_max_no_of_edges == null
+                    assert meta.ngt_qbg_cluster_data_type == 'PQ4'
                     assert meta.n_records == 10
                     assert (meta.n_windows as int) > 0
                     assert meta.has_residue_embeddings == true

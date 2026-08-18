@@ -18,6 +18,7 @@ from ngt_index import (  # noqa: E402
     build_populated_index,
     is_ngt_type,
     load_index,
+    meta_from_details,
     normalize_index_type,
     serialize_index,
 )
@@ -73,6 +74,32 @@ class TestNgtIndexes(unittest.TestCase):
                     self.assertEqual(int(loaded_labels[0, 0]), int(labels[0, 0]))
                     self.assertTrue(np.isfinite(loaded_distances[0, 0]))
                     loaded.close()
+
+    def test_exposed_qbg_options_survive_roundtrip(self) -> None:
+        options = {
+            "edge_size_for_creation": 12,
+            "edge_size_for_search": 48,
+            "num_threads": 2,
+            "max_no_of_edges": 32,
+            "num_of_search_objects": 12,
+            "search_range_coefficient": 0.05,
+            "exploration_size": 64,
+            "num_of_probes": 1,
+        }
+        index, details = build_populated_index(self.vectors, "qbg", options)
+        self.assertEqual(details["ngt_options"]["edge_size_for_search"], 48)
+        self.assertEqual(details["ngt_options"]["max_no_of_edges"], 32)
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "ngt"
+            serialize_index(index, destination)
+            meta = meta_from_details(details)
+            meta["n_windows"] = 100
+            loaded = load_index(destination, meta)
+            distances, labels = loaded.search(self.vectors[:1], 5)
+            self.assertEqual(labels.shape, (1, 5))
+            self.assertEqual(int(labels[0, 0]), 0)
+            self.assertTrue(np.isfinite(distances[0, 0]))
+            loaded.close()
 
 
 if __name__ == "__main__":

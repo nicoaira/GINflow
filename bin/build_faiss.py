@@ -134,6 +134,7 @@ def build_index(
     options: IndexOptions | None = None,
     backend: str = "faiss",
     ngt_index_type: str = "ngt",
+    ngt_options: dict[str, Any] | None = None,
     cuvs_index_type: str = "cagra",
     cuvs_options: dict[str, Any] | None = None,
 ) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
@@ -173,7 +174,7 @@ def build_index(
     xb = np.ascontiguousarray(np.concatenate(all_vectors, axis=0), dtype=np.float32)
     chosen = options or IndexOptions()
     if backend == "ngt":
-        index, details = build_ngt_index(xb, ngt_index_type)
+        index, details = build_ngt_index(xb, ngt_index_type, ngt_options)
     elif backend == "cuvs":
         index, details = build_cuvs_index(xb, cuvs_index_type, **(cuvs_options or {}))
     elif is_scann_type(chosen.index_type):
@@ -288,6 +289,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--backend", choices=("faiss", "scann", "ngt", "cuvs"), default="faiss")
     parser.add_argument("--index-type", default="flatip")
     parser.add_argument("--ngt-index-type", default="ngt")
+    parser.add_argument("--ngt-edge-size-for-creation", type=int, default=10)
+    parser.add_argument("--ngt-edge-size-for-search", type=int, default=40)
+    parser.add_argument("--ngt-num-threads", type=int, default=8)
+    parser.add_argument("--ngt-max-no-of-edges", type=int)
+    parser.add_argument("--ngt-num-of-search-objects", type=int, default=20)
+    parser.add_argument("--ngt-search-range-coefficient", type=float)
+    parser.add_argument("--ngt-blob-search-range-coefficient", type=float)
+    parser.add_argument("--ngt-search-radius", type=float)
+    parser.add_argument("--ngt-result-expansion", type=float)
+    parser.add_argument("--ngt-exploration-size", type=int, default=256)
+    parser.add_argument("--ngt-exact-result-expansion", type=float, default=0.0)
+    parser.add_argument("--ngt-num-of-probes", type=int, default=1)
+    parser.add_argument("--ngt-qg-subvector-dimensions", type=int)
+    parser.add_argument("--ngt-qbg-subvectors", type=int)
+    parser.add_argument("--ngt-qbg-cluster-data-type", default="PQ4")
     parser.add_argument("--cuvs-index-type", default="cagra")
     parser.add_argument("--cuvs-n-lists", type=int)
     parser.add_argument("--cuvs-n-probes", type=int)
@@ -357,6 +373,26 @@ def cuvs_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def ngt_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "edge_size_for_creation": args.ngt_edge_size_for_creation,
+        "edge_size_for_search": args.ngt_edge_size_for_search,
+        "num_threads": args.ngt_num_threads,
+        "max_no_of_edges": args.ngt_max_no_of_edges,
+        "num_of_search_objects": args.ngt_num_of_search_objects,
+        "search_range_coefficient": args.ngt_search_range_coefficient,
+        "blob_search_range_coefficient": args.ngt_blob_search_range_coefficient,
+        "search_radius": args.ngt_search_radius,
+        "result_expansion": args.ngt_result_expansion,
+        "exploration_size": args.ngt_exploration_size,
+        "exact_result_expansion": args.ngt_exact_result_expansion,
+        "num_of_probes": args.ngt_num_of_probes,
+        "qg_subvector_dimensions": args.ngt_qg_subvector_dimensions,
+        "qbg_subvectors": args.ngt_qbg_subvectors,
+        "qbg_cluster_data_type": args.ngt_qbg_cluster_data_type,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -366,6 +402,7 @@ def main(argv: list[str] | None = None) -> int:
             options_from_args(args),
             backend=args.backend,
             ngt_index_type=args.ngt_index_type,
+            ngt_options=ngt_options_from_args(args),
             cuvs_index_type=args.cuvs_index_type,
             cuvs_options=cuvs_options_from_args(args),
         )
