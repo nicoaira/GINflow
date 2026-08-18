@@ -56,7 +56,7 @@ One GINFINITY graph shard per input chunk (`--shard_size` records), in a subdire
 
 Per-nucleotide embeddings from `ginfinity embed-graphs`, one subdirectory per shard.
 
-- `*.npz` — one array per identifier, shape `(L, 128)`, stored as float16 by default. For a slice, `L` is the core window (`end - start`), not the source molecule.
+- `*.npz` — one array per identifier, shape `(L, 128)`, stored as float16 by default. `--ginfinity_full_precision` changes GINFINITY's model inference to float32; it does not change the default embedding storage dtype. For a slice, `L` is the core window (`end - start`), not the source molecule.
 - `*.manifest.json` — package/model versions, device, and record shapes (`core_length`, and `start`/`end` when sliced)
 
 ## windows/

@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diverse Rfam test tables: 10-sequence `-profile smoke_test` (`tests/data/smoke_test_structures.tsv`) and 1200-sequence `-profile test` (`tests/data/test_structures.tsv`), rebuilt from 12 Rfam families using each record's full sequence and structure, with 5-mer Jaccard < 0.4.
 - GPU conda env `modules/embed_rna_graphs/environment.gpu.yml` and `tests/nextflow.gpu.config`, matching nf-core ribodetector's `task.accelerator` switch.
 - `scripts/bump_ginfinity_containers.py` rebuilds the CPU and GPU Wave images for a new `ginfinity` release and pins the URLs in the module `environment*.yml` files and `main.nf` processes.
+- GINFINITY embeddings are stored as float16; CPU model inference defaults to full precision, while the GPU profile defaults to float16. `--ginfinity_full_precision` enables full-precision inference explicitly.
 
 ### `Changed`
 

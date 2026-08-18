@@ -49,6 +49,42 @@ nextflow_process {
 
     }
 
+    test("Should pass the full-precision flag to GINFINITY") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'full_precision' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+        }
+
+        when {
+            params {
+                ginfinity_full_precision = true
+            }
+            process {
+                """
+                input[0] = BUILD_RNA_GRAPHS.out.graphs
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.embeddings.size() == 1 }
+            )
+        }
+
+    }
+
     test("Should embed each slice as an independent core-length record") {
 
         setup {

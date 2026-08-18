@@ -36,6 +36,10 @@ def cli_has_flag(cli, token) {
     return cli.contains('--' + token + '=') || cli.contains('--' + token + ' ') || cli.endsWith('--' + token)
 }
 
+def cli_has_bare_flag(token) {
+    return ((workflow.commandLine ?: '') as String).tokenize().contains('--' + token)
+}
+
 def parameter_on_cli(name) {
     def cli = (workflow.commandLine ?: '') as String
     def dashed = name.replace('_', '-')
@@ -86,8 +90,33 @@ def normalize_lowercase_choice(name, default_value, choices, aliases = [:]) {
     return value
 }
 
+def normalize_boolean_param(name, default_value = false) {
+    def raw = params[name]
+    if (raw == null) {
+        params[name] = default_value
+        return default_value
+    }
+    if (raw instanceof Boolean) {
+        return raw
+    }
+    def value = (raw as String).trim().toLowerCase()
+    if (value in ['true', '1', 'yes', 'y', 'on']) {
+        params[name] = true
+        return true
+    }
+    if (value in ['false', '0', 'no', 'n', 'off']) {
+        params[name] = false
+        return false
+    }
+    error "--${name} must be true or false, got '${raw}'."
+}
+
 def normalize_parameter_values() {
     normalize_lowercase_choice('embed_device', 'cpu', ['cpu', 'cuda'])
+    if (cli_has_bare_flag('ginfinity-full-precision')) {
+        params.ginfinity_full_precision = true
+    }
+    normalize_boolean_param('ginfinity_full_precision', true)
     normalize_lowercase_choice('ngt_index', 'ngt', ['ngt', 'qg', 'qbg'], [
         anng: 'ngt',
         quantizedgraph: 'qg',

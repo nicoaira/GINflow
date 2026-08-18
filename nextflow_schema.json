@@ -105,6 +105,11 @@
                     "enum": ["cpu", "cuda"],
                     "description": "Documented embed device. CUDA requires -profile gpu, which sets accelerator=1 on EMBED_RNA_GRAPHS and selects the GPU Wave image."
                 },
+                "ginfinity_full_precision": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Pass --full-precision to ginfinity embed-graphs. CPU runs use full-precision model inference by default; the GPU profile disables this so GPU runs use float16 unless explicitly enabled. The dashed CLI spelling --ginfinity-full-precision is also accepted."
+                },
                 "max_batch_nodes": {
                     "type": "integer",
                     "default": 60000,

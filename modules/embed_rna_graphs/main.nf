@@ -23,6 +23,7 @@ process EMBED_RNA_GRAPHS {
     def use_gpu   = task.accelerator
     def device    = use_gpu ? 'cuda' : 'cpu'
     def cuda_flag = use_gpu ? '--allow-nondeterministic-cuda' : ''
+    def precision_flag = params.ginfinity_full_precision ? '--full-precision' : ''
     """
     ginfinity \\
         embed-graphs \\
@@ -36,6 +37,7 @@ process EMBED_RNA_GRAPHS {
         --verify-checksum \\
         --checksum \\
         ${cuda_flag} \\
+        ${precision_flag} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

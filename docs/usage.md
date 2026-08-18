@@ -177,6 +177,8 @@ nextflow run nicoaira/ginflow \
 
 `-profile gpu` sets `accelerator = 1` on `EMBED_RNA_GRAPHS`. That switches the process to `environment.gpu.yml` and the GPU Wave image (`ginfinity` + `pytorch-gpu` + `cuda-version`), and passes `--device cuda --allow-nondeterministic-cuda`. Graph construction stays on the CPU image.
 
+Embeddings are stored as float16. CPU runs use full-precision model inference by default; `-profile gpu` disables it for faster float16 inference. Pass `--ginfinity-full-precision` (or `--ginfinity_full_precision`) to force full-precision inference in any profile.
+
 FAISS GPU is **opt-in** and separate from embedding:
 
 ```bash
