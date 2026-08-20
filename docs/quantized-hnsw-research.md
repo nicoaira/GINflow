@@ -1,12 +1,12 @@
 # Quantized-node HNSW research plan, implementation, and results
 
 Status: implemented and validated on the smoke pipeline; the CPU compact path
-exceeds 97% FlatIP recall with the recommended candidate-rerank profile, and
-the optional GPU CAGRA companion reaches 99.0% R@50 while making the measured
-GPU search kernel more than 10x faster than compact CPU HNSW. The complete
-documented nf-test regression suite and the full default k=2048 test-corpus
-build have passed. Larger downstream comparisons and whole-pipeline resource
-measurements remain follow-up work.
+exceeds 97% FlatIP recall with the recommended candidate-rerank profile, the
+optional GPU CAGRA companion reaches 99.0% R@50, and a full CAGRA-to-cuVS-CPU-
+HNSW conversion/search experiment has completed on the Rouskin 6k set. The
+complete documented nf-test regression suite and the full default k=2048
+test-corpus build have passed. Larger downstream comparisons and whole-
+pipeline resource measurements remain follow-up work.
 
 This document is deliberately comprehensive. It records the design, the
 temporary benchmark layout, the measured trade-offs, and the cleanup TODOs so
@@ -282,6 +282,9 @@ benchmark-compact-rerank-w7/           # window-size comparison
 benchmark-compact-rerank-w15/
 real-compact-rerank-vectorized-smoke/  # real end-to-end smoke output
 real-compact-rerank-query/             # real query-only output
+cagra-original-int8-scale850-cuvs2410/ # full Rouskin CAGRA source benchmark
+cagra-to-hnsw-full/                    # converted index, CPU labels, metrics
+cagra-to-hnsw-smoke/                   # small conversion smoke check
 ```
 
 Do not commit these generated directories. The benchmark scripts are kept in
@@ -402,6 +405,118 @@ docker run --rm --gpus all --ipc=host --ulimit memlock=-1 \
 The production adapter is `bin/hnswlib_gpu.py`; it adds manifest validation,
 database packaging, query batching, exact reranking, seed thresholding, and
 the `HNSWLIB_GPU_CAGRA` metadata contract around the same CAGRA representation.
+
+The CAGRA-to-CPU-HNSW experiment is research-only and does not change the
+production Nextflow path. The two C++ drivers use the cuVS C API because the
+pinned 24.10 Python binding rejects int8 in `hnsw.from_cagra`, and its Python
+search wrapper expects a CAGRA object even after conversion. The C API can
+serialize the int8 CAGRA graph to cuVS's HNSW wrapper and search that wrapper
+from host memory.
+
+The generated HNSW file is not compatible with upstream hnswlib despite the
+historical `hnswlib` name in cuVS. It is a cuVS-specific immutable base-layer
+format. `bin/search_cuvs_hnsw_cpu.cpp` loads that file without loading the
+CAGRA graph and accepts host `int8` query windows.
+
+The runtime image is deliberately kept unchanged. For this one-off research
+build, a compiler and development headers were installed in a disposable
+container. The exact source files are:
+
+```text
+bin/cagra_to_hnsw_cpu.cpp       # CAGRA load, serialize, VRAM sampling
+bin/search_cuvs_hnsw_cpu.cpp    # HNSW-only CPU search
+bin/benchmark_cagra_hnsw_cpu.py # FlatIP recall and original-window rerank
+```
+
+For the pinned runtime image used in this investigation, the temporary build
+command was equivalent to:
+
+```bash
+docker run --rm --gpus all \
+  -v "$PWD":/work \
+  -v /usr/local/cuda-12.9/targets/x86_64-linux/include:/host-cuda:ro \
+  -w /work \
+  community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:93cd6db656f6b1e4 \
+  bash -lc '
+    apt-get update -qq && apt-get install -y -qq g++ >/dev/null
+    mkdir -p /tmp/dlpack/dlpack
+    ln -sf /opt/conda/lib/python3.12/site-packages/cupy/_core/include/cupy/_dlpack/dlpack.h /tmp/dlpack/dlpack/dlpack.h
+    for source in bin/cagra_to_hnsw_cpu.cpp bin/search_cuvs_hnsw_cpu.cpp; do
+      output=/work/bin/$(basename "$source" .cpp)
+      g++ -std=c++17 -O3 -I/opt/conda/include -I/tmp/dlpack -I/host-cuda \
+        -pthread "$source" -L/opt/conda/lib -Wl,-rpath,/opt/conda/lib \
+        -lcuvs_c -lcuvs -lraft -lcudart -o "$output"
+    done
+  '
+```
+
+The installed compiler is disposable; it is not part of the production GPU
+environment or the Nextflow module.
+
+After compiling both C++ drivers with the cuVS libraries, quantize the 512
+normalized query windows with the same scale as the CAGRA database:
+
+```bash
+python3 - <<'PY'
+import numpy as np
+
+source = np.load(
+    "/mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/"
+    "gpu_original_queries.float32.npy"
+)
+np.rint(source * 850.0).astype(np.int8).tofile(
+    "/mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/queries.int8"
+)
+PY
+```
+
+Convert the full Rouskin CAGRA index once:
+
+```bash
+docker run --rm --gpus all \
+  -v "$PWD":/work -v /mnt/ssd_samsung:/mnt/ssd_samsung -w /work \
+  community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:93cd6db656f6b1e4 \
+  /work/bin/cagra_to_hnsw_cpu \
+    --cagra-index /mnt/ssd_samsung/ginflow-hnsw-research/cagra-original-int8-scale850-cuvs2410/cagra.index \
+    --hnsw-index /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/hnsw.index \
+    --queries-int8 /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/queries.int8 \
+    --n-queries 512 --dimension 1408 --k 50 --ef-values 50,100,200,400,800 \
+    --num-threads 8 \
+    --labels-prefix /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/labels- \
+    --distances-prefix /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/distances- \
+    --metrics /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/metrics.json
+```
+
+Then run the persisted HNSW file in a container with no GPU device. The
+resulting labels were byte-for-byte identical to the labels from the
+GPU-enabled conversion process:
+
+```bash
+docker run --rm -e CUDA_VISIBLE_DEVICES='' \
+  -v "$PWD":/work -v /mnt/ssd_samsung:/mnt/ssd_samsung -w /work \
+  community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:93cd6db656f6b1e4 \
+  /work/bin/search_cuvs_hnsw_cpu \
+    --hnsw-index /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/hnsw.index \
+    --queries-int8 /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/queries.int8 \
+    --n-queries 512 --dimension 1408 --k 50 --ef-values 50,100,200,400,800 \
+    --num-threads 16 \
+    --labels-prefix /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/nogpu-labels- \
+    --distances-prefix /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/nogpu-distances- \
+    --metrics /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/nogpu-metrics.json
+```
+
+Evaluate candidate recall and exact rerank against the FlatIP labels:
+
+```bash
+python3 bin/benchmark_cagra_hnsw_cpu.py \
+  --database-windows /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/flat_windows_float16_w11_s1.npy \
+  --queries /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/gpu_original_queries.float32.npy \
+  --reference-labels /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/flatip_reference_labels.int64.npy \
+  --labels-prefix /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/nogpu-labels- \
+  --search-metrics /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/nogpu-metrics.json \
+  --candidate-k 50 --ef-search-values 50,100,200,400,800 \
+  --output /mnt/ssd_samsung/ginflow-hnsw-research/cagra-to-hnsw-full/nogpu-evaluation.json
+```
 
 ## Results
 
@@ -562,6 +677,72 @@ above the CPU compact result. Increase `--hnswlib_gpu_candidate_k` and
 `--hnswlib_gpu_itopk_size` together if a new dataset shows lower recall; lower
 `--hnswlib_gpu_search_batch_size` when VRAM is constrained.
 
+### CAGRA converted to CPU HNSW
+
+This experiment answers a different question from the GPU CAGRA benchmark:
+can a built CAGRA graph be converted once and then searched on the CPU? The
+answer is yes for the pinned cuVS 24.10 build, through its C API. The CPU
+HNSW path does not use centroid codes or the custom centroid-similarity
+function. It searches the original normalized window vectors after the same
+global `int8` scale of 850.0 used by CAGRA, with squared L2 as the candidate
+metric. Exact reranking still uses the original normalized float32 view of the
+preserved float16 node embeddings.
+
+The full run used 839,188 windows and 512 queries. Recall is measured against
+the exact FlatIP top-50 labels. The CPU row uses the HNSW-only process with no
+GPU device exposed, `ef_search=200`, and 8 search threads; the exact rerank is
+included in the reported total.
+
+| Path | Stored index bytes | One-time build/convert | Search + exact rerank for 512 queries | R@1 | R@5 | R@10 | R@50 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Exact FlatIP | 4,726,306,861 | 4.59 s build | 24.672 s | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| CAGRA GPU | 1,396,410,545 | 39.037 s build | 0.0297 s GPU search | 0.9688 | 0.9813 | 0.9820 | 0.9900 |
+| Converted cuVS CPU HNSW, candidate_k=50 | 1,409,835,936 | 15.034 s conversion | 0.210 + 0.022 = **0.233 s** | 0.9688 | 0.9871 | 0.9898 | 0.9895 |
+
+The converted file is about 1.31 GiB, only slightly larger than the 1.30 GiB
+CAGRA file. Its one-time HNSW reload took 0.728 s. The CPU search is about
+105x faster than the recorded FlatIP query call at the candidate_k=50 profile,
+while losing about 1.05 percentage points of R@50. Increasing the candidate
+width lets exact reranking recover more of the FlatIP set:
+
+| Candidate width | ef_search | CPU search | Exact rerank | Total | Final R@50 |
+|---:|---:|---:|---:|---:|---:|
+| 50 | 200 | 0.210 s | 0.022 s | 0.233 s | 0.9895 |
+| 100 | 400 | 0.333 s | 0.097 s | 0.430 s | 0.9941 |
+| 200 | 800 | 0.559 s | 0.131 s | 0.690 s | 0.9943 |
+| 500 | 2,000 | 1.094 s | 0.297 s | 1.390 s | 0.9955 |
+| 1,000 | 4,000 | 1.857 s | 0.554 s | 2.411 s | **0.9968** |
+
+The best speed/recall point among these measurements is dataset- and target-
+dependent. Candidate width 100 already reaches 99.41% R@50 in 0.43 s, while
+width 1,000 approaches the exact FlatIP overlap at roughly 2.4 s. Search
+thread testing at `ef_search=200`, candidate_k=50, gave 0.703/0.386/0.237/
+0.196/0.183 s for 1/2/4/8/16 threads; all returned identical labels, so 16
+threads was used for the wider candidate experiments.
+
+The observed VRAM measurements during CAGRA load and conversion were:
+
+| Measurement | Bytes | MiB |
+|---|---:|---:|
+| Baseline before CAGRA load | 158,466,048 | 151.1 |
+| Peak total | 1,557,266,432 | 1,485.1 |
+| Peak increase | 1,398,800,384 | **1,334.0** |
+| After destroying CAGRA index | 158,466,048 | 151.1 |
+
+This confirms the intended detach behavior experimentally: after the HNSW
+serialization completes, destroying the CAGRA object returns the observed GPU
+allocation to baseline. The HNSW search-only process then runs with no GPU
+device and produces the same labels as the GPU-enabled process. The peak is a
+sampled measurement at 10 ms intervals, so it should be treated as an observed
+requirement rather than a formal allocator upper bound.
+
+This converted CPU format is not the custom centroid-code HNSW index already
+used by the `--index hnswlib` CPU path. It is a separate cuVS wrapper around
+the CAGRA graph, and it is not readable by upstream Python hnswlib. The
+production pipeline still uses CAGRA directly for `--hnswlib_gpu`; this
+experiment establishes a possible persisted CPU fallback/serving format but
+does not silently switch the production backend.
+
 ## Validation completed
 
 The following checks have passed in the current working tree:
@@ -579,6 +760,11 @@ The following checks have passed in the current working tree:
 - pinned cuVS 24.10 real GPU build/search smoke with separate window and
   manifest staging, persisted-index reload, and exact original-embedding
   reranking;
+- cuVS C API CAGRA-to-HNSW conversion smoke and full 839,188-window Rouskin
+  conversion, including sampled VRAM, persisted HNSW reload, CPU-only search,
+  and byte-for-byte comparison of GPU-enabled versus no-GPU labels;
+- candidate-width and CPU-thread sweeps for the converted HNSW file, with
+  FlatIP recall and exact reranking evaluated by `bin/benchmark_cagra_hnsw_cpu.py`;
 - real smoke build/search with compact C++ HNSW, original float16 preservation,
   exact rerank, clustering, alignment, and report generation;
 - real query-only search against the published compact database with persisted
@@ -666,6 +852,12 @@ machine-readable values.
   against the FlatIP baseline across thresholds 0.70 through 0.95.
 - [x] Benchmark the GPU CAGRA companion against FlatIP and compact CPU HNSW on
   the Rouskin 6k window set.
+- [x] Convert the full CAGRA graph to cuVS's CPU HNSW format through the C API
+  and measure conversion time, serialized size, CPU search, and recall.
+- [x] Verify the converted HNSW file in a no-GPU process and compare its labels
+  with the GPU-enabled conversion process.
+- [x] Sweep converted-HNSW candidate width, `ef_search`, and CPU thread count
+  against the FlatIP reference.
 - [x] Add CPU fallback and GPU stub/unit coverage for both HNSWLIB modules.
 - [ ] Run a larger downstream SW/alignment diff against the FlatIP baseline at
   the production threshold.
@@ -704,3 +896,5 @@ machine-readable values.
 | 2026-08-20 | Real compact smoke/query-only runs | C++ build, custom search, original-vector rerank, downstream alignment, and reports passed. |
 | 2026-08-20 | GPU CAGRA companion benchmark | cuVS 24.10 int8 CAGRA search took 0.0298 s for 512 queries and reached R@50 0.9900 after exact reranking; serialized load was 0.813 s. |
 | 2026-08-20 | GPU HNSWLIB module integration | Original window arrays/manifests, GPU CAGRA metadata, exact rerank, CPU fallback, and GPU stubs/unit tests passed. |
+| 2026-08-20 | CAGRA-to-cuVS-CPU-HNSW conversion | Full int8 graph serialized in 15.034 s to a 1,409,835,936-byte HNSW file; observed peak VRAM increase was 1,334 MiB and returned to baseline after CAGRA destruction. |
+| 2026-08-20 | Converted HNSW CPU-only search | No-GPU search produced identical labels; candidate_k=50 reached R@50 0.9895 in 0.233 s including exact rerank, and candidate_k=1,000 reached 0.9968 in 2.411 s. |
