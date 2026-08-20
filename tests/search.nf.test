@@ -165,6 +165,39 @@ nextflow_pipeline {
         }
     }
 
+    test("dispatch HNSWLIB quantized build and search") {
+
+        tag "hnswlib"
+        options "-stub"
+
+        when {
+            params {
+                outdir      = "$outputDir"
+                input       = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query       = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size  = 2
+                index       = 'hnswlib'
+                node_quantization_k = 8
+                hnswlib_m = 8
+                hnswlib_ef_construction = 40
+                hnswlib_ef_search = 20
+            }
+        }
+
+        then {
+            assert workflow.success
+            def meta = path("${params.outdir}/faiss/meta.json").json
+            assert meta.backend == 'hnswlib'
+            assert meta.index_type == 'HNSWLIB_COMPACT'
+            assert meta.candidate_representation == 'uint16_centroid_codes'
+            assert path("${params.outdir}/faiss/index.bin").exists()
+            assert path("${params.outdir}/faiss/quantization/centroids.npy").exists()
+            assert path("${params.outdir}/windows_quantized").exists()
+            assert path("${params.outdir}/seeds.tsv").exists()
+            assert path("${params.outdir}/report.html").exists()
+        }
+    }
+
     test("query an existing database (stub)") {
 
         tag "stub"

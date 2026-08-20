@@ -74,17 +74,24 @@ Reusable window index of every database window. Default is exact inner product (
 - `ngt/` — native NGT, qg, or qbg index directory when `backend` is `ngt`.
 - `cuvs/` — serialized GPU cuVS index directory when `backend` is `cuvs`.
 - `scann/` — serialized ScaNN searcher when `--index scann`
+- `index.bin` — compact C++ HNSWLIB index whose element payload is a uint16 centroid-code window when `--index hnswlib`
+- `quantization/` — HNSWLIB centroids (`centroids.npy`, float16), registered centroid similarity (`similarity.npy`, float32), and fit metadata; these side artifacts are not substituted for the original embeddings
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, counts, and index settings
 - `embeddings.npz` — per-nucleotide embeddings, one array per identifier
 - `records.tsv` — `transcript_id`, `sequence`, `secondary_structure`. For a slice the identifier is `{id}:{start}-{end}` and the sequence/structure are the core window (pairs that cross the cut are written as unpaired), so later search/alignment treat that window as its own molecule.
 - `evd.json` — Karlin–Altschul λ, K, database residue count, and the reverse-sequence null fit
 
+When `--index hnswlib` is selected, the workflow also publishes `quantization/`
+and `windows_quantized/` at the output root. These contain the centroid-code
+candidate representation and are not used by SW; the original float16
+embeddings above remain authoritative for alignment.
+
 `--database` for a later search run should point at this directory.
 
 ## seeds.tsv
 
-Query-mode hits above `--seed_min_similarity`. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept.
+Query-mode hits above `--seed_min_similarity`. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept. Without `--hnswlib_rerank`, HNSWLIB writes the raw position-wise centroid-score sum and applies the equivalent threshold multiplied by `--window_size`; with reranking, it writes the normal full-window cosine score from the original float16 embeddings.
 
 ## clusters.tsv
 

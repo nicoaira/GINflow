@@ -71,7 +71,10 @@ def normalize_index_library(raw) {
     if (key == 'cuvs') {
         return 'cuvs'
     }
-    error "--index must be faiss, scann, ngt, or cuvs, got '${raw}'. See docs/indexes.md."
+    if (key in ['hnswlib', 'hnsw']) {
+        return 'hnswlib'
+    }
+    error "--index must be faiss, scann, ngt, cuvs, or hnswlib, got '${raw}'. See docs/indexes.md."
 }
 
 def normalize_lowercase_choice(name, default_value, choices, aliases = [:]) {
@@ -160,6 +163,7 @@ def normalize_parameter_values() {
     ])
     normalize_lowercase_choice('plot_backend', 'none', ['none', 'rnartistcore', 'r4rna', 'both'])
     normalize_lowercase_choice('report_theme', 'light', ['light', 'dark'])
+    normalize_boolean_param('hnswlib_rerank', false)
 }
 
 def detect_database_library() {
@@ -181,6 +185,9 @@ def detect_database_library() {
             if (backend?.equalsIgnoreCase('cuvs') || ['CAGRA', 'IVF', 'IVF-PQ'].contains(kind?.toUpperCase())) {
                 return 'cuvs'
             }
+            if (backend?.equalsIgnoreCase('hnswlib') || kind?.equalsIgnoreCase('HNSWLIB')) {
+                return 'hnswlib'
+            }
             if (backend?.equalsIgnoreCase('faiss') || kind) {
                 return 'faiss'
             }
@@ -197,6 +204,9 @@ def detect_database_library() {
     }
     if (file("${params.database}/cuvs").exists()) {
         return 'cuvs'
+    }
+    if (file("${params.database}/index.bin").exists()) {
+        return 'hnswlib'
     }
     if (file("${params.database}/index.faiss").exists()) {
         return 'faiss'
@@ -261,6 +271,18 @@ def validate_cuvs_gpu(library) {
     }
 }
 
+def validate_hnswlib_params(library) {
+    if (library != 'hnswlib') {
+        return
+    }
+    if ((params.hnswlib_candidate_k as Integer) < (params.seed_k as Integer)) {
+        error "--hnswlib_candidate_k must be >= --seed_k so candidate selection can emit the requested number of seeds."
+    }
+    if (params.hnswlib_rerank && !params.input && !params.database) {
+        error "--hnswlib_rerank requires a built or existing hnswlib database."
+    }
+}
+
 def collect_if_unused(unused, name, default_value, applies) {
     if (!applies && parameter_explicit(name, default_value)) {
         unused.add('--' + name)
@@ -275,7 +297,66 @@ def warn_unused_index_params(library, kind) {
     def sq      = ['SQ', 'IVFSQ'] as Set
     def unused  = []
 
-    if (library == 'scann') {
+    if (library != 'hnswlib') {
+        collect_if_unused(unused, 'node_quantization_k', 2048, false)
+        collect_if_unused(unused, 'node_quantization_sample_size', 500000, false)
+        collect_if_unused(unused, 'node_quantization_niter', 25, false)
+        collect_if_unused(unused, 'node_quantization_seed', 1, false)
+        collect_if_unused(unused, 'hnswlib_m', 32, false)
+        collect_if_unused(unused, 'hnswlib_ef_construction', 200, false)
+        collect_if_unused(unused, 'hnswlib_ef_search', 100, false)
+        collect_if_unused(unused, 'hnswlib_random_seed', 1, false)
+        collect_if_unused(unused, 'hnswlib_num_threads', 0, false)
+        collect_if_unused(unused, 'hnswlib_candidate_k', 50, false)
+        collect_if_unused(unused, 'hnswlib_rerank', false, false)
+    }
+
+    if (library == 'hnswlib') {
+        collect_if_unused(unused, 'ngt_index', 'ngt', false)
+        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
+        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
+        collect_if_unused(unused, 'ngt_num_threads', 8, false)
+        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
+        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
+        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
+        collect_if_unused(unused, 'ngt_search_radius', null, false)
+        collect_if_unused(unused, 'ngt_result_expansion', null, false)
+        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
+        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
+        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
+        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
+        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
+        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
+        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
+        collect_if_unused(unused, 'cuvs_n_lists', null, false)
+        collect_if_unused(unused, 'cuvs_n_probes', null, false)
+        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
+        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
+        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
+        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
+        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
+        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
+        collect_if_unused(unused, 'faiss_index', 'flatip', false)
+        collect_if_unused(unused, 'faiss_gpu', false, false)
+        collect_if_unused(unused, 'faiss_nlist', null, false)
+        collect_if_unused(unused, 'faiss_nprobe', null, false)
+        collect_if_unused(unused, 'faiss_pq_m', 16, false)
+        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
+        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
+        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
+        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
+        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
+        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
+        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
+        collect_if_unused(unused, 'scann_reorder', 100, false)
+        collect_if_unused(unused, 'scann_ah_dim', 2, false)
+        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
+        collect_if_unused(unused, 'scann_soar', false, false)
+        collect_if_unused(unused, 'scann_leaves', null, false)
+        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
+    }
+    else if (library == 'scann') {
         collect_if_unused(unused, 'ngt_index', 'ngt', false)
         collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
         collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
@@ -457,6 +538,7 @@ workflow {
     params.index = library
     validate_faiss_gpu(library, kind)
     validate_cuvs_gpu(library)
+    validate_hnswlib_params(library)
     warn_unused_index_params(library, kind)
 
     def input_path    = resolve_optional_path(params.input)
@@ -511,6 +593,8 @@ workflow {
     publish:
     samples          = samples_ch
     database         = result.database
+    quantization     = result.quantization
+    quantized_windows = result.quantized_windows
     seeds            = result.seeds
     clusters         = result.clusters
     cluster_members  = result.cluster_members
@@ -540,6 +624,12 @@ output {
     }
     database {
         path '.'
+    }
+    quantization {
+        path { directory -> directory >> 'quantization' }
+    }
+    quantized_windows {
+        path { directory -> directory >> 'windows_quantized' }
     }
     seeds {
         path '.'

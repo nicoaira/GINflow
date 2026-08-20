@@ -1,0 +1,72 @@
+nextflow_process {
+
+    name "Test Process FIT_NODE_QUANTIZER"
+    script "../main.nf"
+    process "FIT_NODE_QUANTIZER"
+
+    tag "modules"
+    tag "quantization"
+
+    test("Should fit a node codebook and encode smoke-test embeddings") {
+
+        setup {
+            run("BUILD_RNA_GRAPHS") {
+                script "../../build_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = [
+                        [ id: 'test' ],
+                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                    ]
+                    """
+                }
+            }
+            run("EMBED_RNA_GRAPHS") {
+                script "../../embed_rna_graphs/main.nf"
+                process {
+                    """
+                    input[0] = BUILD_RNA_GRAPHS.out.graphs
+                    """
+                }
+            }
+        }
+
+        when {
+            params {
+                node_quantization_k = 4
+                node_quantization_sample_size = 100
+                node_quantization_niter = 2
+                node_quantization_seed = 7
+            }
+            process {
+                """
+                input[0] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
+                input[1] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> manifest }.collect()
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.quantization.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def quantization = path(process.out.quantization.get(0))
+                    assert quantization.resolve('centroids.npy').exists()
+                    assert quantization.resolve('similarity.npy').exists()
+                    assert quantization.resolve('nodes').exists()
+                    def metadata = quantization.resolve('quantization.json').json
+                    assert metadata.status == 'complete'
+                    assert metadata.fitted_here == true
+                    assert metadata.n_centroids == 4
+                    assert metadata.n_records == 10
+                    def node_files = getAllFilesFromDir("${quantization.resolve('nodes')}", includeDir: false)
+                    assert node_files.findAll { it.name.endsWith('.quantized.npz') }.size() == 1
+                }
+            )
+        }
+
+    }
+
+}

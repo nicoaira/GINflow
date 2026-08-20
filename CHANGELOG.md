@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- Quantized-node HNSWLIB candidate search (`--index hnswlib`, alias `hnsw`):
+  spherical k-means node centroids (default `k=2048`), float16 centroid
+  vectors, float32 centroid similarity matrices, uint16 code windows, and a
+  compact C++ custom-distance hnswlib index. `--hnswlib_rerank true` scores the
+  candidate pool with the preserved original float16 embeddings. Original
+  embeddings remain packed for GINFINITY-SW and alignment. See
+  [docs/indexes.md](docs/indexes.md) and the reproducible benchmark plan/results
+  in [docs/quantized-hnsw-research.md](docs/quantized-hnsw-research.md).
 - ScaNN seed search (`--index scann`): [Google ScaNN](https://github.com/google-research/google-research/tree/master/scann) (`scann==1.4.2`) as a CPU-only alternative to FAISS. Auto-selects brute-force (<20k windows), AH+reorder (<100k), or tree+AH+reorder. ScaNN knobs are `--scann_leaves`, `--scann_leaves_to_search`, `--scann_reorder`, `--scann_ah_dim`, `--scann_anisotropic`, `--scann_soar`. Artifacts go to `faiss/scann/` instead of `index.faiss`. `--faiss_gpu` with ScaNN is an error.
 - Launch warning when a library-specific flag does not apply to `--index` / `--faiss_index` (for example `--scann_reorder` with FAISS, or `--faiss_nlist` with `flatip`). Guide: [docs/indexes.md](docs/indexes.md).
 - Additional FAISS index types (`--faiss_index`): `flatip` (default), `flatl2`, `hnsw`, `ivfflat`, `lsh`, `sq`, `pq`, `ivfsq`, `ivfpq`, `ivfpqr`, matching [Faiss indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes). IVF/PQ/HNSW/LSH/SQ knobs are `--faiss_nlist`, `--faiss_nprobe`, `--faiss_pq_m`, `--faiss_pq_nbits`, `--faiss_pq_m_refine`, `--faiss_hnsw_m`, `--faiss_hnsw_ef_construction`, `--faiss_hnsw_ef_search`, `--faiss_lsh_nbits`, `--faiss_sq_type`.
@@ -51,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Graph and embed modules use `nicolas.aira::ginfinity=1.2.1` (sliced graphs; float16 embeddings).
 - FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`). GPU FAISS uses `pytorch::faiss-gpu=1.10.0` (CUDA 12.1 runtime) so it runs on host drivers that report CUDA 12.1/12.2 (e.g. 535.x). conda-forge `faiss-gpu` 1.10 is CUDA 12.9-only.
+- HNSWLIB modules use conda-forge `hnswlib=0.8.0` with Python 3.12 and NumPy 2.2.6; use `-profile conda` or `-profile wave` because the pinned FAISS/ScaNN Docker images do not include hnswlib.
 - Alignment uses `nicolas.aira::ginfinity-sw=1.0.1`.
 - Plotting uses `nicolas.aira::rnartistcore=0.4.6` and `nicolas.aira::r-r4rna=2.0.9`.
 

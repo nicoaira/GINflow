@@ -8,6 +8,8 @@ include { BUILD_NGT_INDEX }                  from '../modules/build_ngt_index/ma
 include { SEARCH_NGT }                       from '../modules/search_ngt/main'
 include { BUILD_CUVS_INDEX }                 from '../modules/build_cuvs_index/main'
 include { SEARCH_CUVS }                      from '../modules/search_cuvs/main'
+include { BUILD_HNSWLIB_INDEX }             from '../modules/build_hnswlib_index/main'
+include { SEARCH_HNSWLIB }                  from '../modules/search_hnswlib/main'
 include { CLUSTER_SEEDS }                    from '../modules/cluster_seeds/main'
 include { ALIGN_CLUSTERS }                   from '../modules/align_clusters/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_BUILD } from '../modules/estimate_evd/main'
@@ -44,19 +46,32 @@ workflow GINFLOW {
     ch_alignment_text  = channel.empty()
     ch_query_embeddings = channel.empty()
     ch_query_metadata   = channel.empty()
+    ch_quantization     = channel.empty()
+    ch_quantization_source = channel.empty()
+    ch_quantized_windows = channel.empty()
     ch_evd              = channel.empty()
+    ch_published_evd    = channel.empty()
     ch_plots_rnartist   = channel.empty()
     ch_plots_r4rna      = channel.empty()
     ch_plots_sw         = channel.empty()
     ch_report           = channel.empty()
     alignment_params    = file("${projectDir}/assets/alignment.json", checkIfExists: true)
+    hnsw_bundle         = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
 
     if (structures) {
-        PREPARE_DB(structures, (queries && !reuse_windows) ? 'db' : '', params.shard_size)
+        PREPARE_DB(
+            structures,
+            (queries && !reuse_windows) ? 'db' : '',
+            params.shard_size,
+            index_library == 'hnswlib',
+            null
+        )
         ch_versions   = ch_versions.mix(PREPARE_DB.out.versions)
         ch_graphs     = ch_graphs.mix(PREPARE_DB.out.graphs)
         ch_embeddings = ch_embeddings.mix(PREPARE_DB.out.embeddings)
         ch_windows    = ch_windows.mix(PREPARE_DB.out.windows)
+        ch_quantization = ch_quantization.mix(PREPARE_DB.out.quantization)
+        ch_quantized_windows = ch_quantized_windows.mix(PREPARE_DB.out.quantized_windows)
 
         PREPARE_DB.out.windows
             .multiMap { meta, npz, manifest ->
@@ -90,6 +105,17 @@ workflow GINFLOW {
             ch_versions       = ch_versions.mix(BUILD_CUVS_INDEX.out.versions)
             ch_built_database = BUILD_CUVS_INDEX.out.database
         }
+        else if (index_library == 'hnswlib') {
+            BUILD_HNSWLIB_INDEX(
+                PREPARE_DB.out.quantized_windows.map { meta, directory -> directory },
+                PREPARE_DB.out.quantization,
+                ch_db_embeddings,
+                ch_db_metadata,
+                hnsw_bundle
+            )
+            ch_versions       = ch_versions.mix(BUILD_HNSWLIB_INDEX.out.versions)
+            ch_built_database = BUILD_HNSWLIB_INDEX.out.database
+        }
         else {
             error "Unsupported index library: ${index_library}"
         }
@@ -98,6 +124,7 @@ workflow GINFLOW {
         ESTIMATE_EVD_BUILD(ch_built_database, alignment_params)
         ch_versions = ch_versions.mix(ESTIMATE_EVD_BUILD.out.versions)
         ch_evd      = ESTIMATE_EVD_BUILD.out.evd
+        ch_published_evd = ESTIMATE_EVD_BUILD.out.evd
     }
     else if (database) {
         ch_search_database = channel.fromPath(database, checkIfExists: true, type: 'dir')
@@ -108,6 +135,11 @@ workflow GINFLOW {
             ESTIMATE_EVD_QUERY(ch_search_database, alignment_params)
             ch_versions = ch_versions.mix(ESTIMATE_EVD_QUERY.out.versions)
             ch_evd      = ESTIMATE_EVD_QUERY.out.evd
+            ch_published_evd = ESTIMATE_EVD_QUERY.out.evd
+        }
+        if (index_library == 'hnswlib') {
+            ch_quantization_source = channel
+                .fromPath("${database}/quantization", checkIfExists: true, type: 'dir')
         }
     }
 
@@ -116,9 +148,17 @@ workflow GINFLOW {
             ch_query_windows    = PREPARE_DB.out.windows
             ch_query_embeddings = PREPARE_DB.out.embeddings
             ch_query_metadata   = PREPARE_DB.out.graphs
+            ch_quantized_windows = PREPARE_DB.out.quantized_windows
         }
         else {
-            PREPARE_QUERY(queries, structures ? 'query' : '', params.search_shard_size ?: params.shard_size)
+            def query_quantization = index_library == 'hnswlib' ? (structures ? ch_quantization : ch_quantization_source) : null
+            PREPARE_QUERY(
+                queries,
+                structures ? 'query' : '',
+                params.search_shard_size ?: params.shard_size,
+                index_library == 'hnswlib',
+                query_quantization
+            )
             ch_versions         = ch_versions.mix(PREPARE_QUERY.out.versions)
             ch_graphs           = ch_graphs.mix(PREPARE_QUERY.out.graphs)
             ch_embeddings       = ch_embeddings.mix(PREPARE_QUERY.out.embeddings)
@@ -126,6 +166,10 @@ workflow GINFLOW {
             ch_query_windows    = PREPARE_QUERY.out.windows
             ch_query_embeddings = PREPARE_QUERY.out.embeddings
             ch_query_metadata   = PREPARE_QUERY.out.graphs
+            ch_quantized_windows = PREPARE_QUERY.out.quantized_windows
+            if (!structures && index_library == 'hnswlib') {
+                ch_quantization = PREPARE_QUERY.out.quantization
+            }
         }
 
         if (index_library == 'faiss') {
@@ -147,6 +191,16 @@ workflow GINFLOW {
             SEARCH_CUVS(ch_query_windows, ch_search_database.collect())
             ch_versions    = ch_versions.mix(SEARCH_CUVS.out.versions)
             ch_seed_shards = SEARCH_CUVS.out.seeds
+        }
+        else if (index_library == 'hnswlib') {
+            SEARCH_HNSWLIB(
+                ch_quantized_windows,
+                ch_search_database.collect(),
+                hnsw_bundle,
+                ch_query_embeddings.map { meta, npz, manifest -> npz }.collect()
+            )
+            ch_versions    = ch_versions.mix(SEARCH_HNSWLIB.out.versions)
+            ch_seed_shards = SEARCH_HNSWLIB.out.seeds
         }
         else {
             error "Unsupported index library: ${index_library}"
@@ -223,13 +277,15 @@ workflow GINFLOW {
     graphs           = ch_graphs
     embeddings       = ch_embeddings
     windows          = ch_windows
+    quantization     = ch_quantization
+    quantized_windows = ch_quantized_windows.map { meta, directory -> directory }
     database         = ch_built_database
     seeds            = ch_seeds
     clusters         = ch_clusters
     cluster_members  = ch_cluster_members
     alignments       = ch_alignments
     alignment_text   = ch_alignment_text
-    evd              = ch_evd
+    evd              = ch_published_evd
     plots_rnartist   = ch_plots_rnartist
     plots_r4rna      = ch_plots_r4rna
     plots_sw         = ch_plots_sw

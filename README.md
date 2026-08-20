@@ -8,7 +8,7 @@
 
 ## Introduction
 
-**nicoaira/ginflow** is a Nextflow pipeline for BLAST-style search over RNA secondary structures. It uses [GINFINITY](https://github.com/nicoaira/GINFINITY) to build graph shards and node embeddings, then slices those embeddings into windows and searches them with FAISS, [ScaNN](https://github.com/google-research/google-research/tree/master/scann), [NGT](https://github.com/NGT-labs/NGT), or [cuVS](https://docs.nvidia.com/cuvs/).
+**nicoaira/ginflow** is a Nextflow pipeline for BLAST-style search over RNA secondary structures. It uses [GINFINITY](https://github.com/nicoaira/GINFINITY) to build graph shards and node embeddings, then slices those embeddings into windows and searches them with FAISS, [ScaNN](https://github.com/google-research/google-research/tree/master/scann), [NGT](https://github.com/NGT-labs/NGT), [cuVS](https://docs.nvidia.com/cuvs/), or quantized-node [hnswlib](https://github.com/nmslib/hnswlib).
 
 The current steps are:
 
@@ -16,7 +16,7 @@ The current steps are:
 2. Build GINFINITY graph shards (`*.safetensors` + `*.json`)
 3. Embed each shard (`*.npz` + manifest)
 4. Slice sliding windows (default `w=11`, stride 1)
-5. Build a reusable window database (`--index faiss --faiss_index flatip` by default; other FAISS types, `--index scann`, `--index ngt --ngt_index qg|qbg`, or GPU-only `--index cuvs --cuvs_index cagra|ivf|ivf-pq`) and/or search it for seeds. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` needs `-profile gpu`; cuVS always needs `-profile gpu`.
+5. Build a reusable window database (`--index faiss --faiss_index flatip` by default; other FAISS types, `--index scann`, `--index ngt --ngt_index qg|qbg`, GPU-only `--index cuvs --cuvs_index cagra|ivf|ivf-pq`, or `--index hnswlib` with centroid-coded node types) and/or search it for seeds. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` needs `-profile gpu`; cuVS always needs `-profile gpu`; HNSWLIB uses `-profile conda` or `-profile wave` because it builds the pinned hnswlib 0.8.0 C++ custom-distance driver. The high-recall HNSW profile uses `--node_quantization_k 4096 --hnswlib_candidate_k 5000 --hnswlib_ef_search 5000 --hnswlib_rerank true`.
 6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, and rank by database E-value
 7. Optionally plot structures (`--plot_backend`: RNArtistCore 2Ds and/or a unified R4RNA alignment arc plot) and/or SW matrices (`--plot_sw`)
 8. Write a standalone HTML search report (`report.html`)

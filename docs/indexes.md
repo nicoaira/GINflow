@@ -18,6 +18,7 @@ resolved from the number of indexed windows and stored in `meta.json`.
 | `scann` | none | ScaNN brute-force, asymmetric hashing, or tree + asymmetric hashing plan | No | `scann/` |
 | `ngt` | `--ngt_index` | `ngt`, `qg`, `qbg` | No | `ngt/` |
 | `cuvs` | `--cuvs_index` | `cagra`, `ivf`, `ivf-pq` | Required | `cuvs/` |
+| `hnswlib` | HNSW parameters below | Quantized-node HNSWLIB inner-product graph | No | `index.bin` |
 
 `--database` is a path to an existing published database. On query-only runs,
 GINflow reads `meta.json` and detects the library and index type. Passing an
@@ -27,6 +28,18 @@ By default, windows are 1408-dimensional (`--window_size 11`) and
 L2-normalized. FAISS and ScaNN use inner-product scores directly. NGT and cuVS
 return distances that the adapter converts to the cosine-like score used by
 `--seed_min_similarity`.
+
+The HNSWLIB backend is different: it assigns each 128-dimensional node
+embedding to a centroid, persists the full float16 centroid vectors and their
+float32 `k x k` similarity matrix, and stores only uint16 centroid codes in
+the custom C++ HNSW elements. For a pair of code windows `A` and `B`, its raw
+score is exactly `sum(S[A[p], B[p]])`. The public `--seed_min_similarity`
+threshold remains on the existing per-position scale, so a non-reranked HNSW
+search applies it internally as `window_size * seed_min_similarity`; with
+`--hnswlib_rerank true`, the original float16 windows provide the final score
+and threshold. The original float16 node embeddings are still packed into the
+database and remain the only embeddings used by `ALIGN_CLUSTERS` and
+`DRAW_SW`.
 
 ## Shared parameters
 
@@ -49,6 +62,72 @@ table.
 | `--seed_k` | `50` | Maximum neighbours retained per query window before thresholding. It is also the number of neighbours requested from ScaNN and cuVS CAGRA. |
 | `--seed_min_similarity` | `0.8` | Minimum cosine-like similarity required to keep a seed. |
 | `--search_shard_size` | `--shard_size` | Query records processed by one search task. |
+
+## Quantized-node HNSWLIB: `--index hnswlib`
+
+HNSWLIB provides approximate candidate selection over centroid-code windows.
+The [Python binding](https://github.com/nmslib/hnswlib#python-bindings) exposes
+only built-in `ip`, `l2`, and `cosine` spaces. GINflow therefore uses the
+official C++ `SpaceInterface`/`DISTFUNC` API instead: the vendored custom space
+stores each window as `w` uint16 centroid codes and evaluates the registered
+sum of pairwise centroid similarities directly. The index does not contain
+expanded `w x 128` vectors.
+
+`faiss/quantization/centroids.npy` stores the `k x 128` float16 codebook and
+`similarity.npy` stores its float32 `k x k` lookup table. Those are side
+artifacts used for assignment and the custom distance; `faiss/index.bin`
+stores the quantized code windows. `faiss/embeddings.npz` remains the original
+128-dimensional float16 residue data used by SW and alignment. With
+`--hnswlib_rerank true`, HNSW selects a candidate pool and the original windows
+are used for the final scores.
+
+The implementation plan, cache layout, validation record, and Rouskin
+FlatIP-recall benchmark are maintained in
+[quantized-hnsw-research.md](quantized-hnsw-research.md).
+
+The HNSWLIB environment contains the pinned hnswlib 0.8.0 headers/API and a C++
+compiler. Use `-profile conda` or `-profile wave` for this backend; the existing
+FAISS/ScaNN Docker images do not provide the complete custom C++ build path.
+The database build also copies the original embeddings and graph records needed
+by the later SW/alignment steps.
+
+### Build parameters
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `--index` | `hnswlib` | Selects centroid-code quantization plus HNSWLIB. `hnsw` is accepted as an alias. |
+| `--node_quantization_k` | `2048` | Requested spherical k-means centroid count. Small inputs use the effective count available. |
+| `--node_quantization_sample_size` | `500000` | Maximum node vectors used to fit k-means. |
+| `--node_quantization_niter` | `25` | Spherical k-means iterations. |
+| `--node_quantization_seed` | `1` | Centroid-fitting seed. |
+| `--hnswlib_m` | `32` | HNSW graph degree. |
+| `--hnswlib_ef_construction` | `200` | Build-time exploration factor. |
+| `--hnswlib_ef_search` | `100` | Default search-time exploration factor, persisted in `meta.json`. |
+| `--hnswlib_random_seed` | `1` | HNSW graph construction seed. |
+| `--hnswlib_num_threads` | `0` | HNSWLIB worker threads; zero keeps the library default. |
+| `--hnswlib_candidate_k` | `50` | Compact code-HNSW candidates retrieved before output or optional original-vector reranking. Must be at least `--seed_k`. |
+| `--hnswlib_rerank` | `false` | Rerank candidates with the original float16 windows and use the normal full-window cosine score. |
+
+### Search parameters
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `--seed_k` | `50` | Maximum HNSW neighbours retained per query window before thresholding. |
+| `--seed_min_similarity` | `0.8` | With reranking, the full-window cosine threshold; without reranking, the equivalent raw centroid-score sum is used internally. |
+| `--hnswlib_ef_search` | `100` | Query-time HNSW exploration factor. |
+
+For the Rouskin high-recall profile, use `--node_quantization_k 4096`,
+`--hnswlib_m 32`, `--hnswlib_ef_construction 200`,
+`--hnswlib_ef_search 5000`, `--hnswlib_candidate_k 5000`, and
+`--hnswlib_rerank true`. The requested default remains `k=2048`; benchmark
+trade-offs are recorded in [quantized-hnsw-research.md](quantized-hnsw-research.md).
+
+The published HNSW artifacts are `faiss/index.bin`, `faiss/quantization/`,
+`faiss/windows.tsv`, `faiss/embeddings.npz`, `faiss/records.tsv`, and
+`faiss/meta.json`. The separate published `quantization/` and
+`windows_quantized/` directories make the research representation inspectable;
+they are disposable rebuild products, not substitutes for the original
+`embeddings/` artifacts.
 
 The following sections contain one build-parameter table and one
 search-parameter table for every concrete index type. Parameters that do not

@@ -82,6 +82,60 @@ nextflow run nicoaira/ginflow \
     --outdir results
 ```
 
+### Rouskin query selections
+
+`tests/data/queries_rouskin_6k.tsv` is a benchmark selection table, not a
+structures table: it contains `transcript_id` and `window_offset` rather than
+RNA sequence and dot-bracket columns. Convert it into sliced query subjects
+with:
+
+```bash
+python3 bin/convert_query_selections.py \
+    --structures tests/data/rouskin_sample_6k.tsv \
+    --selections tests/data/queries_rouskin_6k.tsv \
+    --output tests/data/queries_rouskin_6k_structures.tsv \
+    --window-size 11
+```
+
+The generated file has 512 rows with 0-based half-open `start`/`end` slices
+and can be passed directly to `--query`. To build and search the Rouskin data
+with the high-recall compact HNSW profile:
+
+```bash
+nextflow run main.nf \
+    -profile conda \
+    -resume \
+    --index hnswlib \
+    --input tests/data/rouskin_sample_6k.tsv \
+    --query tests/data/queries_rouskin_6k_structures.tsv \
+    --outdir results/rouskin-hnswlib \
+    --node_quantization_k 4096 \
+    --hnswlib_m 32 \
+    --hnswlib_ef_construction 200 \
+    --hnswlib_ef_search 5000 \
+    --hnswlib_candidate_k 5000 \
+    --hnswlib_rerank true
+```
+
+The converter preserves the full source sequence and structure while adding
+the selected slice coordinates, so GINFINITY can retain paired-neighbour
+context and emit an 11-residue query embedding.
+
+If you want ordinary full-molecule query subjects instead, add
+`--full-molecules`:
+
+```bash
+python3 bin/convert_query_selections.py \
+    --structures tests/data/rouskin_sample_6k.tsv \
+    --selections tests/data/queries_rouskin_6k.tsv \
+    --output tests/data/queries_rouskin_6k_full_structures.tsv \
+    --full-molecules
+```
+
+This writes one deduplicated full molecule per selected transcript. The
+pipeline will then generate **all** sliding windows in each molecule, rather
+than only the one `window_offset` selected by the benchmark.
+
 ## Run modes
 
 The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--database` together.
@@ -92,7 +146,7 @@ The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--da
 | `--query` + `--database` | Embed the query table and search an existing `faiss/` directory |
 | `--input` + `--query` | Build the database, search it, and publish it for later runs |
 
-`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `scann/`, `ngt/`, or `cuvs/`). cuVS databases require `-profile gpu` for the later search as well. If `--input` and `--query` are the same file, embeddings are computed once.
+`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `index.bin`, `scann/`, `ngt/`, or `cuvs/`). cuVS databases require `-profile gpu` for the later search as well. If `--input` and `--query` are the same file, embeddings are computed once.
 
 Window search parameters:
 
@@ -103,12 +157,31 @@ Window search parameters:
 | `--seed_k` | `50` | Neighbours kept per query window before the threshold |
 | `--seed_min_similarity` | `0.8` | Minimum cosine similarity |
 | `--search_shard_size` | `--shard_size` | Query records per search task |
-| `--index` | `faiss` | Index **library**: `faiss`, `scann`, `ngt`, or `cuvs` |
+| `--index` | `faiss` | Index **library**: `faiss`, `scann`, `ngt`, `cuvs`, `hnswlib` (or alias `hnsw`) |
 | `--faiss_index` | `flatip` | FAISS **structure** (only with `--index faiss`) |
 | `--ngt_index` | `ngt` | NGT **structure** (`ngt`, `qg`, or `qbg`) when `--index ngt` |
 | `--cuvs_index` | `cagra` | cuVS **structure** (`cagra`, `ivf`, or `ivf-pq`) when `--index cuvs`; requires `-profile gpu` |
 
-Each window is the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is cosine similarity. These sliding windows are built **after** embedding; they are not the optional `start` / `end` columns on the structures table (see [Sliced graphs](#sliced-graphs)).
+For quantized-node HNSWLIB candidate selection, use `--index hnswlib` with
+`-profile conda` or `-profile wave` (the existing FAISS/ScaNN Docker images do
+not contain the pinned custom C++ build path). The default is `k=2048`
+centroids. Configure it with
+`--node_quantization_k`, `--node_quantization_sample_size`, and
+`--node_quantization_niter`, then tune `--hnswlib_m`,
+`--hnswlib_ef_construction`, and `--hnswlib_ef_search`. Use
+`--hnswlib_candidate_k` to control the candidate pool and
+`--hnswlib_rerank true` to score that pool with the original float16 windows.
+
+HNSWLIB generates candidate windows from centroid codes only. The full original
+128-dimensional float16 embeddings remain in `embeddings/` and
+`faiss/embeddings.npz` and are used by the SW/alignment stages.
+
+The FAISS/full-vector path represents each window as the concatenation of `w`
+per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is
+cosine similarity. The HNSWLIB candidate path additionally builds matching
+windows of centroid codes. These sliding windows are built **after** embedding;
+they are not the optional `start` / `end` columns on the structures table (see
+[Sliced graphs](#sliced-graphs)).
 
 **Index library vs FAISS type, every library-specific flag, GPU, and unused-parameter warnings:** [Window indexes](indexes.md). Passing `--scann_*` with `--index faiss`, or `--faiss_nlist` with `flatip`, prints a launch warning and ignores the flag. `--faiss_index scann` is an error; use `--index scann`.
 
