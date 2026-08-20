@@ -5,7 +5,8 @@ exceeds 97% FlatIP recall with the recommended candidate-rerank profile, the
 optional GPU CAGRA companion reaches 99.0% R@50, a full CAGRA-to-cuVS-CPU-
 HNSW conversion/search experiment has completed on the Rouskin 6k set, and
 FAISS's true scalar-quantized HNSW path has been measured against the same
-int8 representation. The complete documented nf-test regression suite and
+int8 representation, and a node-level product-quantization HNSW sweep has
+been measured against the same FlatIP labels. The complete documented nf-test regression suite and
 the full default k=2048 test-corpus build have passed. Larger downstream
 comparisons and whole-pipeline resource measurements remain follow-up work.
 
@@ -851,6 +852,129 @@ production index selector: FAISS HNSW remains a separate research baseline,
 while the current pipeline's compact centroid-code HNSW and optional CAGRA
 paths retain their existing contracts.
 
+### Node-level product quantization with custom C++ hnswlib
+
+This experiment quantizes the original 128-dimensional node embeddings before
+forming candidate windows. It is different from both the centroid-code path
+and the FAISS/CAGRA int8-window path:
+
+```text
+original float16 node vectors
+        |
+        +--> product quantizer over each 128-d node
+                |
+                +--> packed M-subquantizer code per node
+                        |
+                        +--> packed code window in custom C++ hnswlib
+                        +--> exact rerank with original float16-derived windows
+```
+
+For `M` subquantizers and `nbits` bits per subquantizer, each subvector has
+`128/M` dimensions and `2**nbits` centroids. The HNSW payload stores only
+the packed subcodes. The custom distance looks up the dot product between
+matching subquantizer centroids at each window position and sums those values.
+The PQ codebook and lookup table are auxiliary artifacts; the original
+float16 node embeddings are never replaced and remain the source for exact
+reranking and downstream SW/alignment.
+
+The full grid used 839,188 database windows, 512 query windows, `w=11`,
+897,588 nodes, a 250,000-node training sample, 20 PQ iterations, `M=32`,
+`efConstruction=200`, 16 threads, candidate pools 50/100, and `efSearch`
+200/800. Final scores were always computed from the original normalized
+windows. Peak RSS below is the observed child-process peak during search; the
+index size includes the HNSW graph and packed window codes.
+
+```bash
+docker run --rm -e LD_LIBRARY_PATH=/opt/conda/lib --ipc=host \
+  -v "$PWD":/work -v /mnt/ssd_samsung:/mnt/ssd_samsung \
+  -v /home/nicolas/programs/GINFINITY:/home/nicolas/programs/GINFINITY:ro \
+  -w /work \
+  community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:078dd4f35c795d6e \
+  python3 /work/bin/benchmark_pq_hnswlib.py \
+    --embeddings /home/nicolas/programs/GINFINITY/experiments/rouskin_sample_6k_quantization/embeddings.float32.npy \
+    --structures /work/tests/data/rouskin_sample_6k.tsv \
+    --query-selections /work/tests/data/queries_rouskin_6k.tsv \
+    --database-windows /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/flat_windows_float16_w11_s1.npy \
+    --queries /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/gpu_original_queries.float32.npy \
+    --reference-labels /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/flatip_reference_labels.int64.npy \
+    --outdir /mnt/ssd_samsung/ginflow-hnsw-research/pq-hnsw-rouskin \
+    --results-name results.json \
+    --executable /mnt/ssd_samsung/ginflow-hnsw-research/pq_hnswlib \
+    --pq-m-values 4,8,16 --nbits-values 4,8 \
+    --candidate-k-values 50,100 --ef-search-values 200,800 \
+    --hnsw-m-values 32 --ef-construction-values 200 \
+    --threads 16 --rerank-batch-size 32
+```
+
+At `candidate_k=100`, `efSearch=800`, the quantizer/packing trade-off was:
+
+| PQ layout | Node code | Window code (`w=11`) | Index bytes | Search RSS | Candidate R@50 | Final R@50 | Search + rerank |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `M=4, 4-bit` | 2 B | 22 B | 250.3 MB | 348.6 MiB | 0.2844 | 0.3777 | 0.613 s |
+| `M=4, 8-bit` | 4 B | 44 B | 268.7 MB | 367.1 MiB | 0.4318 | 0.5569 | 0.698 s |
+| `M=8, 4-bit` | 4 B | 44 B | 268.7 MB | 366.2 MiB | 0.4681 | 0.6012 | 0.875 s |
+| `M=8, 8-bit` | 8 B | 88 B | 305.7 MB | 403.5 MiB | 0.5823 | 0.7262 | 0.718 s |
+| `M=16, 4-bit` | 8 B | 88 B | 305.7 MB | 401.5 MiB | 0.6364 | 0.7991 | 0.859 s |
+| `M=16, 8-bit` | 16 B | 176 B | 379.5 MB | 476.1 MiB | 0.7424 | 0.8945 | 0.897 s |
+
+The graph dominates storage: doubling the code payload does not double the
+index size. More importantly, the candidate pool is a stronger recall control
+than `efSearch` once the PQ layout is fixed. The 50/100-pool grid is therefore
+only the compact first pass, not the final high-recall setting.
+
+For `M=16`, 8-bit, HNSW `M=32`, the wider candidate sweep used
+`efSearch=1,000/2,000/4,000` and candidate pools 50/100/200/500/1,000. The
+table below selects `efSearch=4,000` so the pool sizes can be compared at the
+same graph exploration setting:
+
+| Candidate pool | Search + rerank | Search RSS | Candidate R@50 | Final R@50 |
+|---:|---:|---:|---:|---:|
+| 50 | 1.580 s | 477.5 MiB | 0.7472 | 0.7472 |
+| 100 | 1.669 s | 477.6 MiB | 0.7475 | 0.9015 |
+| 200 | 1.726 s | 478.1 MiB | 0.7477 | 0.9597 |
+| 500 | 1.941 s | 479.9 MiB | 0.7489 | 0.9821 |
+| 1,000 | 2.236 s | 482.9 MiB | 0.7491 | **0.9889** |
+
+The candidate R@50 remains around 0.75 because it measures the approximate
+PQ ranking before exact reranking. The final R@50 rises as the exact reranker
+gets a wider pool. Missing hnswlib neighbors are represented as sentinels and
+are ignored by the reranker; they do not become database ID zero.
+
+The graph-degree sweep used `M=16/32/64`, `efConstruction=200`,
+`candidate_k=1,000`, and `efSearch=4,000` with the same `M=16`, 8-bit PQ
+layout. It measures whether more graph links can improve traversal recall:
+
+| HNSW M | Index bytes | Build | Build RSS | Search + rerank | Search RSS | Final R@50 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 272.3 MB | 185.9 s | 514 MiB | 2.390 s | 380.9 MiB | 0.9821 |
+| 32 | 379.5 MB | cached; 261.9 s uncached | 616 MiB uncached | 2.295 s | 482.9 MiB | 0.9889 |
+| 64 | 594.3 MB | 465.9 s | 821 MiB | 2.565 s | 687.8 MiB | **0.9941** |
+
+`M=64` is the highest-recall PQ point measured here, but its extra 215 MB of
+index storage and roughly 2.5x build time over `M=16` buy only 1.2 percentage
+points of R@50 over `M=16`. `M=32` is the balanced choice; `M=64` is justified
+when approximately 99.4% overlap is worth the memory and build cost. The
+benchmark does not claim that these settings are universal outside the
+Rouskin workload.
+
+Compared with the other measured paths, the best node-PQ result is:
+
+| Path | Index bytes | Search + exact rerank | Final R@50 |
+|---|---:|---:|---:|
+| Exact FlatIP | 4,726 MB | 24.67 s | 1.0000 |
+| PQ `M=16`, 8-bit, HNSW `M=32`, pool 1,000 | 379.5 MB | 2.24–2.30 s | 0.9889 |
+| PQ `M=16`, 8-bit, HNSW `M=64`, pool 1,000 | 594.3 MB | 2.56 s | **0.9941** |
+| Converted cuVS CPU HNSW int8, pool 1,000 | 1,409.8 MB | 2.41 s | 0.9968 |
+| GPU CAGRA int8, pool 50 | 1,396.4 MB | 0.0298 s GPU candidate search | 0.9900 |
+
+The PQ path is substantially smaller than the int8 window indexes and is
+competitive in CPU query time. Its remaining gap to exact FlatIP comes from
+the candidate-generation representation; exact reranking cannot recover a
+window that never enters the pool. All detailed machine-readable PQ results
+are kept in the SSD cache under
+`/mnt/ssd_samsung/ginflow-hnsw-research/pq-hnsw-rouskin/`, including
+`results.json`, `results-wide.json`, and `results-hnsw-m.json`.
+
 ## Validation completed
 
 The following checks have passed in the current working tree:
@@ -934,12 +1058,18 @@ machine-readable values.
 - [x] Publish quantization and code-window artifacts for inspection.
 - [x] Add the optional cuVS CAGRA GPU companion with int8 candidate windows
   and exact original-embedding reranking.
+- [x] Add a research-only node-level PQ encoder, packed-window builder, and
+  custom C++ hnswlib distance over positional subquantizer lookup tables.
+- [x] Preserve and use original float16-derived windows for exact PQ reranking,
+  including short-result/sentinel handling.
 
 ### Tests
 
 - [x] Unit-test centroid determinism, effective k, code ranges, window slicing,
   similarity sums, and original dtype preservation.
 - [x] Unit-test C++ custom distances and exact rerank ordering.
+- [x] Run `tests/test_pq_hnswlib.py`: packed-code round trips, node-major
+  window layout, positional C++ distance sums, and missing-neighbor reranking.
 - [x] Test hnswlib Python legacy compatibility in the benchmark environment.
 - [x] Test HNSWLIB dispatch with nf-test.
 - [x] Run real smoke build/search and real query-only rerank.
@@ -972,6 +1102,8 @@ machine-readable values.
   float-backed `IndexHNSWFlat` control.
 - [x] Compare FAISS IP and L2 candidate metrics, index size, build time, peak
   host memory, search time, candidate width, and exact-rerank recall.
+- [x] Sweep node-PQ `M`/`nbits`, candidate pools 50 through 1,000, ef-search,
+  and HNSW graph degree 16/32/64 on the full Rouskin query set.
 - [x] Add CPU fallback and GPU stub/unit coverage for both HNSWLIB modules.
 - [ ] Run a larger downstream SW/alignment diff against the FlatIP baseline at
   the production threshold.
@@ -1015,3 +1147,5 @@ machine-readable values.
 | 2026-08-20 | FAISS HNSWSQ true-int8 IP benchmark | `IndexHNSWSQ(QT_8bit_direct_signed)` built in 735.742 s, occupied 1,409,946,230 bytes, and reached R@50 0.9762 at ef=200/candidate_k=50; ef=800 reached 0.9798. |
 | 2026-08-20 | FAISS float-backed int8 control | `IndexHNSWFlat` over the same integer-valued coordinates built in 523.783 s and occupied 4,954,676,306 bytes; recall was within 0.2 percentage points of true int8. |
 | 2026-08-20 | FAISS HNSWSQ L2 and candidate-width sweep | L2 reached R@50 0.9664 at ef=200; IP reached 0.9893/0.9916/0.9936/0.9937 at candidate pools 100/200/500/1,000 with the listed wider ef values. |
+| 2026-08-20 | Node-level PQ custom-distance sweep | `M=16`, 8-bit PQ with HNSW `M=32`, candidate_k=1,000, and exact rerank reached R@50 0.9889 in 2.24 s with a 379.5 MB index; the 50/100 first-pass grid ranged from 0.3777 to 0.8945 R@50. |
+| 2026-08-20 | Node-level PQ HNSW-degree sweep | At candidate_k=1,000, HNSW `M=16/32/64` reached R@50 0.9821/0.9889/0.9941 with 272.3/379.5/594.3 MB indexes; `M=64` peaked at 821 MiB during its 465.9 s build. |
