@@ -2,11 +2,12 @@
 
 Status: implemented and validated on the smoke pipeline; the CPU compact path
 exceeds 97% FlatIP recall with the recommended candidate-rerank profile, the
-optional GPU CAGRA companion reaches 99.0% R@50, and a full CAGRA-to-cuVS-CPU-
-HNSW conversion/search experiment has completed on the Rouskin 6k set. The
-complete documented nf-test regression suite and the full default k=2048
-test-corpus build have passed. Larger downstream comparisons and whole-
-pipeline resource measurements remain follow-up work.
+optional GPU CAGRA companion reaches 99.0% R@50, a full CAGRA-to-cuVS-CPU-
+HNSW conversion/search experiment has completed on the Rouskin 6k set, and
+FAISS's true scalar-quantized HNSW path has been measured against the same
+int8 representation. The complete documented nf-test regression suite and
+the full default k=2048 test-corpus build have passed. Larger downstream
+comparisons and whole-pipeline resource measurements remain follow-up work.
 
 This document is deliberately comprehensive. It records the design, the
 temporary benchmark layout, the measured trade-offs, and the cleanup TODOs so
@@ -285,6 +286,13 @@ real-compact-rerank-query/             # real query-only output
 cagra-original-int8-scale850-cuvs2410/ # full Rouskin CAGRA source benchmark
 cagra-to-hnsw-full/                    # converted index, CPU labels, metrics
 cagra-to-hnsw-smoke/                   # small conversion smoke check
+faiss-hnsw-int8-full/                  # FAISS IndexHNSWSQ, IP, full Rouskin
+faiss-hnsw-flat-int8-full/             # float-backed int8-coordinate control
+faiss-hnsw-int8-l2-full/               # FAISS IndexHNSWSQ, L2 comparison
+faiss-hnsw-int8-ip-k100/               # loaded-index candidate-width sweep
+faiss-hnsw-int8-ip-k200/               # loaded-index candidate-width sweep
+faiss-hnsw-int8-ip-k500/               # loaded-index candidate-width sweep
+faiss-hnsw-int8-ip-k1000/              # loaded-index candidate-width sweep
 ```
 
 Do not commit these generated directories. The benchmark scripts are kept in
@@ -743,6 +751,106 @@ production pipeline still uses CAGRA directly for `--hnswlib_gpu`; this
 experiment establishes a possible persisted CPU fallback/serving format but
 does not silently switch the production backend.
 
+### FAISS HNSW over the same original-window int8 representation
+
+The next experiment compares the cuVS path with a conventional FAISS HNSW
+index. It uses the same data and the same candidate representation as the
+CAGRA benchmark: the original float16 node embeddings are first assembled
+into normalized float32 windows, then rounded with a global scale of 850.0 to
+the signed-int8 range. The original float16-derived windows are retained for
+the exact rerank and are never replaced by the int8 values for final scoring.
+This is window quantization for candidate selection; it is not the centroid
+code representation used by the compact custom-distance HNSWLIB path.
+
+FAISS 1.10.0 provides `IndexHNSWSQ`, so the true compact test uses
+`QT_8bit_direct_signed`. The Python API still accepts float32 input arrays;
+the scalar-quantizer index is what stores one byte per coordinate internally.
+For an apples-to-apples quality control, `IndexHNSWFlat` was also given the
+same integer-valued coordinates. That control has essentially the same search
+math but stores float32 values, so its larger index is expected. Both indexes
+used inner product, `M=32`, `efConstruction=200`, and 16 OpenMP threads. The
+exact rerank uses the original normalized windows and the reference is the
+same FlatIP top-50 label set used by the CAGRA measurements.
+
+The full build/search command was:
+
+```bash
+docker run --rm --ipc=host \
+  -v "$PWD":/work -v /mnt/ssd_samsung:/mnt/ssd_samsung -w /work \
+  community.wave.seqera.io/library/python_numpy_faiss-cpu_mkl_libblas:078dd4f35c795d6e \
+  python3 /work/bin/benchmark_faiss_hnsw_int8.py \
+    --database-windows /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/flat_windows_float16_w11_s1.npy \
+    --queries /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/gpu_original_queries.float32.npy \
+    --reference-labels /mnt/ssd_samsung/ginflow-hnsw-research/benchmark-compact-rerank-thresholds/flatip_reference_labels.int64.npy \
+    --outdir /mnt/ssd_samsung/ginflow-hnsw-research/faiss-hnsw-int8-full \
+    --variant sq-int8 --metric ip --int8-scale 850 \
+    --ef-search-values 50,100,200,400,800 --candidate-k 50 --output-k 50 \
+    --m 32 --ef-construction 200 --num-threads 16
+```
+
+The `flat-int8` control uses the same command with
+`--variant flat-int8` and a different output directory. The L2 comparison
+uses `--variant sq-int8 --metric l2`. Existing indexes can be reused for
+candidate-width experiments with `--load-index`; this avoids rebuilding the
+839,188-vector graph.
+
+At candidate_k=50, the IP results were:
+
+| Path | Index bytes | Peak RSS (MiB) | Build | Search + rerank | Final R@1 | Final R@5 | Final R@10 | Final R@50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Exact FlatIP reference | 4,726,306,861 | — | 4.59 s | 24.672 s | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| FAISS `IndexHNSWSQ`, int8, IP, ef=200 | 1,409,946,230 | 6,259 | 735.742 s | **0.381 s** | 0.9668 | 0.9789 | 0.9793 | 0.9762 |
+| FAISS `IndexHNSWFlat`, int8-valued float32, IP, ef=200 | 4,954,676,306 | 9,569 | 523.783 s | **0.373 s** | 0.9688 | 0.9813 | 0.9818 | 0.9782 |
+| Converted cuVS CPU HNSW, int8, ef=200 | 1,409,835,936 | — | 15.034 s conversion* | **0.233 s** | 0.9688 | 0.9871 | 0.9898 | 0.9895 |
+
+The cuVS conversion row is not a fresh graph build: the CAGRA graph was built
+on the GPU in 39.037 s and then serialized to the CPU HNSW format in 15.034 s.
+Thus its build-plus-conversion wall time was about 54.1 s, whereas FAISS built
+its HNSW graph from scratch on the CPU. The timings were collected on
+different code paths and are useful engineering measurements, not a
+controlled hardware-normalized benchmark. The cuVS CPU row used 8 search
+threads; the FAISS rows used 16.
+
+The important storage result is that FAISS `IndexHNSWSQ` and converted cuVS
+HNSW are almost identical in size: 110,294 bytes apart for this dataset. The
+float-backed control is 3.51 times larger than the true scalar-quantized
+FAISS index and used about 3.23 GiB more peak resident memory, while its
+recall differed by less than 0.2 percentage points at R@50. This confirms
+that the direct-signed scalar-quantizer representation is the memory-saving
+part; the graph topology is the dominant remaining cost.
+
+The FAISS L2 variant was also measured with the same true int8 storage:
+
+| Metric | Build | Index bytes | Peak RSS | Search + rerank at ef=200 | Final R@50 at ef=200 | Final R@50 at ef=800 |
+|---|---:|---:|---:|---:|---:|---:|
+| IP | 735.742 s | 1,409,946,230 | 6,259 MiB | 0.381 s | 0.9762 | 0.9798 |
+| L2 | 964.652 s | 1,409,946,230 | 6,255 MiB | 0.441 s | 0.9664 | 0.9672 |
+
+IP is the better FAISS candidate metric for this FlatIP reference. The L2
+variant is not equivalent after int8 rounding because quantization changes the
+per-window norms; the exact rerank cannot recover candidates that L2 omitted.
+
+Widening the FAISS IP candidate pool improves final overlap, at the cost of
+both HNSW traversal and original-vector reranking:
+
+| Candidate pool | ef search | Search + rerank | Final R@50 |
+|---:|---:|---:|---:|
+| 50 | 200 | 0.381 s | 0.9762 |
+| 100 | 800 | 1.222 s | 0.9893 |
+| 200 | 800 | 1.369 s | 0.9916 |
+| 500 | 2,000 | 4.562 s | 0.9936 |
+| 1,000 | 4,000 | 16.635 s | **0.9937** |
+
+The converted cuVS CPU path reached 0.9941 at candidate_k=100, 0.9955 at
+candidate_k=500, and 0.9968 at candidate_k=1,000 in its own measurements.
+Therefore, for this Rouskin workload, FAISS HNSW is a viable CPU int8
+candidate index with approximately the same compact storage as the converted
+cuVS format, but the cuVS-built graph delivered higher recall and faster
+search at comparable candidate widths. The experiment does not change the
+production index selector: FAISS HNSW remains a separate research baseline,
+while the current pipeline's compact centroid-code HNSW and optional CAGRA
+paths retain their existing contracts.
+
 ## Validation completed
 
 The following checks have passed in the current working tree:
@@ -752,6 +860,8 @@ The following checks have passed in the current working tree:
   when hnswlib is not installed;
 - GPU representation tests cover automatic/non-clipping int8 scaling, separate
   window-manifest staging, manifest coordinates, and original-row handling;
+- FAISS HNSW int8 benchmark helper tests cover scale/rounding, clipping
+  rejection, original-window reranking, recall, and index reuse arguments;
 - `tests/test_parameter_values.py` and JSON schema validation;
 - `nf-test test tests/search.nf.test --tag hnswlib --profile +docker`;
 - CPU and GPU stub tests for both `BUILD_HNSWLIB_INDEX` and `SEARCH_HNSWLIB`;
@@ -858,6 +968,10 @@ machine-readable values.
   with the GPU-enabled conversion process.
 - [x] Sweep converted-HNSW candidate width, `ef_search`, and CPU thread count
   against the FlatIP reference.
+- [x] Benchmark FAISS `IndexHNSWSQ` with direct-signed int8 windows against a
+  float-backed `IndexHNSWFlat` control.
+- [x] Compare FAISS IP and L2 candidate metrics, index size, build time, peak
+  host memory, search time, candidate width, and exact-rerank recall.
 - [x] Add CPU fallback and GPU stub/unit coverage for both HNSWLIB modules.
 - [ ] Run a larger downstream SW/alignment diff against the FlatIP baseline at
   the production threshold.
@@ -898,3 +1012,6 @@ machine-readable values.
 | 2026-08-20 | GPU HNSWLIB module integration | Original window arrays/manifests, GPU CAGRA metadata, exact rerank, CPU fallback, and GPU stubs/unit tests passed. |
 | 2026-08-20 | CAGRA-to-cuVS-CPU-HNSW conversion | Full int8 graph serialized in 15.034 s to a 1,409,835,936-byte HNSW file; observed peak VRAM increase was 1,334 MiB and returned to baseline after CAGRA destruction. |
 | 2026-08-20 | Converted HNSW CPU-only search | No-GPU search produced identical labels; candidate_k=50 reached R@50 0.9895 in 0.233 s including exact rerank, and candidate_k=1,000 reached 0.9968 in 2.411 s. |
+| 2026-08-20 | FAISS HNSWSQ true-int8 IP benchmark | `IndexHNSWSQ(QT_8bit_direct_signed)` built in 735.742 s, occupied 1,409,946,230 bytes, and reached R@50 0.9762 at ef=200/candidate_k=50; ef=800 reached 0.9798. |
+| 2026-08-20 | FAISS float-backed int8 control | `IndexHNSWFlat` over the same integer-valued coordinates built in 523.783 s and occupied 4,954,676,306 bytes; recall was within 0.2 percentage points of true int8. |
+| 2026-08-20 | FAISS HNSWSQ L2 and candidate-width sweep | L2 reached R@50 0.9664 at ef=200; IP reached 0.9893/0.9916/0.9936/0.9937 at candidate pools 100/200/500/1,000 with the listed wider ef values. |
