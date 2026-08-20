@@ -21,6 +21,8 @@ nextflow_process {
                 input[1] = file("${projectDir}/modules/build_hnswlib_index", checkIfExists: true)
                 input[2] = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
                 input[3] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                input[4] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
+                input[5] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
                 """
             }
         }
@@ -30,6 +32,41 @@ nextflow_process {
                 { assert process.success },
                 { assert process.out.seeds.size() == 1 },
                 { assert process.out.versions.size() == 1 },
+                {
+                    def seeds = path(process.out.seeds.get(0).get(1)).readLines()
+                    assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
+                    assert seeds.size() == 1
+                }
+            )
+        }
+
+    }
+
+    test("Should emit a seed table from the GPU CAGRA companion index") {
+
+        config "./nextflow.gpu.config"
+        options "-stub"
+
+        when {
+            process {
+                """
+                input[0] = [
+                    [ id: 'query' ],
+                    file("${projectDir}/modules/generate_quantized_windows", checkIfExists: true)
+                ]
+                input[1] = file("${projectDir}/modules/build_hnswlib_index", checkIfExists: true)
+                input[2] = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
+                input[3] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                input[4] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
+                input[5] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.seeds.size() == 1 },
                 {
                     def seeds = path(process.out.seeds.get(0).get(1)).readLines()
                     assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'

@@ -1,0 +1,24 @@
+nextflow_pipeline {
+
+    name "Test HNSWLIB GPU validation"
+    script "../main.nf"
+    tag "pipeline"
+    tag "hnswlib"
+
+    test("hnswlib_gpu without -profile gpu is an error") {
+
+        when {
+            params {
+                outdir       = "$outputDir"
+                input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                index        = 'hnswlib'
+                hnswlib_gpu  = true
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
+}

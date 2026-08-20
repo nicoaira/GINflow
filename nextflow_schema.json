@@ -219,6 +219,52 @@
                     "default": false,
                     "description": "Rerank the compact HNSW candidate pool with the original normalized float16 window embeddings before writing seeds. This preserves quantization for candidate selection only and applies to --index hnswlib."
                 },
+                "hnswlib_gpu": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Use the optional GPU CAGRA companion index for HNSWLIB query search. Requires -profile gpu; original windows are int8-scaled for candidate search and final scores use the preserved embeddings."
+                },
+                "hnswlib_gpu_candidate_k": {
+                    "type": "integer",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "GPU CAGRA candidates retained before exact scoring with the original embeddings. Applies to --hnswlib_gpu."
+                },
+                "hnswlib_gpu_itopk_size": {
+                    "type": "integer",
+                    "default": 256,
+                    "minimum": 1,
+                    "description": "CAGRA intermediate candidate beam. Larger values improve GPU recall at query-time memory and latency cost. Applies to --hnswlib_gpu."
+                },
+                "hnswlib_gpu_search_batch_size": {
+                    "type": "integer",
+                    "default": 512,
+                    "minimum": 1,
+                    "description": "Maximum query windows searched in one GPU batch. Reduce this when the CAGRA search beam exceeds available GPU memory. Applies to --hnswlib_gpu."
+                },
+                "hnswlib_gpu_intermediate_graph_degree": {
+                    "type": "integer",
+                    "default": 128,
+                    "minimum": 1,
+                    "description": "CAGRA intermediate graph degree used to build the GPU companion index."
+                },
+                "hnswlib_gpu_graph_degree": {
+                    "type": "integer",
+                    "default": 64,
+                    "minimum": 1,
+                    "description": "CAGRA retained graph degree used to build the GPU companion index."
+                },
+                "hnswlib_gpu_build_algo": {
+                    "type": "string",
+                    "default": "nn_descent",
+                    "enum": ["ivf_pq", "nn_descent"],
+                    "description": "CAGRA graph construction algorithm for the GPU companion index."
+                },
+                "hnswlib_gpu_int8_scale": {
+                    "type": ["number", "null"],
+                    "minimum": 0,
+                    "description": "Optional global int8 scale for GPU window vectors. Null uses the empirically validated scale 850 when safe and lowers it only when needed to avoid clipping."
+                },
                 "index": {
                     "type": "string",
                     "default": "faiss",

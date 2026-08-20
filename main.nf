@@ -164,6 +164,8 @@ def normalize_parameter_values() {
     normalize_lowercase_choice('plot_backend', 'none', ['none', 'rnartistcore', 'r4rna', 'both'])
     normalize_lowercase_choice('report_theme', 'light', ['light', 'dark'])
     normalize_boolean_param('hnswlib_rerank', false)
+    normalize_boolean_param('hnswlib_gpu', false)
+    normalize_lowercase_choice('hnswlib_gpu_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent'])
 }
 
 def detect_database_library() {
@@ -185,7 +187,7 @@ def detect_database_library() {
             if (backend?.equalsIgnoreCase('cuvs') || ['CAGRA', 'IVF', 'IVF-PQ'].contains(kind?.toUpperCase())) {
                 return 'cuvs'
             }
-            if (backend?.equalsIgnoreCase('hnswlib') || kind?.equalsIgnoreCase('HNSWLIB')) {
+            if (backend?.equalsIgnoreCase('hnswlib') || ['HNSWLIB', 'HNSWLIB_COMPACT', 'HNSWLIB_GPU_CAGRA'].contains(kind?.toUpperCase())) {
                 return 'hnswlib'
             }
             if (backend?.equalsIgnoreCase('faiss') || kind) {
@@ -275,8 +277,46 @@ def validate_hnswlib_params(library) {
     if (library != 'hnswlib') {
         return
     }
+    def gpu_database = false
+    def database_meta = null
+    if (params.database) {
+        def meta_file = file("${params.database}/meta.json")
+        if (meta_file.exists()) {
+            try {
+                database_meta = new groovy.json.JsonSlurperClassic().parseText(meta_file.text)
+                gpu_database = (database_meta.index_type as String)?.equalsIgnoreCase('HNSWLIB_GPU_CAGRA')
+            }
+            catch (Exception ignored) {
+                // The search module will report malformed metadata.
+            }
+        }
+    }
+    if (gpu_database) {
+        params.hnswlib_gpu = true
+    }
+    if (params.hnswlib_gpu && params.database && !gpu_database && !params.input) {
+        error "--hnswlib_gpu requires a database built with --hnswlib_gpu true. Rebuild the database or omit --hnswlib_gpu."
+    }
     if ((params.hnswlib_candidate_k as Integer) < (params.seed_k as Integer)) {
         error "--hnswlib_candidate_k must be >= --seed_k so candidate selection can emit the requested number of seeds."
+    }
+    if (params.hnswlib_gpu) {
+        if ((params.hnswlib_gpu_candidate_k as Integer) < (params.seed_k as Integer)) {
+            error "--hnswlib_gpu_candidate_k must be >= --seed_k so GPU candidate selection can emit the requested number of seeds."
+        }
+        if ((params.hnswlib_gpu_itopk_size as Integer) < (params.hnswlib_gpu_candidate_k as Integer)) {
+            error "--hnswlib_gpu_itopk_size must be >= --hnswlib_gpu_candidate_k."
+        }
+        if ((params.hnswlib_gpu_graph_degree as Integer) > (params.hnswlib_gpu_intermediate_graph_degree as Integer)) {
+            error "--hnswlib_gpu_graph_degree must be <= --hnswlib_gpu_intermediate_graph_degree."
+        }
+        if (params.hnswlib_gpu_int8_scale != null && (params.hnswlib_gpu_int8_scale as BigDecimal) <= 0) {
+            error "--hnswlib_gpu_int8_scale must be positive when provided."
+        }
+        def profiles = workflow.profile.tokenize(',').collect { it.trim() }
+        if (!profiles.contains('gpu')) {
+            error "--hnswlib_gpu requires -profile gpu so BUILD_HNSWLIB_INDEX and SEARCH_HNSWLIB get the cuVS image and NVIDIA runtime."
+        }
     }
     if (params.hnswlib_rerank && !params.input && !params.database) {
         error "--hnswlib_rerank requires a built or existing hnswlib database."
@@ -309,6 +349,14 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'hnswlib_num_threads', 0, false)
         collect_if_unused(unused, 'hnswlib_candidate_k', 50, false)
         collect_if_unused(unused, 'hnswlib_rerank', false, false)
+        collect_if_unused(unused, 'hnswlib_gpu', false, false)
+        collect_if_unused(unused, 'hnswlib_gpu_candidate_k', 50, false)
+        collect_if_unused(unused, 'hnswlib_gpu_itopk_size', 256, false)
+        collect_if_unused(unused, 'hnswlib_gpu_search_batch_size', 512, false)
+        collect_if_unused(unused, 'hnswlib_gpu_intermediate_graph_degree', 128, false)
+        collect_if_unused(unused, 'hnswlib_gpu_graph_degree', 64, false)
+        collect_if_unused(unused, 'hnswlib_gpu_build_algo', 'nn_descent', false)
+        collect_if_unused(unused, 'hnswlib_gpu_int8_scale', null, false)
     }
 
     if (library == 'hnswlib') {

@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   embeddings remain packed for GINFINITY-SW and alignment. See
   [docs/indexes.md](docs/indexes.md) and the reproducible benchmark plan/results
   in [docs/quantized-hnsw-research.md](docs/quantized-hnsw-research.md).
+- Optional GPU HNSWLIB companion (`--hnswlib_gpu true`) using pinned cuVS CAGRA
+  over int8-scaled original windows, with exact reranking from the preserved
+  float16 embeddings. Requires `-profile gpu`; the serialized companion is
+  stored under `faiss/cagra/` and is identified as `HNSWLIB_GPU_CAGRA`.
 - ScaNN seed search (`--index scann`): [Google ScaNN](https://github.com/google-research/google-research/tree/master/scann) (`scann==1.4.2`) as a CPU-only alternative to FAISS. Auto-selects brute-force (<20k windows), AH+reorder (<100k), or tree+AH+reorder. ScaNN knobs are `--scann_leaves`, `--scann_leaves_to_search`, `--scann_reorder`, `--scann_ah_dim`, `--scann_anisotropic`, `--scann_soar`. Artifacts go to `faiss/scann/` instead of `index.faiss`. `--faiss_gpu` with ScaNN is an error.
 - Launch warning when a library-specific flag does not apply to `--index` / `--faiss_index` (for example `--scann_reorder` with FAISS, or `--faiss_nlist` with `flatip`). Guide: [docs/indexes.md](docs/indexes.md).
 - Additional FAISS index types (`--faiss_index`): `flatip` (default), `flatl2`, `hnsw`, `ivfflat`, `lsh`, `sq`, `pq`, `ivfsq`, `ivfpq`, `ivfpqr`, matching [Faiss indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes). IVF/PQ/HNSW/LSH/SQ knobs are `--faiss_nlist`, `--faiss_nprobe`, `--faiss_pq_m`, `--faiss_pq_nbits`, `--faiss_pq_m_refine`, `--faiss_hnsw_m`, `--faiss_hnsw_ef_construction`, `--faiss_hnsw_ef_search`, `--faiss_lsh_nbits`, `--faiss_sq_type`.

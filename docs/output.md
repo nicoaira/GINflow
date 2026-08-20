@@ -20,6 +20,7 @@ outdir/
 │   ├── index.faiss   # FAISS types
 │   ├── ngt/          # NGT, qg, or qbg when --index ngt
 │   ├── cuvs/         # cagra, ivf, or ivf-pq when --index cuvs
+│   ├── cagra/        # GPU HNSWLIB companion when --hnswlib_gpu true
 │   └── scann/        # --index scann
 │   ├── windows.tsv
 │   └── meta.json
@@ -74,7 +75,8 @@ Reusable window index of every database window. Default is exact inner product (
 - `ngt/` — native NGT, qg, or qbg index directory when `backend` is `ngt`.
 - `cuvs/` — serialized GPU cuVS index directory when `backend` is `cuvs`.
 - `scann/` — serialized ScaNN searcher when `--index scann`
-- `index.bin` — compact C++ HNSWLIB index whose element payload is a uint16 centroid-code window when `--index hnswlib`
+- `index.bin` — compact C++ HNSWLIB index whose element payload is a uint16 centroid-code window when `--index hnswlib` and `--hnswlib_gpu false`
+- `cagra/index.bin` — serialized cuVS CAGRA companion over int8-scaled original windows when `--hnswlib_gpu true`; its labels are exact-reranked before seed output
 - `quantization/` — HNSWLIB centroids (`centroids.npy`, float16), registered centroid similarity (`similarity.npy`, float32), and fit metadata; these side artifacts are not substituted for the original embeddings
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, counts, and index settings
@@ -83,9 +85,11 @@ Reusable window index of every database window. Default is exact inner product (
 - `evd.json` — Karlin–Altschul λ, K, database residue count, and the reverse-sequence null fit
 
 When `--index hnswlib` is selected, the workflow also publishes `quantization/`
-and `windows_quantized/` at the output root. These contain the centroid-code
-candidate representation and are not used by SW; the original float16
-embeddings above remain authoritative for alignment.
+and `windows_quantized/` at the output root. These contain the CPU centroid-code
+candidate representation and are not used by SW. GPU HNSWLIB additionally
+stores its int8-scaled original-window CAGRA data inside the serialized index;
+the original float16 embeddings above remain authoritative for exact scoring,
+SW, alignment, and plots.
 
 `--database` for a later search run should point at this directory.
 

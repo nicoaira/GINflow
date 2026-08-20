@@ -111,7 +111,9 @@ workflow GINFLOW {
                 PREPARE_DB.out.quantization,
                 ch_db_embeddings,
                 ch_db_metadata,
-                hnsw_bundle
+                hnsw_bundle,
+                ch_db_windows,
+                ch_db_manifests
             )
             ch_versions       = ch_versions.mix(BUILD_HNSWLIB_INDEX.out.versions)
             ch_built_database = BUILD_HNSWLIB_INDEX.out.database
@@ -197,7 +199,9 @@ workflow GINFLOW {
                 ch_quantized_windows,
                 ch_search_database.collect(),
                 hnsw_bundle,
-                ch_query_embeddings.map { meta, npz, manifest -> npz }.collect()
+                ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
+                ch_query_windows.map { meta, npz, manifest -> npz }.collect(),
+                ch_query_windows.map { meta, npz, manifest -> manifest }.collect()
             )
             ch_versions    = ch_versions.mix(SEARCH_HNSWLIB.out.versions)
             ch_seed_shards = SEARCH_HNSWLIB.out.seeds

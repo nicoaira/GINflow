@@ -18,7 +18,7 @@ resolved from the number of indexed windows and stored in `meta.json`.
 | `scann` | none | ScaNN brute-force, asymmetric hashing, or tree + asymmetric hashing plan | No | `scann/` |
 | `ngt` | `--ngt_index` | `ngt`, `qg`, `qbg` | No | `ngt/` |
 | `cuvs` | `--cuvs_index` | `cagra`, `ivf`, `ivf-pq` | Required | `cuvs/` |
-| `hnswlib` | HNSW parameters below | Quantized-node HNSWLIB inner-product graph | No | `index.bin` |
+| `hnswlib` | HNSW parameters below | Quantized-node HNSWLIB graph, or optional GPU CAGRA companion | Optional (`--hnswlib_gpu`) | `index.bin` or `cagra/` |
 
 `--database` is a path to an existing published database. On query-only runs,
 GINflow reads `meta.json` and detects the library and index type. Passing an
@@ -53,7 +53,7 @@ table.
 | `--index` | `faiss` | Index library used to build and search the database. |
 | `--window_size` | `11` | Nucleotides per window; each window concatenates this many 128-dimensional residue embeddings. |
 | `--window_stride` | `1` | Step between consecutive window starts. |
-| `-profile gpu` | not set | Required by cuVS and by FAISS when `--faiss_gpu` is enabled. It selects the GPU task image and NVIDIA runtime. |
+| `-profile gpu` | not set | Required by cuVS, by FAISS when `--faiss_gpu` is enabled, and by HNSWLIB when `--hnswlib_gpu true`. It selects the GPU task image and NVIDIA runtime. |
 
 ### Search parameters
 
@@ -88,8 +88,44 @@ FlatIP-recall benchmark are maintained in
 The HNSWLIB environment contains the pinned hnswlib 0.8.0 headers/API and a C++
 compiler. Use `-profile conda` or `-profile wave` for this backend; the existing
 FAISS/ScaNN Docker images do not provide the complete custom C++ build path.
-The database build also copies the original embeddings and graph records needed
-by the later SW/alignment steps.
+That CPU requirement applies when `--hnswlib_gpu false`; the CAGRA companion
+uses the cuVS GPU image with `-profile docker,gpu`. The database build also
+copies the original embeddings and graph records needed by the later
+SW/alignment steps.
+
+### GPU companion: `--hnswlib_gpu true`
+
+The GPU mode is a companion implementation for the HNSWLIB workflow, not a
+custom-distance extension to the hnswlib Python binding. It uses the pinned
+cuVS 24.10 CAGRA graph over the original normalized window vectors after a
+single global int8 scale. CAGRA's squared-L2 search is only candidate
+selection. The candidate labels are exact-reranked with the preserved original
+128-dimensional float16 node embeddings and the normal full-window cosine
+score before seeds are written.
+
+This design keeps the requested quantized-node artifacts available for the CPU
+custom-distance path while avoiding expansion of every candidate into a dense
+float vector on the GPU. It also means that `--hnswlib_gpu_candidate_k` must be
+at least `--seed_k`, and `--hnswlib_gpu_itopk_size` must be at least the
+candidate count. A GPU database is stored under `faiss/cagra/index.bin` and is
+identified by `meta.json` as `HNSWLIB_GPU_CAGRA`. It requires `-profile gpu`
+for both construction and query-only search.
+
+| Parameter | Default | Description |
+|---|---:|---|
+| `--hnswlib_gpu` | `false` | Select the CAGRA companion for HNSWLIB build/search. |
+| `--hnswlib_gpu_candidate_k` | `50` | Candidates retained before exact original-vector reranking. |
+| `--hnswlib_gpu_itopk_size` | `256` | CAGRA intermediate beam. Must be at least `candidate_k`. |
+| `--hnswlib_gpu_search_batch_size` | `512` | Query windows per GPU search batch. Lower it for smaller VRAM. |
+| `--hnswlib_gpu_intermediate_graph_degree` | `128` | CAGRA build-time graph degree. |
+| `--hnswlib_gpu_graph_degree` | `64` | Retained CAGRA graph degree. |
+| `--hnswlib_gpu_build_algo` | `nn_descent` | Pinned cuVS graph builder (`nn_descent` or `ivf_pq`). |
+| `--hnswlib_gpu_int8_scale` | auto | Optional non-clipping global scale; auto uses the validated 850 scale when safe and lowers it only when needed to avoid clipping. |
+
+The GPU search does not replace the original embeddings: `faiss/embeddings.npz`
+remains the SW/alignment source, and `faiss/quantization/` remains the fitted
+node codebook/similarity artifact. See the measured Rouskin comparison in
+[quantized-hnsw-research.md](quantized-hnsw-research.md).
 
 ### Build parameters
 

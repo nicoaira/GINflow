@@ -162,19 +162,45 @@ Window search parameters:
 | `--ngt_index` | `ngt` | NGT **structure** (`ngt`, `qg`, or `qbg`) when `--index ngt` |
 | `--cuvs_index` | `cagra` | cuVS **structure** (`cagra`, `ivf`, or `ivf-pq`) when `--index cuvs`; requires `-profile gpu` |
 
-For quantized-node HNSWLIB candidate selection, use `--index hnswlib` with
-`-profile conda` or `-profile wave` (the existing FAISS/ScaNN Docker images do
-not contain the pinned custom C++ build path). The default is `k=2048`
-centroids. Configure it with
+For quantized-node HNSWLIB candidate selection, use `--index hnswlib`. The
+CPU path uses the pinned custom C++ build driver; the optional GPU path uses a
+cuVS CAGRA companion index and requires `-profile docker,gpu` (or an equivalent
+GPU runtime profile). The default is `k=2048` centroids. Configure it with
 `--node_quantization_k`, `--node_quantization_sample_size`, and
 `--node_quantization_niter`, then tune `--hnswlib_m`,
 `--hnswlib_ef_construction`, and `--hnswlib_ef_search`. Use
 `--hnswlib_candidate_k` to control the candidate pool and
 `--hnswlib_rerank true` to score that pool with the original float16 windows.
 
-HNSWLIB generates candidate windows from centroid codes only. The full original
-128-dimensional float16 embeddings remain in `embeddings/` and
-`faiss/embeddings.npz` and are used by the SW/alignment stages.
+To use the GPU companion for a build and query in one run:
+
+```bash
+nextflow run nicoaira/ginflow \
+    -profile docker,gpu \
+    --input structures.tsv \
+    --query queries.tsv \
+    --index hnswlib \
+    --hnswlib_gpu true \
+    --hnswlib_gpu_candidate_k 50 \
+    --hnswlib_gpu_itopk_size 256 \
+    --outdir results
+```
+
+The GPU index uses a non-clipping global int8 scale for the original normalized
+window vectors only. The automatic scale uses the validated value 850 when it
+does not clip and lowers it for larger-valued inputs; pass
+`--hnswlib_gpu_int8_scale` to override it. CAGRA selects candidates with that
+representation; the final seed score is recomputed from the preserved
+original embeddings, so `--hnswlib_gpu_candidate_k` is the main recall/latency
+knob. A query-only run detects a published `HNSWLIB_GPU_CAGRA` database and
+automatically selects the GPU path when `-profile gpu` is present. Use
+`--hnswlib_gpu false` to force the CPU HNSW path when rebuilding a database.
+
+CPU HNSWLIB generates candidate windows from centroid codes only. The GPU
+companion instead uses int8-scaled original window vectors for CAGRA candidate
+selection. In both modes, the full original 128-dimensional float16 node
+embeddings remain in `embeddings/` and `faiss/embeddings.npz` and are used by
+the exact reranker, SW, alignment, and plotting stages.
 
 The FAISS/full-vector path represents each window as the concatenation of `w`
 per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is

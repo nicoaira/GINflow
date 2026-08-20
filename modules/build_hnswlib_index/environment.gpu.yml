@@ -1,0 +1,13 @@
+# cuVS 24.10 CAGRA companion index. Requires an NVIDIA GPU.
+channels:
+  - rapidsai
+  - nvidia
+  - conda-forge
+dependencies:
+  - conda-forge::python=3.12
+  - conda-forge::numpy=1.26.4
+  - conda-forge::cupy=13.0.0=py312h8e83189_3
+  - conda-forge::cudatoolkit=11.8.0
+  - nvidia::cuda-python=11.8.5
+  - rapidsai::cuvs=24.10.00=cuda11_py312_241009_g7de3a05_0
+  - rapidsai::libcuvs=24.10.00=cuda11_241009_g7de3a05_0
