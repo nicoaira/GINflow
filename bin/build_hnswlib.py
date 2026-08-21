@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build an HNSWLIB index over centroid-code windows."""
+"""Build a custom-distance HNSWLIB index over node-PQ code windows."""
 from __future__ import annotations
 
 import argparse
 import csv
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -13,15 +14,8 @@ from typing import Any
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hnswlib_index import create_index, encode_code_windows, load_quantization, quantization_dir
 from record_pack import pack_records, write_records
-
-
-def load_json(path: Path) -> dict:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    return payload
+from node_quantization import load_json, node_code_bytes
 
 
 def pair_window_shards(windows_dir: Path) -> list[tuple[Path, Path]]:
@@ -41,67 +35,53 @@ def pair_window_shards(windows_dir: Path) -> list[tuple[Path, Path]]:
     return [(window_map[key], manifest_map[key]) for key in sorted(window_map)]
 
 
-def compatible_tuple(manifest: dict) -> tuple:
-    return (
-        manifest.get("window_size"),
-        manifest.get("stride"),
-        manifest.get("window_dim"),
-        manifest.get("checkpoint_sha256"),
-        manifest.get("n_centroids"),
-        manifest.get("embedding_dim"),
+def compile_driver(bundle: Path, output: Path) -> None:
+    subprocess.run(
+        [
+            "g++",
+            "-O3",
+            "-std=c++11",
+            "-fopenmp",
+            "-I",
+            str(bundle),
+            str(bundle / "pq_hnswlib.cpp"),
+            "-o",
+            str(output),
+        ],
+        check=True,
     )
 
 
-def window_count(manifest: dict) -> int:
-    return int(sum(int(record.get("n_windows", 0)) for record in manifest.get("records", [])))
-
-
-def read_code_rows(
-    path: Path, manifest: dict
-) -> tuple[np.ndarray, list[tuple[str, int, int]]]:
-    window_size = int(manifest["window_size"])
-    codes: list[np.ndarray] = []
+def load_packed_windows(windows_dir: Path) -> tuple[np.ndarray, list[tuple[str, int, int]], dict[str, Any]]:
+    shards = pair_window_shards(windows_dir)
     mapping: list[tuple[str, int, int]] = []
-    stride = int(manifest["stride"])
-    with np.load(path) as arrays:
-        for record in manifest.get("records", []):
-            identifier = str(record["identifier"])
-            if identifier not in arrays.files:
-                raise KeyError(f"{identifier} is in {manifest} but missing from {path}")
-            values = np.asarray(arrays[identifier])
-            if values.ndim != 2 or values.shape[1] != window_size:
-                raise ValueError(f"{identifier} in {path} has invalid code-window shape {values.shape}")
-            if values.shape[0] != int(record.get("n_windows", values.shape[0])):
-                raise ValueError(f"{identifier} in {path} disagrees with its manifest window count")
-            codes.append(np.ascontiguousarray(values))
-            for offset in range(values.shape[0]):
-                start = offset * stride
-                mapping.append((identifier, start, start + window_size))
-    if not codes:
-        return np.empty((0, window_size), dtype=np.uint16), []
-    return np.ascontiguousarray(np.concatenate(codes, axis=0)), mapping
-
-
-def copy_quantization(source: Path, destination: Path) -> None:
-    source_dir = quantization_dir(source)
-    destination.mkdir(parents=True, exist_ok=True)
-    for name in ("centroids.npy", "similarity.npy", "quantization.json"):
-        source_file = source_dir / name
-        if not source_file.exists():
-            raise FileNotFoundError(f"missing quantization artifact {source_file}")
-        shutil.copy2(source_file, destination / name)
-
-
-def write_mapping(path: Path, mapping: list[tuple[int, str, int, int]]) -> None:
-    with path.open("w", newline="") as handle:
-        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(["faiss_id", "transcript_id", "start", "end"])
-        writer.writerows(mapping)
+    blocks: list[np.ndarray] = []
+    reference: dict[str, Any] | None = None
+    for window_path, manifest_path in shards:
+        manifest = load_json(manifest_path)
+        if reference is None:
+            reference = manifest
+        window_size = int(manifest["window_size"])
+        stride = int(manifest["stride"])
+        with np.load(window_path) as arrays:
+            for record in manifest.get("records", []):
+                identifier = str(record["identifier"])
+                values = np.asarray(arrays[identifier])
+                if values.ndim != 2:
+                    raise ValueError(f"{identifier} has invalid packed-window shape {values.shape}")
+                blocks.append(np.ascontiguousarray(values))
+                for offset in range(values.shape[0]):
+                    start = offset * stride
+                    mapping.append((identifier, start, start + window_size))
+    if not blocks or reference is None:
+        raise ValueError("no packed PQ windows found")
+    return np.concatenate(blocks, axis=0), mapping, reference
 
 
 def build_database(
     windows_dir: Path,
     quantization: Path,
+    hnsw_bundle: Path,
     outdir: Path,
     *,
     m: int,
@@ -111,140 +91,119 @@ def build_database(
     num_threads: int,
     embeddings: list[Path] | None = None,
     graph_metadata: list[Path] | None = None,
-) -> dict:
-    shards = pair_window_shards(windows_dir)
-    manifests = [load_json(manifest_path) for _window_path, manifest_path in shards]
-    reference = manifests[0]
-    expected = compatible_tuple(reference)
-    if not reference.get("quantized_windows"):
-        raise ValueError("HNSWLIB requires quantized window shards")
-    for manifest_path, manifest in zip((item[1] for item in shards), manifests):
-        if compatible_tuple(manifest) != expected:
-            raise ValueError(f"{manifest_path} is incompatible with the first quantized window manifest")
-    centroids, similarity, quantization_metadata = load_quantization(quantization)
-    if int(reference["n_centroids"]) != centroids.shape[0]:
-        raise ValueError("quantized window n_centroids does not match the centroid file")
-    if int(reference["embedding_dim"]) != centroids.shape[1]:
-        raise ValueError("quantized window embedding_dim does not match the centroid file")
-
-    total_windows = sum(window_count(manifest) for manifest in manifests)
-    if total_windows < 1:
-        raise ValueError("no quantized windows to index")
-    dimension = int(reference["window_size"]) * int(reference["embedding_dim"])
-    index = create_index(
-        dimension,
-        total_windows,
-        m,
-        ef_construction,
-        ef_search,
-        random_seed,
-        num_threads,
-    )
-    mapping: list[tuple[int, str, int, int]] = []
-    base = 0
-    for window_path, manifest_path in shards:
-        manifest = load_json(manifest_path)
-        codes, local_mapping = read_code_rows(window_path, manifest)
-        if codes.shape[0] == 0:
-            continue
-        vectors = encode_code_windows(codes, centroids)
-        ids = np.arange(base, base + vectors.shape[0], dtype=np.int64)
-        index.add_items(vectors, ids)
-        mapping.extend((int(row_id), identifier, start, end) for row_id, (identifier, start, end) in zip(ids, local_mapping))
-        base += int(vectors.shape[0])
-    if base != total_windows or len(mapping) != total_windows:
-        raise ValueError(f"indexed {base} windows but expected {total_windows}")
-
+) -> dict[str, Any]:
+    quantizer = load_json(quantization / "quantizer.json")
+    if quantizer.get("mode") not in {"pq", "opq"}:
+        raise ValueError("HNSWLIB custom distance requires --quantize pq or opq")
+    codes, mapping, window_meta = load_packed_windows(windows_dir)
+    pq_m = int(quantizer["pq_m"])
+    nbits = int(quantizer["pq_nbits"])
+    window_size = int(window_meta["window_size"])
+    expected_width = window_size * node_code_bytes(pq_m, nbits)
+    if codes.shape[1] != expected_width:
+        raise ValueError(f"packed window width {codes.shape[1]} != {expected_width}")
     outdir.mkdir(parents=True, exist_ok=True)
-    index.save_index(str(outdir / "index.bin"))
-    write_mapping(outdir / "windows.tsv", mapping)
-    copy_quantization(quantization, outdir / "quantization")
-
-    meta: dict[str, Any] = {
+    quant_out = outdir / "quantization"
+    if quant_out.exists():
+        shutil.rmtree(quant_out)
+    shutil.copytree(quantization, quant_out)
+    codes_path = outdir / "window_codes.bin"
+    codes.tofile(codes_path)
+    similarity = np.load(quantization / "sdc_lut.npy")
+    similarity_path = outdir / "sdc_lut.bin"
+    np.ascontiguousarray(similarity, dtype=np.float32).tofile(similarity_path)
+    executable = outdir / "pq_hnswlib"
+    compile_driver(hnsw_bundle, executable)
+    index_path = outdir / "index.bin"
+    command = [
+        str(executable),
+        "build",
+        "--codes",
+        str(codes_path),
+        "--similarity",
+        str(similarity_path),
+        "--index",
+        str(index_path),
+        "--count",
+        str(codes.shape[0]),
+        "--window-size",
+        str(window_size),
+        "--pq-m",
+        str(pq_m),
+        "--nbits",
+        str(nbits),
+        "--m",
+        str(m),
+        "--ef-construction",
+        str(ef_construction),
+        "--ef-search",
+        str(ef_search),
+        "--random-seed",
+        str(random_seed),
+        "--threads",
+        str(num_threads),
+    ]
+    subprocess.run(command, check=True)
+    with (outdir / "windows.tsv").open("w", newline="") as handle:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        writer.writerow(["faiss_id", "transcript_id", "start", "end"])
+        for faiss_id, (transcript_id, start, end) in enumerate(mapping):
+            writer.writerow([faiss_id, transcript_id, start, end])
+    if embeddings and graph_metadata:
+        packed_embeddings, packed_records = pack_records(embeddings, graph_metadata)
+        write_records(outdir, packed_embeddings, packed_records)
+    meta = {
         "backend": "hnswlib",
-        "index_type": "HNSWLIB",
-        "index_class": "hnswlib.Index",
-        "space": "ip",
-        "metric": "sum_positionwise_centroid_similarity",
-        "raw_metric": "sum_positionwise_centroid_similarity",
-        "candidate_representation": "centroid_codes",
-        "quantized_nodes": True,
-        "quantization": "quantization",
-        "n_centroids": int(centroids.shape[0]),
-        "centroid_dim": int(centroids.shape[1]),
-        "centroid_dtype": str(centroids.dtype),
-        "similarity_dtype": str(similarity.dtype),
-        "window_size": int(reference["window_size"]),
-        "window_stride": int(reference["stride"]),
-        "embedding_dim": int(reference["embedding_dim"]),
-        "window_dim": dimension,
-        "l2_normalized": False,
-        "score_scale": 1.0,
-        "n_records": int(sum(len(manifest.get("records", [])) + len(manifest.get("skipped_short", [])) for manifest in manifests)),
-        "n_windows": int(total_windows),
-        "n_skipped_short": int(sum(len(manifest.get("skipped_short", [])) for manifest in manifests)),
-        "ginfinity_version": reference.get("ginfinity_version"),
-        "model_version": reference.get("model_version"),
-        "checkpoint_sha256": reference.get("checkpoint_sha256"),
-        "hnsw_m": int(m),
-        "hnsw_ef_construction": int(ef_construction),
-        "hnsw_ef_search": int(ef_search),
-        "hnsw_random_seed": int(random_seed),
-        "hnsw_num_threads": int(num_threads),
-        "original_embeddings_preserved": bool(embeddings and graph_metadata),
-        "original_embedding_dim": int(reference["embedding_dim"]),
-        "original_embedding_dtype": None,
+        "index_type": "HNSWLIB_PQ",
+        "quantize": quantizer.get("mode"),
+        "candidate_representation": "node_pq_codes",
+        "distance": "sdc_build_adc_search",
+        "n_windows": int(codes.shape[0]),
+        "window_size": window_size,
+        "window_stride": int(window_meta.get("stride", 1)),
+        "pq_m": pq_m,
+        "pq_nbits": nbits,
+        "embedding_dim": int(quantizer.get("embedding_dim", 128)),
+        "hnsw_m": m,
+        "hnsw_ef_construction": ef_construction,
+        "hnsw_ef_search": ef_search,
+        "random_seed": random_seed,
     }
-    if embeddings or graph_metadata:
-        if not embeddings or not graph_metadata:
-            raise ValueError("--embeddings and --graph-metadata must be passed together")
-        packed_embeddings, records = pack_records(embeddings, graph_metadata)
-        write_records(outdir, packed_embeddings, records)
-        meta["has_residue_embeddings"] = True
-        meta["n_packed_records"] = len(records)
-        first = next(iter(packed_embeddings.values()), None)
-        meta["original_embedding_dtype"] = str(first.dtype) if first is not None else None
-    else:
-        meta["has_residue_embeddings"] = False
-    meta["quantization_metadata"] = quantization_metadata
-    (outdir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    (outdir / "meta.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
     return meta
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--windows-dir", type=Path, required=True)
     parser.add_argument("--quantization", type=Path, required=True)
+    parser.add_argument("--hnsw-bundle", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
-    parser.add_argument("--embeddings", type=Path, nargs="*")
-    parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--m", type=int, default=32)
     parser.add_argument("--ef-construction", type=int, default=200)
-    parser.add_argument("--ef-search", type=int, default=100)
+    parser.add_argument("--ef-search", type=int, default=200)
     parser.add_argument("--random-seed", type=int, default=1)
     parser.add_argument("--num-threads", type=int, default=0)
-    return parser.parse_args(argv)
+    parser.add_argument("--embeddings", nargs="*", type=Path, default=None)
+    parser.add_argument("--graph-metadata", nargs="*", type=Path, default=None)
+    return parser.parse_args()
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    try:
-        meta = build_database(
-            args.windows_dir,
-            args.quantization,
-            args.outdir,
-            m=args.m,
-            ef_construction=args.ef_construction,
-            ef_search=args.ef_search,
-            random_seed=args.random_seed,
-            num_threads=args.num_threads,
-            embeddings=args.embeddings,
-            graph_metadata=args.graph_metadata,
-        )
-    except (OSError, KeyError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    print(json.dumps({"outdir": str(args.outdir), **{key: meta[key] for key in ("n_windows", "n_centroids", "hnsw_m", "hnsw_ef_search")}}))
+def main() -> int:
+    args = parse_args()
+    build_database(
+        args.windows_dir,
+        args.quantization,
+        args.hnsw_bundle,
+        args.outdir,
+        m=args.m,
+        ef_construction=args.ef_construction,
+        ef_search=args.ef_search,
+        random_seed=args.random_seed,
+        num_threads=args.num_threads,
+        embeddings=args.embeddings,
+        graph_metadata=args.graph_metadata,
+    )
     return 0
 
 

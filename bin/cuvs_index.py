@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GPU-only cuVS index support for CAGRA, IVF-Flat, and IVF-PQ."""
+"""GPU-only cuVS index support for CAGRA and IVF-Flat."""
 from __future__ import annotations
 
 import math
@@ -9,12 +9,11 @@ from typing import Any
 import numpy as np
 
 
-CUVS_INDEX_TYPES = ("CAGRA", "IVF", "IVF-PQ")
+CUVS_INDEX_TYPES = ("CAGRA", "IVF")
 _ALIASES = {
     "CAGRA": "CAGRA",
     "IVF": "IVF",
     "IVFFLAT": "IVF",
-    "IVFPQ": "IVF-PQ",
 }
 
 
@@ -61,8 +60,8 @@ def require_gpu() -> None:
         import cupy  # noqa: F401
     except ImportError as exc:
         raise ValueError(
-            "cuVS was requested but CuPy is not installed. Re-run with --index cuvs "
-            "so BUILD_CUVS_INDEX and SEARCH_CUVS use the cuVS GPU image."
+            "cuVS was requested but CuPy is not installed. Re-run with --index cagra "
+            "or --index ivf so the cuVS GPU image is used."
         ) from exc
     if not gpu_available():
         raise ValueError(
@@ -100,9 +99,9 @@ def resolve_degree(n_vectors: int, requested: int, name: str) -> int:
 
 
 def _module(kind: str) -> Any:
-    from cuvs.neighbors import cagra, ivf_flat, ivf_pq
+    from cuvs.neighbors import cagra, ivf_flat
 
-    return {"CAGRA": cagra, "IVF": ivf_flat, "IVF-PQ": ivf_pq}[kind]
+    return {"CAGRA": cagra, "IVF": ivf_flat}[kind]
 
 
 class CuvsIndex:
@@ -206,19 +205,7 @@ def build_populated_index(
         index = module.build(params, dataset)
         resolved_itopk = 64
     else:
-        module = _module(kind)
-        resolved_lists = resolve_n_lists(xb.shape[0], n_lists)
-        resolved_probes = resolve_n_probes(resolved_lists, n_probes)
-        if pq_bits not in {4, 5, 6, 7, 8}:
-            raise ValueError("--cuvs_pq_bits must be one of 4, 5, 6, or 7, or 8")
-        params = module.IndexParams(
-            n_lists=resolved_lists,
-            metric="cosine",
-            pq_bits=pq_bits,
-            pq_dim=pq_dim,
-        )
-        index = module.build(params, dataset)
-        resolved_itopk = 64
+        raise ValueError(f"unsupported cuVS index type {kind}")
 
     wrapper = CuvsIndex(
         index,
@@ -236,8 +223,8 @@ def build_populated_index(
         "gpu_capable": True,
         "n_lists": resolved_lists,
         "n_probes": resolved_probes,
-        "pq_bits": pq_bits if kind == "IVF-PQ" else None,
-        "pq_dim": pq_dim if kind == "IVF-PQ" else None,
+        "pq_bits": None,
+        "pq_dim": None,
         "intermediate_graph_degree": (
             params.intermediate_graph_degree if kind == "CAGRA" else None
         ),
@@ -269,6 +256,18 @@ def load_index(path: Path, meta: dict[str, Any], n_probes: int | None = None) ->
         nprobe=resolved_probes,
         itopk_size=int(meta.get("itopk_size") or 64),
     )
+
+
+def convert_cagra_to_hnsw(cagra_index: Any, destination: Path) -> None:
+    """Serialize a CPU-searchable HNSW graph from a GPU CAGRA index."""
+    from cuvs.neighbors import hnsw
+
+    destination.mkdir(parents=True, exist_ok=True)
+    try:
+        converted = hnsw.from_cagra(cagra_index)
+    except TypeError:
+        converted = hnsw.from_cagra(hnsw.IndexParams(), cagra_index)
+    hnsw.save(str(destination / "index.bin"), converted)
 
 
 def serialize_index(index: CuvsIndex, destination: Path) -> None:

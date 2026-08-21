@@ -1,8 +1,7 @@
 include { BUILD_RNA_GRAPHS } from '../modules/build_rna_graphs/main'
 include { EMBED_RNA_GRAPHS } from '../modules/embed_rna_graphs/main'
 include { GENERATE_WINDOWS } from '../modules/generate_windows/main'
-include { FIT_NODE_QUANTIZER } from '../modules/quantize_node_embeddings/main'
-include { APPLY_NODE_QUANTIZATION } from '../modules/apply_node_quantization/main'
+include { FIT_NODE_QUANTIZER; APPLY_NODE_QUANTIZER } from '../modules/quantize_nodes/main'
 include { GENERATE_QUANTIZED_WINDOWS } from '../modules/generate_quantized_windows/main'
 
 workflow PREPARE_WINDOWS {
@@ -17,6 +16,8 @@ workflow PREPARE_WINDOWS {
     ch_versions = channel.empty()
     ch_quantization = channel.empty()
     ch_quantized_windows = channel.empty()
+    ch_quantized_npz = channel.empty()
+    ch_quantized_manifests = channel.empty()
 
     ch_shards = channel
         .fromPath(structures, checkIfExists: true)
@@ -44,9 +45,9 @@ workflow PREPARE_WINDOWS {
             .collect()
 
         if (quantization_source) {
-            APPLY_NODE_QUANTIZATION(ch_all_embeddings, ch_all_manifests, quantization_source)
-            ch_quantization = APPLY_NODE_QUANTIZATION.out.quantization
-            ch_versions = ch_versions.mix(APPLY_NODE_QUANTIZATION.out.versions)
+            APPLY_NODE_QUANTIZER(ch_all_embeddings, ch_all_manifests, quantization_source)
+            ch_quantization = APPLY_NODE_QUANTIZER.out.quantization
+            ch_versions = ch_versions.mix(APPLY_NODE_QUANTIZER.out.versions)
         }
         else {
             FIT_NODE_QUANTIZER(ch_all_embeddings, ch_all_manifests)
@@ -59,6 +60,8 @@ workflow PREPARE_WINDOWS {
         ch_quantized_windows = GENERATE_QUANTIZED_WINDOWS.out.windows.map { directory ->
             tuple([id: prefix ?: 'input'], directory)
         }
+        ch_quantized_npz = GENERATE_QUANTIZED_WINDOWS.out.npz
+        ch_quantized_manifests = GENERATE_QUANTIZED_WINDOWS.out.manifests
     }
 
     emit:
@@ -67,5 +70,7 @@ workflow PREPARE_WINDOWS {
     windows    = GENERATE_WINDOWS.out.windows
     quantization = ch_quantization
     quantized_windows = ch_quantized_windows
+    quantized_npz = ch_quantized_npz
+    quantized_manifests = ch_quantized_manifests
     versions   = ch_versions
 }

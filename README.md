@@ -8,7 +8,7 @@
 
 ## Introduction
 
-**nicoaira/ginflow** is a Nextflow pipeline for BLAST-style search over RNA secondary structures. It uses [GINFINITY](https://github.com/nicoaira/GINFINITY) to build graph shards and node embeddings, then slices those embeddings into windows and searches them with FAISS, [ScaNN](https://github.com/google-research/google-research/tree/master/scann), [NGT](https://github.com/NGT-labs/NGT), [cuVS](https://docs.nvidia.com/cuvs/), or quantized-node [hnswlib](https://github.com/nmslib/hnswlib).
+**nicoaira/ginflow** is a Nextflow pipeline for BLAST-style search over RNA secondary structures. It uses [GINFINITY](https://github.com/nicoaira/GINFINITY) to build graph shards and node embeddings, then slices those embeddings into windows and searches them with FAISS, [cuVS](https://docs.nvidia.com/cuvs/) CAGRA / IVF-Flat, or custom-distance [hnswlib](https://github.com/nmslib/hnswlib) / PQ-CAGRA when nodes are product-quantized.
 
 The current steps are:
 
@@ -16,7 +16,7 @@ The current steps are:
 2. Build GINFINITY graph shards (`*.safetensors` + `*.json`)
 3. Embed each shard (`*.npz` + manifest)
 4. Slice sliding windows (default `w=11`, stride 1)
-5. Build a reusable window database (`--index faiss --faiss_index flatip` by default; other FAISS types, `--index scann`, `--index ngt --ngt_index qg|qbg`, GPU-only `--index cuvs --cuvs_index cagra|ivf|ivf-pq`, or `--index hnswlib` with centroid-coded node types) and/or search it for seeds. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` needs `-profile gpu`; cuVS always needs `-profile gpu`; CPU HNSWLIB uses its pinned C++ custom-distance driver, while `--hnswlib_gpu true` uses the optional cuVS CAGRA companion and requires `-profile docker,gpu` (or another GPU runtime profile). The high-recall CPU HNSW profile uses `--node_quantization_k 4096 --hnswlib_candidate_k 5000 --hnswlib_ef_search 5000 --exact_rerank true`; the GPU profile exact-reranks CAGRA's `--hnswlib_gpu_candidate_k` candidates with the preserved original embeddings. The batched rerank/30k/WindowIVF research artifact is [docs/quantized-rerank-windowivf-30k.md](docs/quantized-rerank-windowivf-30k.md).
+5. Build a reusable window database and/or search it for seeds. Default is `--index faiss --faiss_index flatip` (exact cosine). Optional `--quantize sq|pq|opq` compresses **nodes** before index windows are formed. GPU graphs use `--index cagra` (stock cuVS CAGRA for none/SQ, custom PQ-CAGRA for PQ/OPQ). `--cagra_to_hnsw true` builds that graph on GPU and searches on CPU. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` and CAGRA/IVF builds need `-profile gpu`. Exact original-window rerank is on by default (`--exact_rerank true`).
 6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, and rank by database E-value
 7. Optionally plot structures (`--plot_backend`: RNArtistCore 2Ds and/or a unified R4RNA alignment arc plot) and/or SW matrices (`--plot_sw`)
 8. Write a standalone HTML search report (`report.html`)

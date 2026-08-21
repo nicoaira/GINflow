@@ -30,8 +30,8 @@ process SEARCH_FAISS {
         --manifest ${manifest} \\
         --database ${database} \\
         --output ${prefix}.seeds.tsv \\
-        --k ${params.seed_k} \\
-        --min-similarity ${params.seed_min_similarity} \\
+        --k ${params.exact_rerank && params.faiss_index != 'flatip' && params.faiss_index != 'flatl2' ? params.candidate_k : params.seed_k} \\
+        --min-similarity=${params.exact_rerank && params.faiss_index != 'flatip' && params.faiss_index != 'flatl2' ? '-inf' : params.seed_min_similarity} \\
         ${nprobe} \\
         ${ef_search} \\
         ${gpu_flag} \\

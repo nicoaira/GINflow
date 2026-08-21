@@ -1,0 +1,46 @@
+nextflow_process {
+
+    name "Test Process BUILD_PQ_CAGRA_INDEX"
+    script "../main.nf"
+    process "BUILD_PQ_CAGRA_INDEX"
+
+    tag "modules"
+    tag "pq_cagra"
+
+    test("Should emit a PQ-CAGRA database layout") {
+
+        options "-stub"
+
+        when {
+            params {
+                index    = 'cagra'
+                quantize = 'pq'
+            }
+            process {
+                """
+                input[0] = file("${projectDir}/modules/generate_quantized_windows", checkIfExists: true)
+                input[1] = file("${projectDir}/modules/quantize_nodes", checkIfExists: true)
+                input[2] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                input[3] = file("${projectDir}/modules/build_rna_graphs", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.database.size() == 1 },
+                { assert process.out.versions.size() == 1 },
+                {
+                    def database = path(process.out.database.get(0))
+                    assert database.resolve('cagra.index').exists()
+                    def metadata = database.resolve('meta.json').json
+                    assert metadata.backend == 'cagra'
+                    assert metadata.index_type == 'PQ_CAGRA'
+                }
+            )
+        }
+
+    }
+
+}

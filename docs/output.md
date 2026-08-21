@@ -18,10 +18,11 @@ outdir/
 │       └── <shard>.windows.manifest.json
 ├── faiss/
 │   ├── index.faiss   # FAISS types
-│   ├── ngt/          # NGT, qg, or qbg when --index ngt
-│   ├── cuvs/         # cagra, ivf, or ivf-pq when --index cuvs
-│   ├── cagra/        # GPU HNSWLIB companion when --hnswlib_gpu true
-│   └── scann/        # --index scann
+│   ├── cuvs/         # stock CAGRA or IVF-Flat
+│   ├── hnsw/         # CPU HNSW converted from CAGRA when --cagra_to_hnsw
+│   ├── cagra.index   # PQ-CAGRA graph
+│   ├── index.bin     # hnswlib PQ graph
+│   ├── quantization/ # node SQ/PQ/OPQ artifacts
 │   ├── windows.tsv
 │   └── meta.json
 ├── seeds.tsv
@@ -69,15 +70,14 @@ Sliding windows of the node embeddings (`--window_size`, default 11, stride 1).
 
 ## faiss/
 
-Reusable window index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index flatip`). `meta.json` records `backend`, `index_type`, `metric`, IVF/PQ/HNSW/ScaNN/NGT parameters, and whether a FAISS index was trained on GPU.
+Reusable window index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index flatip`). `meta.json` records `backend`, `index_type`, `--quantize`, and graph/IVF parameters. See [indexes.md](indexes.md).
 
-- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build). Omitted for ScaNN, NGT, and cuVS.
-- `ngt/` — native NGT, qg, or qbg index directory when `backend` is `ngt`.
-- `cuvs/` — serialized GPU cuVS index directory when `backend` is `cuvs`.
-- `scann/` — serialized ScaNN searcher when `--index scann`
-- `index.bin` — compact C++ HNSWLIB index whose element payload is a uint16 centroid-code window when `--index hnswlib` and `--hnswlib_gpu false`
-- `cagra/index.bin` — serialized cuVS CAGRA companion over int8-scaled original windows when `--hnswlib_gpu true`; its labels are exact-reranked before seed output
-- `quantization/` — HNSWLIB centroids (`centroids.npy`, float16), registered centroid similarity (`similarity.npy`, float32), and fit metadata; these side artifacts are not substituted for the original embeddings
+- `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build)
+- `cuvs/` — serialized GPU cuVS CAGRA or IVF-Flat
+- `hnsw/` — CPU HNSW converted from uncompressed/SQ CAGRA (`--cagra_to_hnsw`)
+- `cagra.index` — custom PQ-CAGRA graph (`--index cagra` with `--quantize pq|opq`)
+- `index.bin` — hnswlib custom-distance PQ graph
+- `quantization/` — node codebook, SDC table, OPQ rotation, SQ scales; not a substitute for `embeddings.npz`
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, counts, and index settings
 - `embeddings.npz` — per-nucleotide embeddings, one array per identifier

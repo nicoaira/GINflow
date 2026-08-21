@@ -20,9 +20,12 @@ from faiss_index import (
     meta_from_details,
     normalize_index_type,
 )
-from cuvs_index import build_populated_index as build_cuvs_index, meta_from_details as cuvs_meta_from_details, serialize_index as serialize_cuvs_index
-from ngt_index import build_populated_index as build_ngt_index, meta_from_details as ngt_meta_from_details, serialize_index as serialize_ngt_index
-from scann_index import build_populated_searcher, is_scann_type, serialize_index
+from cuvs_index import (
+    build_populated_index as build_cuvs_index,
+    convert_cagra_to_hnsw,
+    meta_from_details as cuvs_meta_from_details,
+    serialize_index as serialize_cuvs_index,
+)
 
 SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
 
@@ -228,8 +231,6 @@ def build_index(
     shards: list[tuple[Path, Path]],
     options: IndexOptions | None = None,
     backend: str = "faiss",
-    ngt_index_type: str = "ngt",
-    ngt_options: dict[str, Any] | None = None,
     cuvs_index_type: str = "cagra",
     cuvs_options: dict[str, Any] | None = None,
 ) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
@@ -237,7 +238,7 @@ def build_index(
         raise ValueError("no window shards were provided")
 
     chosen = options or IndexOptions()
-    if backend == "faiss" and normalize_index_type(chosen.index_type) in {"FlatIP", "FlatL2", "SQ"} and not chosen.gpu:
+    if backend == "faiss" and normalize_index_type(chosen.index_type) in {"FlatIP", "FlatL2"} and not chosen.gpu:
         return build_streaming_faiss_index(shards, chosen)
 
     all_vectors = []
@@ -271,12 +272,8 @@ def build_index(
         raise ValueError("no windows to index (every sequence was shorter than --window-size)")
 
     xb = np.ascontiguousarray(np.concatenate(all_vectors, axis=0), dtype=np.float32)
-    if backend == "ngt":
-        index, details = build_ngt_index(xb, ngt_index_type, ngt_options)
-    elif backend == "cuvs":
+    if backend == "cuvs":
         index, details = build_cuvs_index(xb, cuvs_index_type, **(cuvs_options or {}))
-    elif is_scann_type(chosen.index_type):
-        index, details = build_populated_searcher(xb, chosen)
     else:
         index, details = build_populated_index(xb, chosen)
 
@@ -294,9 +291,7 @@ def build_index(
         "n_windows": int(xb.shape[0]),
         "n_skipped_short": n_skipped,
     }
-    if backend == "ngt":
-        meta.update(ngt_meta_from_details(details))
-    elif backend == "cuvs":
+    if backend == "cuvs":
         meta.update(cuvs_meta_from_details(details))
     else:
         meta.update(meta_from_details(details))
@@ -351,12 +346,12 @@ def write_database(
     packed: tuple[dict[str, np.ndarray], list[tuple[str, str, str]]] | None = None,
 ) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
-    if str(meta.get("backend") or "").lower() == "ngt":
-        serialize_ngt_index(index, outdir / "ngt")
-    elif str(meta.get("backend") or "").lower() == "cuvs":
+    if str(meta.get("backend") or "").lower() == "cuvs":
+        if meta.get("cagra_to_hnsw") and str(meta.get("index_type") or "").upper() == "CAGRA":
+            convert_cagra_to_hnsw(index.index, outdir / "hnsw")
+            meta["search_device"] = "cpu"
+            meta["cagra_converted_hnsw"] = True
         serialize_cuvs_index(index, outdir / "cuvs")
-    elif is_scann_type(str(meta.get("index_type") or "")):
-        serialize_index(index, outdir / "scann")
     else:
         import faiss
 
@@ -384,25 +379,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--embeddings", type=Path, nargs="*")
     parser.add_argument("--graph-metadata", type=Path, nargs="*")
     parser.add_argument("--outdir", type=Path, required=True)
-    parser.add_argument("--backend", choices=("faiss", "scann", "ngt", "cuvs"), default="faiss")
+    parser.add_argument("--backend", choices=("faiss", "cuvs"), default="faiss")
     parser.add_argument("--index-type", default="flatip")
-    parser.add_argument("--ngt-index-type", default="ngt")
-    parser.add_argument("--ngt-edge-size-for-creation", type=int, default=10)
-    parser.add_argument("--ngt-edge-size-for-search", type=int, default=40)
-    parser.add_argument("--ngt-num-threads", type=int, default=8)
-    parser.add_argument("--ngt-max-no-of-edges", type=int)
-    parser.add_argument("--ngt-num-of-search-objects", type=int, default=20)
-    parser.add_argument("--ngt-search-range-coefficient", type=float)
-    parser.add_argument("--ngt-blob-search-range-coefficient", type=float)
-    parser.add_argument("--ngt-search-radius", type=float)
-    parser.add_argument("--ngt-result-expansion", type=float)
-    parser.add_argument("--ngt-exploration-size", type=int, default=256)
-    parser.add_argument("--ngt-exact-result-expansion", type=float, default=0.0)
-    parser.add_argument("--ngt-num-of-probes", type=int, default=1)
-    parser.add_argument("--ngt-qg-subvector-dimensions", type=int)
-    parser.add_argument("--ngt-qbg-subvectors", type=int)
-    parser.add_argument("--ngt-qbg-cluster-data-type", default="PQ4")
     parser.add_argument("--cuvs-index-type", default="cagra")
+    parser.add_argument("--cagra-to-hnsw", action="store_true")
     parser.add_argument("--cuvs-n-lists", type=int)
     parser.add_argument("--cuvs-n-probes", type=int)
     parser.add_argument("--cuvs-pq-bits", type=int, default=8)
@@ -423,12 +403,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--sq-type", default="8bit")
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--gpu-device", type=int, default=0)
-    parser.add_argument("--scann-reorder", type=int, default=100)
-    parser.add_argument("--scann-ah-dim", type=int, default=2)
-    parser.add_argument("--scann-anisotropic", type=float, default=0.2)
-    parser.add_argument("--scann-soar", action="store_true")
-    parser.add_argument("--scann-leaves", type=int)
-    parser.add_argument("--scann-leaves-to-search", type=int)
     parser.add_argument("--num-neighbors", type=int, default=100)
     return parser.parse_args(argv)
 
@@ -448,13 +422,6 @@ def options_from_args(args: argparse.Namespace) -> IndexOptions:
         sq_type=args.sq_type,
         gpu=args.gpu,
         gpu_device=args.gpu_device,
-        scann_reorder=args.scann_reorder,
-        scann_ah_dim=args.scann_ah_dim,
-        scann_anisotropic=args.scann_anisotropic,
-        scann_soar=args.scann_soar,
-        scann_num_neighbors=args.num_neighbors,
-        scann_leaves=args.scann_leaves,
-        scann_leaves_to_search=args.scann_leaves_to_search,
     )
 
 
@@ -471,26 +438,6 @@ def cuvs_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def ngt_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    return {
-        "edge_size_for_creation": args.ngt_edge_size_for_creation,
-        "edge_size_for_search": args.ngt_edge_size_for_search,
-        "num_threads": args.ngt_num_threads,
-        "max_no_of_edges": args.ngt_max_no_of_edges,
-        "num_of_search_objects": args.ngt_num_of_search_objects,
-        "search_range_coefficient": args.ngt_search_range_coefficient,
-        "blob_search_range_coefficient": args.ngt_blob_search_range_coefficient,
-        "search_radius": args.ngt_search_radius,
-        "result_expansion": args.ngt_result_expansion,
-        "exploration_size": args.ngt_exploration_size,
-        "exact_result_expansion": args.ngt_exact_result_expansion,
-        "num_of_probes": args.ngt_num_of_probes,
-        "qg_subvector_dimensions": args.ngt_qg_subvector_dimensions,
-        "qbg_subvectors": args.ngt_qbg_subvectors,
-        "qbg_cluster_data_type": args.ngt_qbg_cluster_data_type,
-    }
-
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
@@ -499,11 +446,11 @@ def main(argv: list[str] | None = None) -> int:
             shards,
             options_from_args(args),
             backend=args.backend,
-            ngt_index_type=args.ngt_index_type,
-            ngt_options=ngt_options_from_args(args),
             cuvs_index_type=args.cuvs_index_type,
             cuvs_options=cuvs_options_from_args(args),
         )
+        if args.cagra_to_hnsw:
+            meta["cagra_to_hnsw"] = True
         packed = None
         if args.embeddings or args.graph_metadata:
             if not args.embeddings or not args.graph_metadata:

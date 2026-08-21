@@ -12,6 +12,8 @@ process GENERATE_QUANTIZED_WINDOWS {
 
     output:
     path "quantized_windows", emit: windows
+    path "quantized_windows/*.windows.npz", emit: npz
+    path "quantized_windows/*.windows.manifest.json", emit: manifests
     path "versions.yml", emit: versions
 
     when:
@@ -36,7 +38,14 @@ process GENERATE_QUANTIZED_WINDOWS {
     stub:
     """
     mkdir -p quantized_windows
-    touch quantized_windows/windows.json
+    python3 - <<'PY'
+import numpy as np, json
+from pathlib import Path
+Path('quantized_windows').mkdir(exist_ok=True)
+np.savez_compressed('quantized_windows/stub.windows.npz', stub=np.zeros((1, 8), dtype=np.uint8))
+Path('quantized_windows/stub.windows.manifest.json').write_text('{"records":[],"window_size":11,"stride":1}')
+Path('quantized_windows/windows.json').write_text('{}')
+PY
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

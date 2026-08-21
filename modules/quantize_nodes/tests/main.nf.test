@@ -1,0 +1,37 @@
+nextflow_process {
+
+    name "Test Process FIT_NODE_QUANTIZER"
+    script "../main.nf"
+    process "FIT_NODE_QUANTIZER"
+
+    tag "modules"
+    tag "quantization"
+
+    test("Should emit a quantizer directory") {
+
+        options "-stub"
+
+        when {
+            params {
+                quantize = 'pq'
+                pq_m = 16
+                pq_nbits = 4
+            }
+            process {
+                """
+                input[0] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                input[1] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                """
+            }
+        }
+
+        then {
+            assertAll(
+                { assert process.success },
+                { assert process.out.quantization.size() == 1 }
+            )
+        }
+
+    }
+
+}

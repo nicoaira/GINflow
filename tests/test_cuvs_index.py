@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GPU tests for the cuVS CAGRA, IVF-Flat, and IVF-PQ indexes."""
+"""GPU tests for the cuVS CAGRA and IVF-Flat indexes."""
 from __future__ import annotations
 
 import sys
@@ -36,10 +36,11 @@ class TestCuvsHelpers(unittest.TestCase):
     def test_aliases(self) -> None:
         self.assertEqual(normalize_index_type("cagra"), "CAGRA")
         self.assertEqual(normalize_index_type("ivf-flat"), "IVF")
-        self.assertEqual(normalize_index_type("ivfpq"), "IVF-PQ")
+        with self.assertRaises(ValueError):
+            normalize_index_type("ivfpq")
         self.assertTrue(is_cuvs_type("ivf"))
         self.assertFalse(is_cuvs_type("flatip"))
-        self.assertEqual(set(CUVS_INDEX_TYPES), {"CAGRA", "IVF", "IVF-PQ"})
+        self.assertEqual(set(CUVS_INDEX_TYPES), {"CAGRA", "IVF"})
 
     def test_bounds(self) -> None:
         self.assertEqual(cuvs_index.resolve_n_lists(100, 4), 4)
@@ -114,9 +115,6 @@ class TestCuvsIndexes(unittest.TestCase):
 
     def test_ivf_flat(self) -> None:
         self._roundtrip("ivf", n_lists=4, n_probes=4)
-
-    def test_ivf_pq(self) -> None:
-        self._roundtrip("ivf-pq", n_lists=4, n_probes=4, pq_bits=8, pq_dim=8)
 
 
 if __name__ == "__main__":

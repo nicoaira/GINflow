@@ -1,0 +1,10 @@
+---
+# yaml-language-server: $schema=https://raw.githubusercontent.com/nf-core/modules/master/modules/environment-schema.json
+# CPU ADC walker for a GPU-built PQ-CAGRA graph (--search_device cpu).
+channels:
+  - nicolas.aira
+  - conda-forge
+dependencies:
+  - conda-forge::python=3.12
+  - conda-forge::numpy=2.2.6
+  - nicolas.aira::pq-cagra-adc-cpu=0.1.0

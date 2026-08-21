@@ -1,0 +1,39 @@
+{% set version = "0.1.0" %}
+
+package:
+  name: pq-cagra-adc-cpu
+  version: {{ version }}
+
+source:
+  path: ../../../vendor/cagra-pq-adc
+
+build:
+  number: 0
+  string: cpu_py{{ CONDA_PY }}
+  skip: true  # [not linux]
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - cmake
+    - ninja
+    - make
+  host:
+    - python
+    - numpy
+    - pybind11
+  run:
+    - python
+    - numpy
+    - libgomp
+
+test:
+  imports:
+    - pq_cagra_adc
+  commands:
+    - python -c "import pq_cagra_adc; print('pq-cagra-adc-cpu ok')"
+
+about:
+  home: https://github.com/nicoaira/ginflow
+  license: Apache-2.0
+  summary: CPU search of GINflow PQ-CAGRA graphs (ADC walker)

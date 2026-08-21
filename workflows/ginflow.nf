@@ -2,14 +2,12 @@ include { PREPARE_WINDOWS as PREPARE_DB }    from './prepare_windows'
 include { PREPARE_WINDOWS as PREPARE_QUERY } from './prepare_windows'
 include { BUILD_FAISS_INDEX }                from '../modules/build_faiss_index/main'
 include { SEARCH_FAISS }                     from '../modules/search_faiss/main'
-include { BUILD_SCANN_INDEX }                from '../modules/build_scann_index/main'
-include { SEARCH_SCANN }                     from '../modules/search_scann/main'
-include { BUILD_NGT_INDEX }                  from '../modules/build_ngt_index/main'
-include { SEARCH_NGT }                       from '../modules/search_ngt/main'
 include { BUILD_CUVS_INDEX }                 from '../modules/build_cuvs_index/main'
 include { SEARCH_CUVS }                      from '../modules/search_cuvs/main'
 include { BUILD_HNSWLIB_INDEX }             from '../modules/build_hnswlib_index/main'
 include { SEARCH_HNSWLIB }                  from '../modules/search_hnswlib/main'
+include { BUILD_PQ_CAGRA_INDEX }            from '../modules/build_pq_cagra_index/main'
+include { SEARCH_PQ_CAGRA }                 from '../modules/search_pq_cagra/main'
 include { RERANK_CANDIDATES }               from '../modules/rerank_candidates/main'
 include { CLUSTER_SEEDS }                    from '../modules/cluster_seeds/main'
 include { ALIGN_CLUSTERS }                   from '../modules/align_clusters/main'
@@ -31,6 +29,7 @@ workflow GINFLOW {
     reuse_windows
     evd_existing
     index_library
+    quantize_mode
 
     main:
     ch_versions        = channel.empty()
@@ -59,13 +58,18 @@ workflow GINFLOW {
     ch_report           = channel.empty()
     alignment_params    = file("${projectDir}/assets/alignment.json", checkIfExists: true)
     hnsw_bundle         = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
+    def pq_codes        = quantize_mode in ['pq', 'opq']
+    def sq_vectors      = quantize_mode == 'sq'
+    def need_quantize   = quantize_mode != 'none'
+    def exact_index     = index_library == 'faiss' && params.faiss_index in ['flatip', 'flatl2']
+    def run_rerank      = (params.exact_rerank || params.hnswlib_rerank) && !exact_index
 
     if (structures) {
         PREPARE_DB(
             structures,
             (queries && !reuse_windows) ? 'db' : '',
             params.shard_size,
-            index_library == 'hnswlib',
+            need_quantize,
             null
         )
         ch_versions   = ch_versions.mix(PREPARE_DB.out.versions)
@@ -88,22 +92,26 @@ workflow GINFLOW {
         ch_db_metadata   = PREPARE_DB.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
 
         if (index_library == 'faiss') {
-            BUILD_FAISS_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
+            def faiss_windows = sq_vectors ? PREPARE_DB.out.quantized_npz.collect() : ch_db_windows
+            def faiss_manifests = sq_vectors ? PREPARE_DB.out.quantized_manifests.collect() : ch_db_manifests
+            BUILD_FAISS_INDEX(faiss_windows, faiss_manifests, ch_db_embeddings, ch_db_metadata)
             ch_versions       = ch_versions.mix(BUILD_FAISS_INDEX.out.versions)
             ch_built_database = BUILD_FAISS_INDEX.out.database
         }
-        else if (index_library == 'scann') {
-            BUILD_SCANN_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
-            ch_versions       = ch_versions.mix(BUILD_SCANN_INDEX.out.versions)
-            ch_built_database = BUILD_SCANN_INDEX.out.database
+        else if (index_library == 'cagra' && pq_codes) {
+            BUILD_PQ_CAGRA_INDEX(
+                PREPARE_DB.out.quantized_windows.map { meta, directory -> directory },
+                PREPARE_DB.out.quantization,
+                ch_db_embeddings,
+                ch_db_metadata
+            )
+            ch_versions       = ch_versions.mix(BUILD_PQ_CAGRA_INDEX.out.versions)
+            ch_built_database = BUILD_PQ_CAGRA_INDEX.out.database
         }
-        else if (index_library == 'ngt') {
-            BUILD_NGT_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
-            ch_versions       = ch_versions.mix(BUILD_NGT_INDEX.out.versions)
-            ch_built_database = BUILD_NGT_INDEX.out.database
-        }
-        else if (index_library == 'cuvs') {
-            BUILD_CUVS_INDEX(ch_db_windows, ch_db_manifests, ch_db_embeddings, ch_db_metadata)
+        else if (index_library in ['cagra', 'ivf']) {
+            def cuvs_windows = sq_vectors ? PREPARE_DB.out.quantized_npz.collect() : ch_db_windows
+            def cuvs_manifests = sq_vectors ? PREPARE_DB.out.quantized_manifests.collect() : ch_db_manifests
+            BUILD_CUVS_INDEX(cuvs_windows, cuvs_manifests, ch_db_embeddings, ch_db_metadata)
             ch_versions       = ch_versions.mix(BUILD_CUVS_INDEX.out.versions)
             ch_built_database = BUILD_CUVS_INDEX.out.database
         }
@@ -113,9 +121,7 @@ workflow GINFLOW {
                 PREPARE_DB.out.quantization,
                 ch_db_embeddings,
                 ch_db_metadata,
-                hnsw_bundle,
-                ch_db_windows,
-                ch_db_manifests
+                hnsw_bundle
             )
             ch_versions       = ch_versions.mix(BUILD_HNSWLIB_INDEX.out.versions)
             ch_built_database = BUILD_HNSWLIB_INDEX.out.database
@@ -141,7 +147,7 @@ workflow GINFLOW {
             ch_evd      = ESTIMATE_EVD_QUERY.out.evd
             ch_published_evd = ESTIMATE_EVD_QUERY.out.evd
         }
-        if (index_library == 'hnswlib') {
+        if (need_quantize && sq_vectors) {
             ch_quantization_source = channel
                 .fromPath("${database}/quantization", checkIfExists: true, type: 'dir')
         }
@@ -155,12 +161,12 @@ workflow GINFLOW {
             ch_quantized_windows = PREPARE_DB.out.quantized_windows
         }
         else {
-            def query_quantization = index_library == 'hnswlib' ? (structures ? ch_quantization : ch_quantization_source) : null
+            def query_quantization = sq_vectors ? (structures ? ch_quantization : ch_quantization_source) : null
             PREPARE_QUERY(
                 queries,
                 structures ? 'query' : '',
                 params.search_shard_size ?: params.shard_size,
-                index_library == 'hnswlib',
+                sq_vectors,
                 query_quantization
             )
             ch_versions         = ch_versions.mix(PREPARE_QUERY.out.versions)
@@ -171,47 +177,47 @@ workflow GINFLOW {
             ch_query_embeddings = PREPARE_QUERY.out.embeddings
             ch_query_metadata   = PREPARE_QUERY.out.graphs
             ch_quantized_windows = PREPARE_QUERY.out.quantized_windows
-            if (!structures && index_library == 'hnswlib') {
+            if (!structures && sq_vectors) {
                 ch_quantization = PREPARE_QUERY.out.quantization
             }
         }
 
+        def search_windows = ch_query_windows
+        if (sq_vectors && !reuse_windows) {
+            search_windows = PREPARE_QUERY.out.quantized_npz
+                .merge(PREPARE_QUERY.out.quantized_manifests)
+                .map { npz, manifest -> tuple([id: npz.baseName], npz, manifest) }
+        }
+        else if (sq_vectors && reuse_windows) {
+            search_windows = PREPARE_DB.out.quantized_npz
+                .merge(PREPARE_DB.out.quantized_manifests)
+                .map { npz, manifest -> tuple([id: npz.baseName], npz, manifest) }
+        }
+
         if (index_library == 'faiss') {
-            SEARCH_FAISS(ch_query_windows, ch_search_database.collect())
+            SEARCH_FAISS(search_windows, ch_search_database.collect())
             ch_versions    = ch_versions.mix(SEARCH_FAISS.out.versions)
             ch_seed_shards = SEARCH_FAISS.out.seeds
         }
-        else if (index_library == 'scann') {
-            SEARCH_SCANN(ch_query_windows, ch_search_database.collect())
-            ch_versions    = ch_versions.mix(SEARCH_SCANN.out.versions)
-            ch_seed_shards = SEARCH_SCANN.out.seeds
+        else if (index_library == 'cagra' && pq_codes) {
+            SEARCH_PQ_CAGRA(ch_query_windows, ch_search_database.collect())
+            ch_versions    = ch_versions.mix(SEARCH_PQ_CAGRA.out.versions)
+            ch_seed_shards = SEARCH_PQ_CAGRA.out.seeds
         }
-        else if (index_library == 'ngt') {
-            SEARCH_NGT(ch_query_windows, ch_search_database.collect())
-            ch_versions    = ch_versions.mix(SEARCH_NGT.out.versions)
-            ch_seed_shards = SEARCH_NGT.out.seeds
-        }
-        else if (index_library == 'cuvs') {
-            SEARCH_CUVS(ch_query_windows, ch_search_database.collect())
+        else if (index_library in ['cagra', 'ivf']) {
+            SEARCH_CUVS(search_windows, ch_search_database.collect())
             ch_versions    = ch_versions.mix(SEARCH_CUVS.out.versions)
             ch_seed_shards = SEARCH_CUVS.out.seeds
         }
         else if (index_library == 'hnswlib') {
-            SEARCH_HNSWLIB(
-                ch_quantized_windows,
-                ch_search_database.collect(),
-                hnsw_bundle,
-                ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
-                ch_query_windows.map { meta, npz, manifest -> npz }.collect(),
-                ch_query_windows.map { meta, npz, manifest -> manifest }.collect()
-            )
+            SEARCH_HNSWLIB(ch_query_windows, ch_search_database.collect(), hnsw_bundle)
             ch_versions    = ch_versions.mix(SEARCH_HNSWLIB.out.versions)
             ch_seed_shards = SEARCH_HNSWLIB.out.seeds
         }
         else {
             error "Unsupported index library: ${index_library}"
         }
-        if (index_library == 'hnswlib' && (params.exact_rerank || params.hnswlib_rerank)) {
+        if (run_rerank) {
             RERANK_CANDIDATES(
                 ch_seed_shards,
                 ch_search_database.collect(),

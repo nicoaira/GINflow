@@ -109,62 +109,6 @@ nextflow_pipeline {
         }
     }
 
-    test("build and query with ScaNN") {
-
-        tag "scann"
-
-        when {
-            params {
-                outdir      = "$outputDir"
-                input       = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                query       = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                shard_size  = 2
-                index = 'scann'
-            }
-        }
-
-        then {
-            assert workflow.success
-            def meta = path("${params.outdir}/faiss/meta.json").json
-            assert meta.index_type == 'ScaNN'
-            assert meta.backend == 'scann'
-            assert path("${params.outdir}/faiss/scann").exists()
-            assert !path("${params.outdir}/faiss/index.faiss").exists()
-            assert path("${params.outdir}/seeds.tsv").exists()
-            def rows = path("${params.outdir}/seeds.tsv").readLines().drop(1).findAll { it }
-            assert rows.size() > 0
-            def selfHits = rows.findAll { line ->
-                def cols = line.split('\t')
-                cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
-            }
-            assert selfHits.size() > 0
-            assert path("${params.outdir}/alignments.tsv").exists()
-            assert path("${params.outdir}/report.html").exists()
-        }
-    }
-
-    test("dispatch NGT build and search") {
-
-        tag "ngt"
-        options "-stub"
-
-        when {
-            params {
-                outdir     = "$outputDir"
-                input      = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                query      = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                shard_size = 2
-                index      = 'ngt'
-            }
-        }
-
-        then {
-            assert workflow.success
-            assert path("${params.outdir}/faiss/ngt/.stub").exists()
-            assert path("${params.outdir}/seeds.tsv").exists()
-        }
-    }
-
     test("dispatch HNSWLIB quantized build and search") {
 
         tag "hnswlib"
@@ -177,7 +121,9 @@ nextflow_pipeline {
                 query       = "${projectDir}/tests/data/smoke_test_structures.tsv"
                 shard_size  = 2
                 index       = 'hnswlib'
-                node_quantization_k = 8
+                quantize    = 'pq'
+                pq_m        = 8
+                pq_nbits    = 4
                 hnswlib_m = 8
                 hnswlib_ef_construction = 40
                 hnswlib_ef_search = 20
@@ -188,10 +134,8 @@ nextflow_pipeline {
             assert workflow.success
             def meta = path("${params.outdir}/faiss/meta.json").json
             assert meta.backend == 'hnswlib'
-            assert meta.index_type == 'HNSWLIB_COMPACT'
-            assert meta.candidate_representation == 'uint16_centroid_codes'
+            assert meta.index_type == 'HNSWLIB_PQ'
             assert path("${params.outdir}/faiss/index.bin").exists()
-            assert path("${params.outdir}/faiss/quantization/centroids.npy").exists()
             assert path("${params.outdir}/windows_quantized").exists()
             assert path("${params.outdir}/seeds.tsv").exists()
             assert path("${params.outdir}/report.html").exists()
@@ -210,11 +154,13 @@ nextflow_pipeline {
                 query                     = "${projectDir}/tests/data/smoke_test_structures.tsv"
                 shard_size                = 2
                 index                     = 'hnswlib'
-                node_quantization_k       = 8
+                quantize                  = 'pq'
+                pq_m                      = 8
+                pq_nbits                  = 4
                 hnswlib_m                 = 8
                 hnswlib_ef_construction   = 40
                 hnswlib_ef_search         = 20
-                hnswlib_candidate_k       = 8
+                candidate_k               = 8
                 seed_k                    = 8
                 exact_rerank              = true
                 exact_rerank_workers      = 2

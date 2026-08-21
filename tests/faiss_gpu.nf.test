@@ -36,14 +36,13 @@ nextflow_pipeline {
         }
     }
 
-    test("faiss_gpu is rejected for ScaNN") {
+    test("unknown --index scann is an error") {
 
         when {
             params {
-                outdir    = "$outputDir"
-                input     = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                faiss_gpu = true
-                index     = 'scann'
+                outdir = "$outputDir"
+                input  = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                index  = 'scann'
             }
         }
 
@@ -52,7 +51,7 @@ nextflow_pipeline {
         }
     }
 
-    test("faiss_index ScaNN is an error") {
+    test("faiss_index scann is an error") {
 
         when {
             params {
@@ -73,7 +72,7 @@ nextflow_pipeline {
             params {
                 outdir = "$outputDir"
                 input  = "${projectDir}/tests/data/smoke_test_structures.tsv"
-                index  = 'cuvs'
+                index  = 'cagra'
             }
         }
 

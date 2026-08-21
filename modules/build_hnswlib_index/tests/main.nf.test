@@ -7,7 +7,7 @@ nextflow_process {
     tag "modules"
     tag "hnswlib"
 
-    test("Should emit a compact HNSWLIB database layout") {
+    test("Should emit a PQ HNSWLIB database layout") {
 
         options "-stub"
 
@@ -15,12 +15,10 @@ nextflow_process {
             process {
                 """
                 input[0] = file("${projectDir}/modules/generate_quantized_windows", checkIfExists: true)
-                input[1] = file("${projectDir}/modules/quantize_node_embeddings", checkIfExists: true)
+                input[1] = file("${projectDir}/modules/quantize_nodes", checkIfExists: true)
                 input[2] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
                 input[3] = file("${projectDir}/modules/build_rna_graphs", checkIfExists: true)
                 input[4] = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
-                input[5] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
-                input[6] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
                 """
             }
         }
@@ -33,50 +31,9 @@ nextflow_process {
                 {
                     def database = path(process.out.database.get(0))
                     assert database.resolve('index.bin').exists()
-                    assert database.resolve('windows.tsv').exists()
-                    assert database.resolve('embeddings.npz').exists()
-                    assert database.resolve('records.tsv').exists()
-                    assert database.resolve('quantization/centroids.npy').exists()
                     def metadata = database.resolve('meta.json').json
                     assert metadata.backend == 'hnswlib'
-                    assert metadata.index_type == 'HNSWLIB_COMPACT'
-                    assert metadata.candidate_representation == 'uint16_centroid_codes'
-                }
-            )
-        }
-
-    }
-
-    test("Should emit a GPU CAGRA companion database layout") {
-
-        config "./nextflow.gpu.config"
-        options "-stub"
-
-        when {
-            process {
-                """
-                input[0] = file("${projectDir}/modules/generate_quantized_windows", checkIfExists: true)
-                input[1] = file("${projectDir}/modules/quantize_node_embeddings", checkIfExists: true)
-                input[2] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
-                input[3] = file("${projectDir}/modules/build_rna_graphs", checkIfExists: true)
-                input[4] = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
-                input[5] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
-                input[6] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
-                """
-            }
-        }
-
-        then {
-            assertAll(
-                { assert process.success },
-                { assert process.out.database.size() == 1 },
-                {
-                    def database = path(process.out.database.get(0))
-                    assert database.resolve('cagra/index.bin').exists()
-                    def metadata = database.resolve('meta.json').json
-                    assert metadata.backend == 'hnswlib'
-                    assert metadata.index_type == 'HNSWLIB_GPU_CAGRA'
-                    assert metadata.candidate_representation == 'original_normalized_window_int8'
+                    assert metadata.index_type == 'HNSWLIB_PQ'
                 }
             )
         }

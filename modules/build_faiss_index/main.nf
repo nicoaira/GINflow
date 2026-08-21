@@ -25,7 +25,6 @@ process BUILD_FAISS_INDEX {
     def gpu_flag  = task.accelerator ? '--gpu' : ''
     def nlist     = params.faiss_nlist     != null ? "--nlist ${params.faiss_nlist}" : ''
     def nprobe    = params.faiss_nprobe    != null ? "--nprobe ${params.faiss_nprobe}" : ''
-    def lsh_nbits = params.faiss_lsh_nbits != null ? "--lsh-nbits ${params.faiss_lsh_nbits}" : ''
     """
     build_faiss.py \\
         --windows windows/*.windows.npz \\
@@ -35,16 +34,11 @@ process BUILD_FAISS_INDEX {
         --outdir faiss \\
         --backend faiss \\
         --index-type ${params.faiss_index} \\
-        --pq-m ${params.faiss_pq_m} \\
-        --pq-nbits ${params.faiss_pq_nbits} \\
-        --pq-m-refine ${params.faiss_pq_m_refine} \\
         --hnsw-m ${params.faiss_hnsw_m} \\
         --hnsw-ef-construction ${params.faiss_hnsw_ef_construction} \\
         --hnsw-ef-search ${params.faiss_hnsw_ef_search} \\
-        --sq-type ${params.faiss_sq_type} \\
         ${nlist} \\
         ${nprobe} \\
-        ${lsh_nbits} \\
         ${gpu_flag} \\
         ${args}
 

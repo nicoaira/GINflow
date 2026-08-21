@@ -1,0 +1,44 @@
+{% set version = "0.1.0" %}
+
+package:
+  name: pq-cagra-adc
+  version: {{ version }}
+
+source:
+  path: ../../../vendor/cagra-pq-adc
+
+build:
+  number: 0
+  string: cuda11_py{{ CONDA_PY }}
+  skip: true  # [not linux]
+
+requirements:
+  build:
+    - {{ compiler('cxx') }}
+    - cmake
+    - ninja
+    - make
+    - nvidia::cuda-nvcc=11.8.89
+    - conda-forge::cuda-version=11.8
+  host:
+    - python
+    - numpy
+    - pybind11
+    - conda-forge::cudatoolkit=11.8.0
+    - conda-forge::cuda-version=11.8
+  run:
+    - python
+    - numpy
+    - conda-forge::cudatoolkit=11.8.0
+    - libgomp
+
+test:
+  imports:
+    - pq_cagra_adc
+  commands:
+    - python -c "import pq_cagra_adc; print('pq-cagra-adc gpu ok')"
+
+about:
+  home: https://github.com/nicoaira/ginflow
+  license: Apache-2.0
+  summary: GPU build and ADC search for GINflow node-level PQ-CAGRA indexes

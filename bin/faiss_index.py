@@ -21,17 +21,11 @@ INDEX_TYPES = (
     "FlatL2",
     "HNSW",
     "IVFFlat",
-    "LSH",
-    "SQ",
-    "PQ",
-    "IVFSQ",
-    "IVFPQ",
-    "IVFPQR",
 )
 
-# Classic GPU FAISS implements Flat, IVFFlat, IVFPQ, and IVF+SQ. HNSW, LSH,
-# flat PQ/SQ, and IVFPQR stay on CPU (https://github.com/facebookresearch/faiss/wiki/Faiss-indexes).
-GPU_INDEX_TYPES = frozenset({"FlatIP", "FlatL2", "IVFFlat", "IVFPQ", "IVFSQ"})
+# Classic GPU FAISS implements Flat and IVFFlat. HNSW stays on CPU
+# (https://github.com/facebookresearch/faiss/wiki/Faiss-indexes).
+GPU_INDEX_TYPES = frozenset({"FlatIP", "FlatL2", "IVFFlat"})
 
 _ALIASES = {
     "FLAT": "FlatIP",
@@ -44,20 +38,6 @@ _ALIASES = {
     "INDEXHNSWFLAT": "HNSW",
     "IVFFLAT": "IVFFlat",
     "INDEXIVFFLAT": "IVFFlat",
-    "LSH": "LSH",
-    "INDEXLSH": "LSH",
-    "SQ": "SQ",
-    "SCALARQUANTIZER": "SQ",
-    "INDEXSCALARQUANTIZER": "SQ",
-    "PQ": "PQ",
-    "INDEXPQ": "PQ",
-    "IVFSQ": "IVFSQ",
-    "IVFSCALARQUANTIZER": "IVFSQ",
-    "INDEXIVFSCALARQUANTIZER": "IVFSQ",
-    "IVFPQ": "IVFPQ",
-    "INDEXIVFPQ": "IVFPQ",
-    "IVFPQR": "IVFPQR",
-    "INDEXIVFPQR": "IVFPQR",
 }
 
 _SQ_TYPES = {
@@ -112,8 +92,7 @@ def normalize_index_type(name: str) -> str:
     if key not in _ALIASES:
         allowed = ", ".join(kind.lower() for kind in INDEX_TYPES)
         raise ValueError(
-            f"unknown FAISS index type {name!r}. Choose one of: {allowed} "
-            "(or --index scann for ScaNN)"
+            f"unknown FAISS index type {name!r}. Choose one of: {allowed}"
         )
     return _ALIASES[key]
 
@@ -236,8 +215,7 @@ def default_lsh_nbits(dim: int, requested: int | None) -> int:
 def make_cpu_index(dim: int, n_vectors: int, options: IndexOptions) -> tuple[Any, dict[str, Any]]:
     if faiss is None:
         raise ValueError(
-            "FAISS is not installed in this environment. Use --index scann "
-            "or the FAISS container."
+            "FAISS is not installed in this environment. Use the FAISS container."
         )
     kind = normalize_index_type(options.index_type)
     if dim < 1:
@@ -274,42 +252,6 @@ def make_cpu_index(dim: int, n_vectors: int, options: IndexOptions) -> tuple[Any
         nprobe = resolve_nprobe(nlist, options.nprobe)
         quantizer = faiss.IndexFlatIP(dim)
         index = faiss.IndexIVFFlat(quantizer, dim, nlist, ip)
-        index.nprobe = nprobe
-    elif kind == "LSH":
-        lsh_nbits = default_lsh_nbits(dim, options.lsh_nbits)
-        index = faiss.IndexLSH(dim, lsh_nbits)
-        metric = "hamming"
-    elif kind == "SQ":
-        sq_type = resolve_sq_type(options.sq_type)
-        index = faiss.IndexScalarQuantizer(dim, _sq_enum(sq_type), ip)
-    elif kind == "PQ":
-        pq_m = resolve_pq_m(dim, options.pq_m)
-        index = faiss.IndexPQ(dim, pq_m, options.pq_nbits, ip)
-    elif kind == "IVFSQ":
-        nlist = resolve_nlist(n_vectors, options.nlist)
-        nprobe = resolve_nprobe(nlist, options.nprobe)
-        sq_type = resolve_sq_type(options.sq_type)
-        quantizer = faiss.IndexFlatIP(dim)
-        index = faiss.IndexIVFScalarQuantizer(quantizer, dim, nlist, _sq_enum(sq_type), ip)
-        index.nprobe = nprobe
-    elif kind == "IVFPQ":
-        nlist = resolve_nlist(n_vectors, options.nlist)
-        nprobe = resolve_nprobe(nlist, options.nprobe)
-        pq_m = resolve_pq_m(dim, options.pq_m)
-        quantizer = faiss.IndexFlatIP(dim)
-        index = faiss.IndexIVFPQ(quantizer, dim, nlist, pq_m, options.pq_nbits, ip)
-        index.nprobe = nprobe
-    elif kind == "IVFPQR":
-        nlist = resolve_nlist(n_vectors, options.nlist)
-        nprobe = resolve_nprobe(nlist, options.nprobe)
-        pq_m = resolve_pq_m(dim, options.pq_m)
-        if options.pq_nbits == 8:
-            factory = f"IVF{nlist},PQ{pq_m}+{options.pq_m_refine}"
-        else:
-            factory = f"IVF{nlist},PQ{pq_m}x{options.pq_nbits}+{options.pq_m_refine}"
-        # FAISS 1.10 implements IVFPQR for L2 only.
-        index = faiss.index_factory(dim, factory, faiss.METRIC_L2)
-        metric = "l2"
         index.nprobe = nprobe
     else:
         raise ValueError(f"unhandled FAISS index type {kind}")
@@ -350,12 +292,8 @@ def index_to_cpu(index: faiss.Index) -> faiss.Index:
 
 def min_train_vectors(kind: str, nlist: int | None, pq_nbits: int | None) -> int:
     needed = 1
-    if kind in {"IVFFlat", "IVFSQ", "IVFPQ", "IVFPQR"} and nlist:
+    if kind == "IVFFlat" and nlist:
         needed = max(needed, int(nlist))
-    if kind in {"PQ", "IVFPQ", "IVFPQR"} and pq_nbits:
-        needed = max(needed, 2 ** int(pq_nbits))
-    if kind == "SQ":
-        needed = max(needed, 16)
     return needed
 
 

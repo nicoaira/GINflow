@@ -1,0 +1,3 @@
+build/
+python/pq_cagra_adc/*.so
+__pycache__/

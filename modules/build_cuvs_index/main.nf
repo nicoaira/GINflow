@@ -33,13 +33,12 @@ process BUILD_CUVS_INDEX {
         --graph-metadata metadata/*.json \\
         --outdir faiss \\
         --backend cuvs \\
-        --cuvs-index-type ${params.cuvs_index} \\
-        --cuvs-pq-bits ${params.cuvs_pq_bits} \\
-        --cuvs-pq-dim ${params.cuvs_pq_dim} \\
-        --cuvs-intermediate-graph-degree ${params.cuvs_intermediate_graph_degree} \\
-        --cuvs-graph-degree ${params.cuvs_graph_degree} \\
-        --cuvs-build-algo ${params.cuvs_build_algo} \\
-        --cuvs-itopk-size ${params.cuvs_itopk_size} \\
+        --cuvs-index-type ${params.index == 'ivf' ? 'ivf' : 'cagra'} \\
+        --cuvs-intermediate-graph-degree ${params.cagra_intermediate_graph_degree} \\
+        --cuvs-graph-degree ${params.cagra_graph_degree} \\
+        --cuvs-build-algo ${params.cagra_build_algo} \\
+        --cuvs-itopk-size ${params.cagra_itopk_size} \\
+        ${params.cagra_to_hnsw ? '--cagra-to-hnsw' : ''} \\
         ${n_lists} \\
         ${n_probes} \\
         ${args}
@@ -59,13 +58,13 @@ process BUILD_CUVS_INDEX {
     touch faiss/windows.tsv
     touch faiss/embeddings.npz
     touch faiss/records.tsv
-    echo '{}' > faiss/meta.json
+    echo '{"backend":"cuvs","index_type":"CAGRA"}' > faiss/meta.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        cuvs: \$(python3 -c "from importlib.metadata import version; print(version('cuvs'))")
-        cupy: \$(python3 -c "import cupy; print(cupy.__version__)")
-        numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+        cuvs: stub
+        cupy: stub
+        numpy: stub
     END_VERSIONS
     """
 }

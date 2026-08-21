@@ -16,10 +16,7 @@ null/
 .firecrawl/
 ro-crate-metadata.json
 results*
-!benchmarks/results_common.py
-!benchmarks/results-template.md
-!benchmarks/tests/fixtures/
-!benchmarks/tests/fixtures/results_valid.jsonl
+benchmarks/
 scripts/build_test_structures.py
 test_search/
 

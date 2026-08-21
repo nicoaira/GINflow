@@ -18,12 +18,6 @@ from faiss_index import (
     prepare_search_index,
 )
 from cuvs_index import is_cuvs_database, load_index as load_cuvs_index
-from ngt_index import is_ngt_database, load_index as load_ngt_index
-from scann_index import (
-    apply_search_params as apply_scann_search_params,
-    is_scann_database,
-    load_index as load_scann_index,
-)
 
 
 COMPAT_KEYS = (
@@ -165,7 +159,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--database",
         type=Path,
         required=True,
-        help="Directory with windows.tsv, meta.json, and either index.faiss or scann/",
+        help="Directory with windows.tsv, meta.json, and the vector index",
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--k", type=int, default=50)
@@ -173,36 +167,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--nprobe", type=int)
     parser.add_argument("--cuvs-n-probes", type=int)
     parser.add_argument("--hnsw-ef-search", type=int)
-    parser.add_argument("--ngt-max-no-of-edges", type=int)
-    parser.add_argument("--ngt-edge-size-for-search", type=int)
-    parser.add_argument("--ngt-num-of-search-objects", type=int)
-    parser.add_argument("--ngt-search-range-coefficient", type=float)
-    parser.add_argument("--ngt-blob-search-range-coefficient", type=float)
-    parser.add_argument("--ngt-search-radius", type=float)
-    parser.add_argument("--ngt-result-expansion", type=float)
-    parser.add_argument("--ngt-exploration-size", type=int)
-    parser.add_argument("--ngt-exact-result-expansion", type=float)
-    parser.add_argument("--ngt-num-of-probes", type=int)
+    parser.add_argument("--search-device", choices=("auto", "gpu", "cpu"), default="auto")
     parser.add_argument("--gpu", action="store_true")
     parser.add_argument("--gpu-device", type=int, default=0)
-    parser.add_argument("--scann-reorder", type=int)
-    parser.add_argument("--scann-leaves-to-search", type=int)
     return parser.parse_args(argv)
 
 
-def ngt_search_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
-    return {
-        "max_no_of_edges": args.ngt_max_no_of_edges,
-        "edge_size_for_search": args.ngt_edge_size_for_search,
-        "num_of_search_objects": args.ngt_num_of_search_objects,
-        "search_range_coefficient": args.ngt_search_range_coefficient,
-        "blob_search_range_coefficient": args.ngt_blob_search_range_coefficient,
-        "search_radius": args.ngt_search_radius,
-        "result_expansion": args.ngt_result_expansion,
-        "exploration_size": args.ngt_exploration_size,
-        "exact_result_expansion": args.ngt_exact_result_expansion,
-        "num_of_probes": args.ngt_num_of_probes,
-    }
+def load_converted_hnsw(database: Path, db_meta: dict[str, Any], ef_search: int | None) -> Any:
+    from cuvs.neighbors import hnsw
+
+    path = database / "hnsw" / "index.bin"
+    if not path.exists():
+        raise ValueError(f"{database} has no converted CPU HNSW (hnsw/index.bin). Rebuild with --cagra_to_hnsw true.")
+    loaded = hnsw.load(str(path))
+    ntotal = int(db_meta["n_windows"])
+    ef = int(ef_search or db_meta.get("hnsw_ef_search") or 200)
+
+    class ConvertedHnsw:
+        def __init__(self) -> None:
+            self.index = loaded
+            self.ntotal = ntotal
+            self.metric = "cuvs_cosine"
+
+        def search(self, queries: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+            xb = np.ascontiguousarray(queries, dtype=np.float32)
+            params = hnsw.SearchParams(ef_search=max(ef, int(k)))
+            distances, labels = hnsw.search(params, self.index, xb, max(1, min(int(k), self.ntotal)))
+            return np.asarray(distances, dtype=np.float32), np.asarray(labels, dtype=np.int64)
+
+    return ConvertedHnsw()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -220,38 +213,19 @@ def main(argv: list[str] | None = None) -> int:
             hnsw_ef_search=args.hnsw_ef_search,
             gpu=args.gpu,
             gpu_device=args.gpu_device,
-            scann_reorder=args.scann_reorder if args.scann_reorder is not None else 100,
         )
-        if is_cuvs_database(args.database, db_meta):
-            if not args.gpu:
-                raise ValueError("cuVS databases require GPU search; use -profile gpu")
+        use_cpu_cagra = args.search_device == "cpu" or bool(db_meta.get("cagra_converted_hnsw"))
+        if is_cuvs_database(args.database, db_meta) and use_cpu_cagra:
+            index = load_converted_hnsw(args.database, db_meta, args.hnsw_ef_search)
+            metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None
+        elif is_cuvs_database(args.database, db_meta):
+            if not args.gpu and args.search_device != "gpu":
+                raise ValueError(
+                    "cuVS CAGRA/IVF search on GPU needs -profile gpu, or rebuild with "
+                    "--cagra_to_hnsw true and search with --search_device cpu"
+                )
             index = load_cuvs_index(args.database / "cuvs", db_meta, args.cuvs_n_probes)
             metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None
-        elif is_ngt_database(args.database, db_meta):
-            index = load_ngt_index(
-                args.database / "ngt",
-                db_meta,
-                ngt_search_options_from_args(args),
-            )
-            metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None
-        elif is_scann_database(args.database, db_meta):
-            if args.gpu:
-                raise ValueError(
-                    "--faiss_gpu is not supported for ScaNN. ScaNN is CPU-only (AVX/FMA)."
-                )
-            ntotal = db_meta.get("n_windows")
-            index = load_scann_index(
-                args.database / "scann",
-                ntotal=int(ntotal) if ntotal is not None else None,
-                leaves_to_search=db_meta.get("nprobe"),
-                reorder=db_meta.get("scann_reorder"),
-            )
-            apply_scann_search_params(
-                index,
-                nprobe=args.scann_leaves_to_search,
-                reorder=args.scann_reorder,
-            )
-            metric, lsh_nbits = "inner_product", None
         else:
             import faiss
 

@@ -1,7 +1,7 @@
 process SEARCH_CUVS {
     tag "${meta.id}"
     label 'process_low'
-    accelerator 1
+    accelerator { (params.search_device == 'cpu' || params.cagra_to_hnsw) ? null : 1 }
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
@@ -24,14 +24,19 @@ process SEARCH_CUVS {
     def prefix   = task.ext.prefix ?: "${meta.id}"
     def gpu_flag = task.accelerator ? '--gpu' : ''
     def n_probes = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
+    def separate_rerank = params.exact_rerank
+    def search_k = separate_rerank ? params.candidate_k : params.seed_k
+    def min_sim = separate_rerank ? '-inf' : params.seed_min_similarity
+    def search_device = params.search_device ?: 'auto'
     """
     search_faiss.py \\
         --windows ${windows} \\
         --manifest ${manifest} \\
         --database ${database} \\
         --output ${prefix}.seeds.tsv \\
-        --k ${params.seed_k} \\
-        --min-similarity ${params.seed_min_similarity} \\
+        --k ${search_k} \\
+        --min-similarity=${min_sim} \\
+        --search-device ${search_device} \\
         ${n_probes} \\
         ${gpu_flag} \\
         ${args}
@@ -51,9 +56,9 @@ process SEARCH_CUVS {
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
-        cuvs: \$(python3 -c "from importlib.metadata import version; print(version('cuvs'))")
-        cupy: \$(python3 -c "import cupy; print(cupy.__version__)")
-        numpy: \$(python3 -c "import numpy; print(numpy.__version__)")
+        cuvs: stub
+        cupy: stub
+        numpy: stub
     END_VERSIONS
     """
 }

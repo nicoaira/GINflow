@@ -5,8 +5,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## v1.0.0dev - [unreleased]
 
+### `Removed`
+
+- ScaNN and NGT index backends (`--index scann`, `--index ngt`) and their modules, conda recipe, and tests.
+- Window-level FAISS types `pq`, `ivfpq`, `ivfpqr`, `lsh`, `sq`, and `ivfsq`, and cuVS `ivf-pq`. Product quantization of concatenated windows is not a valid GINflow distance.
+- Centroid-VQ HNSW (`--node_quantization_k`, `compact_hnswlib`, `--hnswlib_gpu` int8 companion). Replaced by node-level SQ/PQ/OPQ plus `--index cagra` or `--index hnswlib`.
 
 ### `Added`
+
+- `--quantize none|sq|pq|opq` compresses 128-d nodes **before** index windows. PQ/OPQ persist a codebook, optional OPQ rotation, and an SDC lookup table from the same train process (not a separate Nextflow process). Search of PQ/OPQ graphs uses ADC.
+- Unified `--index cagra`: stock cuVS CAGRA for uncompressed/SQ windows, custom PQ-CAGRA for `--quantize pq|opq`.
+- `--cagra_to_hnsw` / `--search_device cpu` to build CAGRA on GPU and search on CPU.
+- Optional exact original-window rerank (`--exact_rerank`, default `true`; skipped for exact FlatIP/FlatL2).
+- Conda packages `nicolas.aira::pq-cagra-adc` (GPU build/search) and `nicolas.aira::pq-cagra-adc-cpu` (CPU ADC search) so `-profile conda` and `-profile docker` need no extra local installs.
+
+### `Changed`
+
+- `--index` is `faiss|cagra|ivf|hnswlib`. cuVS IVF-Flat is `--index ivf`.
+- FAISS public types are `flatip`, `flatl2`, `ivfflat`, and CPU-only `hnsw`. FAISS 1.10 has no GPU HNSW; use `--index cagra` for a GPU graph.
+- Default `--exact_rerank true`, `--candidate_k 200`. Raise `--seed_k` and `--candidate_k` with database size (see [docs/indexes.md](docs/indexes.md)).
+- Index guide rewritten without benchmark tables.
+
+### `Added` (historical)
 
 - Quantized-node HNSWLIB candidate search (`--index hnswlib`, alias `hnsw`):
   spherical k-means node centroids (default `k=2048`), float16 centroid

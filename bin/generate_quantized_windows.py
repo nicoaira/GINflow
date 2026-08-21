@@ -1,37 +1,37 @@
 #!/usr/bin/env python3
-"""Generate sliding windows of centroid codes for the HNSWLIB candidate index."""
+"""Build sliding windows from node-level SQ / PQ / OPQ codes."""
 from __future__ import annotations
 
 import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-
-def load_json(path: Path) -> dict:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    return payload
-
-
-def n_windows(length: int, window_size: int, stride: int) -> int:
-    if length < window_size:
-        return 0
-    return (length - window_size) // stride + 1
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from node_quantization import (
+    decode_sq,
+    load_json,
+    n_windows,
+    node_code_bytes,
+    pack_pq_codes,
+    normalize_rows,
+)
 
 
-def slice_codes(codes: np.ndarray, window_size: int, stride: int) -> np.ndarray:
-    values = np.asarray(codes)
-    if values.ndim != 1:
-        raise ValueError(f"quantized node codes must be 1-D, got {values.shape}")
-    count = n_windows(int(values.shape[0]), window_size, stride)
-    if count == 0:
-        return np.empty((0, window_size), dtype=values.dtype)
-    windows = np.lib.stride_tricks.sliding_window_view(values, window_size)[::stride]
-    return np.ascontiguousarray(windows[:count])
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--input-dir", type=Path, required=True)
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--window-size", type=int, required=True)
+    parser.add_argument("--stride", type=int, default=1)
+    return parser.parse_args()
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
 
 
 def pair_code_shards(input_dir: Path) -> list[tuple[Path, Path]]:
@@ -52,29 +52,59 @@ def pair_code_shards(input_dir: Path) -> list[tuple[Path, Path]]:
     return [(code_map[key], manifest_map[key]) for key in sorted(code_map)]
 
 
-def generate_windows(input_dir: Path, output_dir: Path, window_size: int, stride: int) -> dict:
-    if window_size < 1:
-        raise ValueError("--window-size must be >= 1")
-    if stride < 1:
-        raise ValueError("--stride must be >= 1")
+def slice_pq_windows(codes: np.ndarray, window_size: int, stride: int, pq_m: int, nbits: int) -> np.ndarray:
+    values = np.asarray(codes)
+    if values.ndim != 2:
+        raise ValueError(f"PQ node codes must be 2-D, got {values.shape}")
+    count = n_windows(int(values.shape[0]), window_size, stride)
+    if count == 0:
+        width = window_size * node_code_bytes(pq_m, nbits)
+        return np.empty((0, width), dtype=np.uint8)
+    view = np.lib.stride_tricks.sliding_window_view(values, window_size, axis=0)[::stride][:count]
+    stacked = np.ascontiguousarray(np.transpose(view, (0, 2, 1)))
+    packed = pack_pq_codes(stacked.reshape(-1, pq_m), pq_m, nbits)
+    return packed.reshape(count, window_size * packed.shape[1])
+
+
+def slice_sq_windows(codes: np.ndarray, scale: np.ndarray, zero: np.ndarray, window_size: int, stride: int) -> np.ndarray:
+    reconstructed = normalize_rows(decode_sq(codes, scale, zero))
+    count = n_windows(int(reconstructed.shape[0]), window_size, stride)
+    if count == 0:
+        return np.empty((0, window_size * reconstructed.shape[1]), dtype=np.float32)
+    view = np.lib.stride_tricks.sliding_window_view(reconstructed, window_size, axis=0)[::stride][:count]
+    stacked = np.ascontiguousarray(np.transpose(view, (0, 2, 1)))
+    return stacked.reshape(count, window_size * reconstructed.shape[1]).astype(np.float32, copy=False)
+
+
+def generate_windows(input_dir: Path, output_dir: Path, window_size: int, stride: int) -> dict[str, Any]:
+    if window_size < 1 or stride < 1:
+        raise ValueError("window-size and stride must be >= 1")
+    quantizer = load_json(input_dir / "quantizer.json")
+    mode = str(quantizer["mode"])
     shards = pair_code_shards(input_dir)
-    quantization = load_json(input_dir / "quantization.json")
     output_dir.mkdir(parents=True, exist_ok=True)
-    records_written = 0
+    scale = zero = None
+    if mode == "sq":
+        scale = np.load(input_dir / "sq_scale.npy")
+        zero = np.load(input_dir / "sq_zero.npy")
+    pq_m = int(quantizer.get("pq_m", 0) or 0)
+    nbits = int(quantizer.get("pq_nbits", 0) or 0)
     total_windows = 0
-    for code_path, code_manifest_path in shards:
-        code_manifest = load_json(code_manifest_path)
+    records_written = 0
+    for code_path, manifest_path in shards:
+        manifest = load_json(manifest_path)
         windows: dict[str, np.ndarray] = {}
-        records = []
-        skipped_short = []
+        records: list[dict[str, Any]] = []
+        skipped_short: list[dict[str, Any]] = []
         with np.load(code_path) as arrays:
-            for record in code_manifest.get("records", []):
+            for record in manifest.get("records", []):
                 identifier = str(record["identifier"])
-                if identifier not in arrays.files:
-                    raise KeyError(f"{identifier} is in {code_manifest_path} but missing from {code_path}")
+                length = int(record["length"])
                 codes = np.asarray(arrays[identifier])
-                sliced = slice_codes(codes, window_size, stride)
-                length = int(record.get("length", codes.shape[0]))
+                if mode == "sq":
+                    sliced = slice_sq_windows(codes, scale, zero, window_size, stride)
+                else:
+                    sliced = slice_pq_windows(codes, window_size, stride, pq_m, nbits)
                 if sliced.shape[0] == 0:
                     skipped_short.append({"identifier": identifier, "length": length})
                     continue
@@ -84,77 +114,44 @@ def generate_windows(input_dir: Path, output_dir: Path, window_size: int, stride
                         "identifier": identifier,
                         "length": length,
                         "n_windows": int(sliced.shape[0]),
-                        "shape": [int(sliced.shape[0]), int(sliced.shape[1])],
                     }
                 )
                 total_windows += int(sliced.shape[0])
                 records_written += 1
-
         prefix = code_path.name[: -len(".quantized.npz")]
-        output_npz = output_dir / f"{prefix}.windows.npz"
-        output_manifest = output_dir / f"{prefix}.windows.manifest.json"
-        np.savez_compressed(output_npz, **windows)
-        output_manifest.write_text(
-            json.dumps(
-                {
-                    "status": "complete",
-                    "quantized_nodes": True,
-                    "quantized_windows": True,
-                    "metric": quantization.get("metric", "cosine"),
-                    "normalization": quantization.get("normalization", "per_node_l2"),
-                    "n_centroids": int(quantization["n_centroids"]),
-                    "embedding_dim": int(quantization["embedding_dim"]),
-                    "centroid_dtype": quantization.get("centroid_dtype", "float16"),
-                    "similarity_file": quantization.get("similarity_file", "similarity.npy"),
-                    "window_size": int(window_size),
-                    "stride": int(stride),
-                    "code_dim": int(window_size),
-                    "window_dim": int(window_size) * int(quantization["embedding_dim"]),
-                    "l2_normalized": False,
-                    "input": code_path.name,
-                    "input_manifest": code_manifest_path.name,
-                    "ginfinity_version": code_manifest.get("ginfinity_version"),
-                    "model_version": code_manifest.get("model_version"),
-                    "checkpoint_sha256": code_manifest.get("checkpoint_sha256"),
-                    "records": records,
-                    "skipped_short": skipped_short,
-                },
-                indent=2,
-            )
-            + "\n"
+        np.savez_compressed(output_dir / f"{prefix}.windows.npz", **windows)
+        write_json(
+            output_dir / f"{prefix}.windows.manifest.json",
+            {
+                "quantized_windows": True,
+                "mode": mode,
+                "window_size": window_size,
+                "stride": stride,
+                "window_dim": int(next(iter(windows.values())).shape[1]) if windows else 0,
+                "pq_m": pq_m or None,
+                "pq_nbits": nbits or None,
+                "records": records,
+                "skipped_short": skipped_short,
+            },
         )
-
-    result = {
-        "status": "complete",
-        "n_shards": len(shards),
-        "n_records": records_written,
-        "n_windows": total_windows,
+    summary = {
+        "mode": mode,
         "window_size": window_size,
         "stride": stride,
-        "n_centroids": int(quantization["n_centroids"]),
-        "embedding_dim": int(quantization["embedding_dim"]),
+        "records": records_written,
+        "n_windows": total_windows,
     }
-    (output_dir / "windows.json").write_text(json.dumps(result, indent=2) + "\n")
-    return result
+    write_json(output_dir / "windows.json", summary)
+    return summary
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input-dir", type=Path, required=True)
-    parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--window-size", type=int, default=11)
-    parser.add_argument("--stride", type=int, default=1)
-    return parser.parse_args(argv)
-
-
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    try:
-        result = generate_windows(args.input_dir, args.output_dir, args.window_size, args.stride)
-    except (OSError, KeyError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    print(json.dumps({"outdir": str(args.output_dir), **result}))
+def main() -> int:
+    args = parse_args()
+    summary = generate_windows(args.input_dir, args.output_dir, args.window_size, args.stride)
+    print(
+        f"wrote quantized windows: mode={summary['mode']} "
+        f"records={summary['records']} n_windows={summary['n_windows']}"
+    )
     return 0
 
 

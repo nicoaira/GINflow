@@ -62,19 +62,16 @@ def normalize_index_library(raw) {
     if (!key || key == 'faiss') {
         return 'faiss'
     }
-    if (key in ['scann', 'scan']) {
-        return 'scann'
+    if (key in ['cagra', 'cuvs']) {
+        return 'cagra'
     }
-    if (key in ['ngt', 'anng']) {
-        return 'ngt'
-    }
-    if (key == 'cuvs') {
-        return 'cuvs'
+    if (key == 'ivf') {
+        return 'ivf'
     }
     if (key in ['hnswlib', 'hnsw']) {
         return 'hnswlib'
     }
-    error "--index must be faiss, scann, ngt, cuvs, or hnswlib, got '${raw}'. See docs/indexes.md."
+    error "--index must be faiss, cagra, ivf, or hnswlib, got '${raw}'. See docs/indexes.md."
 }
 
 def normalize_lowercase_choice(name, default_value, choices, aliases = [:]) {
@@ -120,54 +117,26 @@ def normalize_parameter_values() {
         params.ginfinity_full_precision = true
     }
     normalize_boolean_param('ginfinity_full_precision', true)
-    normalize_lowercase_choice('ngt_index', 'ngt', ['ngt', 'qg', 'qbg'], [
-        anng: 'ngt',
-        quantizedgraph: 'qg',
-        'quantized-graph': 'qg',
-        quantizedblobgraph: 'qbg',
-        'quantized-blob-graph': 'qbg',
-    ])
-    normalize_lowercase_choice('ngt_qbg_cluster_data_type', 'pq4', ['pq4', 'sq8'])
-    normalize_lowercase_choice('cuvs_index', 'cagra', ['cagra', 'ivf', 'ivf-pq'], [
-        'ivf-flat': 'ivf',
-        ivfpq: 'ivf-pq',
-    ])
-    normalize_lowercase_choice('cuvs_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent', 'iterative_cagra_search', 'ace'])
-    if ((params.faiss_index as String)?.trim()?.equalsIgnoreCase('scann')) {
-        error "--faiss_index scann is not valid. FAISS and ScaNN are different index libraries. Use --index scann. See docs/indexes.md."
-    }
-    normalize_lowercase_choice('faiss_index', 'flatip', ['flatip', 'flatl2', 'hnsw', 'ivfflat', 'lsh', 'sq', 'pq', 'ivfsq', 'ivfpq', 'ivfpqr'], [
+    normalize_lowercase_choice('quantize', 'none', ['none', 'sq', 'pq', 'opq'])
+    normalize_lowercase_choice('search_device', 'auto', ['auto', 'gpu', 'cpu'])
+    normalize_lowercase_choice('cagra_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent', 'iterative_cagra_search', 'ace'])
+    normalize_lowercase_choice('faiss_index', 'flatip', ['flatip', 'flatl2', 'hnsw', 'ivfflat'], [
         flat: 'flatip',
         indexflatip: 'flatip',
         indexflatl2: 'flatl2',
         hnswflat: 'hnsw',
         indexhnswflat: 'hnsw',
         indexivfflat: 'ivfflat',
-        indexlsh: 'lsh',
-        scalarquantizer: 'sq',
-        indexscalarquantizer: 'sq',
-        indexpq: 'pq',
-        ivfscalarquantizer: 'ivfsq',
-        indexivfscalarquantizer: 'ivfsq',
-        indexivfpq: 'ivfpq',
-        indexivfpqr: 'ivfpqr',
-    ])
-    normalize_lowercase_choice('faiss_sq_type', '8bit', ['8bit', '6bit', '4bit', 'fp16'], [
-        '8': '8bit',
-        qt_8bit: '8bit',
-        '6': '6bit',
-        qt_6bit: '6bit',
-        '4': '4bit',
-        qt_4bit: '4bit',
-        qt_fp16: 'fp16',
     ])
     normalize_lowercase_choice('plot_backend', 'none', ['none', 'rnartistcore', 'r4rna', 'both'])
     normalize_lowercase_choice('report_theme', 'light', ['light', 'dark'])
     normalize_boolean_param('hnswlib_rerank', false)
-    normalize_boolean_param('exact_rerank', false)
+    normalize_boolean_param('exact_rerank', true)
+    normalize_boolean_param('cagra_to_hnsw', false)
     normalize_lowercase_choice('exact_rerank_device', 'cpu', ['cpu', 'cuda'])
-    normalize_boolean_param('hnswlib_gpu', false)
-    normalize_lowercase_choice('hnswlib_gpu_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent'])
+    if (params.hnswlib_rerank) {
+        params.exact_rerank = true
+    }
 }
 
 def detect_database_library() {
@@ -180,16 +149,16 @@ def detect_database_library() {
             def meta = new groovy.json.JsonSlurperClassic().parseText(meta_file.text)
             def kind = meta.index_type as String
             def backend = meta.backend as String
-            if (kind?.equalsIgnoreCase('ScaNN') || backend?.equalsIgnoreCase('scann')) {
-                return 'scann'
+            if (backend?.equalsIgnoreCase('cagra') || kind?.equalsIgnoreCase('PQ_CAGRA') || kind?.equalsIgnoreCase('CAGRA')) {
+                return 'cagra'
             }
-            if (backend?.equalsIgnoreCase('ngt') || ['NGT', 'QG', 'QBG'].contains(kind?.toUpperCase())) {
-                return 'ngt'
+            if (backend?.equalsIgnoreCase('cuvs') && kind?.equalsIgnoreCase('IVF')) {
+                return 'ivf'
             }
-            if (backend?.equalsIgnoreCase('cuvs') || ['CAGRA', 'IVF', 'IVF-PQ'].contains(kind?.toUpperCase())) {
-                return 'cuvs'
+            if (backend?.equalsIgnoreCase('cuvs') || kind?.equalsIgnoreCase('CAGRA')) {
+                return 'cagra'
             }
-            if (backend?.equalsIgnoreCase('hnswlib') || ['HNSWLIB', 'HNSWLIB_COMPACT', 'HNSWLIB_GPU_CAGRA'].contains(kind?.toUpperCase())) {
+            if (backend?.equalsIgnoreCase('hnswlib') || ['HNSWLIB', 'HNSWLIB_PQ'].contains(kind?.toUpperCase())) {
                 return 'hnswlib'
             }
             if (backend?.equalsIgnoreCase('faiss') || kind) {
@@ -200,14 +169,22 @@ def detect_database_library() {
             // Fall through to the on-disk artifact check.
         }
     }
-    if (file("${params.database}/scann").exists()) {
-        return 'scann'
-    }
-    if (file("${params.database}/ngt").exists()) {
-        return 'ngt'
+    if (file("${params.database}/cagra.index").exists()) {
+        return 'cagra'
     }
     if (file("${params.database}/cuvs").exists()) {
-        return 'cuvs'
+        def cuvs_meta_file = file("${params.database}/meta.json")
+        if (cuvs_meta_file.exists()) {
+            try {
+                def cuvs_meta = new groovy.json.JsonSlurperClassic().parseText(cuvs_meta_file.text)
+                if ((cuvs_meta.index_type as String)?.equalsIgnoreCase('IVF')) {
+                    return 'ivf'
+                }
+            }
+            catch (Exception ignored) {
+            }
+        }
+        return 'cagra'
     }
     if (file("${params.database}/index.bin").exists()) {
         return 'hnswlib'
@@ -229,20 +206,11 @@ def resolve_index_library() {
 
 def faiss_index_kind() {
     def kind = (params.faiss_index as String)?.trim()?.toLowerCase()
-    if (kind == 'scann') {
-        error "--faiss_index scann is not valid. FAISS and ScaNN are different index libraries. Use --index scann. See docs/indexes.md."
-    }
     def aliases = [
         flatip: 'FlatIP',
         flatl2: 'FlatL2',
         hnsw: 'HNSW',
         ivfflat: 'IVFFlat',
-        lsh: 'LSH',
-        sq: 'SQ',
-        pq: 'PQ',
-        ivfsq: 'IVFSQ',
-        ivfpq: 'IVFPQ',
-        ivfpqr: 'IVFPQR',
     ]
     return aliases[kind] ?: 'FlatIP'
 }
@@ -254,10 +222,9 @@ def validate_faiss_gpu(library, kind) {
     if (library != 'faiss') {
         error "--faiss_gpu applies only to --index faiss, not --index ${library}."
     }
-    def gpu_types = ['FlatIP', 'FlatL2', 'IVFFlat', 'IVFPQ', 'IVFSQ'] as Set
-    // Search-only runs read the type from meta.json; Python rejects GPU-incompatible indexes.
+    def gpu_types = ['FlatIP', 'FlatL2', 'IVFFlat'] as Set
     if (params.input && !gpu_types.contains(kind)) {
-        error "--faiss_gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: ${gpu_types.collect { it.toLowerCase() }.sort().join(', ')}."
+        error "--faiss_gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: flatip, flatl2, ivfflat. FAISS HNSW is CPU-only; use --index cagra for a GPU graph."
     }
     def profiles = workflow.profile.tokenize(',').collect { it.trim() }
     if (!profiles.contains('gpu')) {
@@ -265,69 +232,39 @@ def validate_faiss_gpu(library, kind) {
     }
 }
 
-def validate_cuvs_gpu(library) {
-    if (library != 'cuvs') {
+def validate_cagra_gpu(library) {
+    def needs_gpu_build = library in ['cagra', 'ivf'] && params.input
+    def cpu_search = params.search_device == 'cpu' || params.cagra_to_hnsw
+    def needs_gpu_search = library in ['cagra', 'ivf'] && params.query && !cpu_search
+    if (!needs_gpu_build && !needs_gpu_search) {
         return
     }
     def profiles = workflow.profile.tokenize(',').collect { it.trim() }
     if (!profiles.contains('gpu')) {
-        error "--index cuvs requires -profile gpu so BUILD_CUVS_INDEX and SEARCH_CUVS get the cuVS image and NVIDIA runtime."
+        error "--index ${library} GPU build/search requires -profile gpu. To search a CAGRA graph on CPU, build with --cagra_to_hnsw true (or --search_device cpu after conversion). See docs/indexes.md."
     }
 }
 
-def validate_hnswlib_params(library) {
-    if (library != 'hnswlib') {
-        return
+def validate_quantize_index(library, quantize) {
+    def pq = quantize in ['pq', 'opq']
+    def standard = quantize in ['none', 'sq']
+    if (pq && !(library in ['cagra', 'hnswlib'])) {
+        error "--quantize ${quantize} cannot be used with --index ${library}. Use --index cagra (GPU graph, recommended) or --index hnswlib (CPU-only build). See docs/indexes.md."
     }
-    def gpu_database = false
-    def database_meta = null
-    if (params.database) {
-        def meta_file = file("${params.database}/meta.json")
-        if (meta_file.exists()) {
-            try {
-                database_meta = new groovy.json.JsonSlurperClassic().parseText(meta_file.text)
-                gpu_database = (database_meta.index_type as String)?.equalsIgnoreCase('HNSWLIB_GPU_CAGRA')
-            }
-            catch (Exception ignored) {
-                // The search module will report malformed metadata.
-            }
-        }
+    if (standard && library == 'hnswlib') {
+        error "--index hnswlib is the custom-distance PQ/OPQ CPU path. For uncompressed or SQ windows use --index faiss or --index cagra."
     }
-    if (gpu_database) {
-        params.hnswlib_gpu = true
+    if (pq && library == 'hnswlib' && params.input) {
+        log.warn "CAGRA graphs usually outperform CPU hnswlib for PQ/OPQ and can be converted for CPU search with --cagra_to_hnsw true. Use --index hnswlib only when no GPU is available at build time. See docs/indexes.md."
     }
-    if (params.hnswlib_gpu && params.database && !gpu_database && !params.input) {
-        error "--hnswlib_gpu requires a database built with --hnswlib_gpu true. Rebuild the database or omit --hnswlib_gpu."
+}
+
+def validate_search_params() {
+    if ((params.candidate_k as Integer) < (params.seed_k as Integer)) {
+        error "--candidate_k must be >= --seed_k."
     }
-    if ((params.hnswlib_candidate_k as Integer) < (params.seed_k as Integer)) {
-        error "--hnswlib_candidate_k must be >= --seed_k so candidate selection can emit the requested number of seeds."
-    }
-    if (params.hnswlib_gpu) {
-        if ((params.hnswlib_gpu_candidate_k as Integer) < (params.seed_k as Integer)) {
-            error "--hnswlib_gpu_candidate_k must be >= --seed_k so GPU candidate selection can emit the requested number of seeds."
-        }
-        if ((params.hnswlib_gpu_itopk_size as Integer) < (params.hnswlib_gpu_candidate_k as Integer)) {
-            error "--hnswlib_gpu_itopk_size must be >= --hnswlib_gpu_candidate_k."
-        }
-        if ((params.hnswlib_gpu_graph_degree as Integer) > (params.hnswlib_gpu_intermediate_graph_degree as Integer)) {
-            error "--hnswlib_gpu_graph_degree must be <= --hnswlib_gpu_intermediate_graph_degree."
-        }
-        if (params.hnswlib_gpu_int8_scale != null && (params.hnswlib_gpu_int8_scale as BigDecimal) <= 0) {
-            error "--hnswlib_gpu_int8_scale must be positive when provided."
-        }
-        def profiles = workflow.profile.tokenize(',').collect { it.trim() }
-        if (!profiles.contains('gpu')) {
-            error "--hnswlib_gpu requires -profile gpu so BUILD_HNSWLIB_INDEX and SEARCH_HNSWLIB get the cuVS image and NVIDIA runtime."
-        }
-    }
-    if (params.hnswlib_rerank && !params.input && !params.database) {
-        error "--hnswlib_rerank requires a built or existing hnswlib database."
-    }
-    if (params.exact_rerank && !params.input && !params.database) {
-        error "--exact_rerank requires a built or existing hnswlib database."
-    }
-    if (params.hnswlib_rerank) {
-        params.exact_rerank = true
+    if ((params.cagra_graph_degree as Integer) > (params.cagra_intermediate_graph_degree as Integer)) {
+        error "--cagra_graph_degree must be <= --cagra_intermediate_graph_degree."
     }
     if (params.exact_rerank_device == 'cuda') {
         def profiles = workflow.profile.tokenize(',').collect { it.trim() }
@@ -344,250 +281,33 @@ def collect_if_unused(unused, name, default_value, applies) {
 }
 
 def warn_unused_index_params(library, kind) {
-    def ivf     = ['IVFFlat', 'IVFSQ', 'IVFPQ', 'IVFPQR'] as Set
-    def pq      = ['PQ', 'IVFPQ', 'IVFPQR'] as Set
-    def hnsw    = ['HNSW'] as Set
-    def lsh     = ['LSH'] as Set
-    def sq      = ['SQ', 'IVFSQ'] as Set
-    def unused  = []
-
-    if (library != 'hnswlib') {
-        collect_if_unused(unused, 'node_quantization_k', 2048, false)
-        collect_if_unused(unused, 'node_quantization_sample_size', 500000, false)
-        collect_if_unused(unused, 'node_quantization_niter', 25, false)
-        collect_if_unused(unused, 'node_quantization_seed', 1, false)
-        collect_if_unused(unused, 'hnswlib_m', 32, false)
-        collect_if_unused(unused, 'hnswlib_ef_construction', 200, false)
-        collect_if_unused(unused, 'hnswlib_ef_search', 100, false)
-        collect_if_unused(unused, 'hnswlib_random_seed', 1, false)
-        collect_if_unused(unused, 'hnswlib_num_threads', 0, false)
-        collect_if_unused(unused, 'hnswlib_candidate_k', 50, false)
-        collect_if_unused(unused, 'hnswlib_rerank', false, false)
-        collect_if_unused(unused, 'exact_rerank', false, false)
-        collect_if_unused(unused, 'exact_rerank_device', 'cpu', false)
-        collect_if_unused(unused, 'exact_rerank_batch_size', 32, false)
-        collect_if_unused(unused, 'exact_rerank_candidate_batch_size', 2048, false)
-        collect_if_unused(unused, 'exact_rerank_workers', 0, false)
-        collect_if_unused(unused, 'hnswlib_gpu', false, false)
-        collect_if_unused(unused, 'hnswlib_gpu_candidate_k', 50, false)
-        collect_if_unused(unused, 'hnswlib_gpu_itopk_size', 256, false)
-        collect_if_unused(unused, 'hnswlib_gpu_search_batch_size', 512, false)
-        collect_if_unused(unused, 'hnswlib_gpu_intermediate_graph_degree', 128, false)
-        collect_if_unused(unused, 'hnswlib_gpu_graph_degree', 64, false)
-        collect_if_unused(unused, 'hnswlib_gpu_build_algo', 'nn_descent', false)
-        collect_if_unused(unused, 'hnswlib_gpu_int8_scale', null, false)
-    }
-
-    if (library == 'hnswlib') {
-        collect_if_unused(unused, 'ngt_index', 'ngt', false)
-        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
-        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
-        collect_if_unused(unused, 'ngt_num_threads', 8, false)
-        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
-        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
-        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_search_radius', null, false)
-        collect_if_unused(unused, 'ngt_result_expansion', null, false)
-        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
-        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
-        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
-        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
-        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
-        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
-        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
-        collect_if_unused(unused, 'cuvs_n_lists', null, false)
-        collect_if_unused(unused, 'cuvs_n_probes', null, false)
-        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
-        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
-        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
-        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
-        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
-        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
-        collect_if_unused(unused, 'faiss_index', 'flatip', false)
-        collect_if_unused(unused, 'faiss_gpu', false, false)
-        collect_if_unused(unused, 'faiss_nlist', null, false)
-        collect_if_unused(unused, 'faiss_nprobe', null, false)
-        collect_if_unused(unused, 'faiss_pq_m', 16, false)
-        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
-        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
-        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
-        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
-        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
-        collect_if_unused(unused, 'scann_reorder', 100, false)
-        collect_if_unused(unused, 'scann_ah_dim', 2, false)
-        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
-        collect_if_unused(unused, 'scann_soar', false, false)
-        collect_if_unused(unused, 'scann_leaves', null, false)
-        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
-    }
-    else if (library == 'scann') {
-        collect_if_unused(unused, 'ngt_index', 'ngt', false)
-        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
-        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
-        collect_if_unused(unused, 'ngt_num_threads', 8, false)
-        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
-        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
-        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_search_radius', null, false)
-        collect_if_unused(unused, 'ngt_result_expansion', null, false)
-        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
-        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
-        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
-        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
-        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
-        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
-        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
-        collect_if_unused(unused, 'cuvs_n_lists', null, false)
-        collect_if_unused(unused, 'cuvs_n_probes', null, false)
-        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
-        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
-        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
-        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
-        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
-        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
-        collect_if_unused(unused, 'faiss_index', 'flatip', false)
-        collect_if_unused(unused, 'faiss_gpu', false, false)
-        collect_if_unused(unused, 'faiss_nlist', null, false)
-        collect_if_unused(unused, 'faiss_nprobe', null, false)
-        collect_if_unused(unused, 'faiss_pq_m', 16, false)
-        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
-        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
-        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
-        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
-        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
-    }
-    else if (library == 'ngt') {
-        def ngt_kind = (params.ngt_index as String).trim().toUpperCase()
-        def regular_graph = ['NGT', 'QG'].contains(ngt_kind)
-        def qbg = ngt_kind == 'QBG'
-        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, regular_graph)
-        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, true)
-        collect_if_unused(unused, 'ngt_num_threads', 8, regular_graph)
-        collect_if_unused(unused, 'ngt_max_no_of_edges', null, true)
-        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, true)
-        collect_if_unused(unused, 'ngt_search_range_coefficient', null, true)
-        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, qbg)
-        collect_if_unused(unused, 'ngt_search_radius', null, true)
-        collect_if_unused(unused, 'ngt_result_expansion', null, ['QG', 'QBG'].contains(ngt_kind))
-        collect_if_unused(unused, 'ngt_exploration_size', 256, qbg)
-        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, qbg)
-        collect_if_unused(unused, 'ngt_num_of_probes', 1, qbg)
-        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, ngt_kind == 'QG')
-        collect_if_unused(unused, 'ngt_qbg_subvectors', null, qbg)
-        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', qbg)
-        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
-        collect_if_unused(unused, 'cuvs_n_lists', null, false)
-        collect_if_unused(unused, 'cuvs_n_probes', null, false)
-        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
-        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
-        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
-        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
-        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
-        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
-        collect_if_unused(unused, 'faiss_index', 'flatip', false)
-        collect_if_unused(unused, 'faiss_gpu', false, false)
-        collect_if_unused(unused, 'faiss_nlist', null, false)
-        collect_if_unused(unused, 'faiss_nprobe', null, false)
-        collect_if_unused(unused, 'faiss_pq_m', 16, false)
-        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
-        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
-        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
-        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
-        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
-        collect_if_unused(unused, 'scann_reorder', 100, false)
-        collect_if_unused(unused, 'scann_ah_dim', 2, false)
-        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
-        collect_if_unused(unused, 'scann_soar', false, false)
-        collect_if_unused(unused, 'scann_leaves', null, false)
-        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
-    }
-    else if (library == 'cuvs') {
-        collect_if_unused(unused, 'ngt_index', 'ngt', false)
-        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
-        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
-        collect_if_unused(unused, 'ngt_num_threads', 8, false)
-        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
-        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
-        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_search_radius', null, false)
-        collect_if_unused(unused, 'ngt_result_expansion', null, false)
-        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
-        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
-        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
-        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
-        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
-        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
-        collect_if_unused(unused, 'faiss_index', 'flatip', false)
-        collect_if_unused(unused, 'faiss_gpu', false, false)
-        collect_if_unused(unused, 'faiss_nlist', null, false)
-        collect_if_unused(unused, 'faiss_nprobe', null, false)
-        collect_if_unused(unused, 'faiss_pq_m', 16, false)
-        collect_if_unused(unused, 'faiss_pq_nbits', 8, false)
-        collect_if_unused(unused, 'faiss_pq_m_refine', 4, false)
-        collect_if_unused(unused, 'faiss_hnsw_m', 32, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, false)
-        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, false)
-        collect_if_unused(unused, 'faiss_lsh_nbits', null, false)
-        collect_if_unused(unused, 'faiss_sq_type', '8bit', false)
-        collect_if_unused(unused, 'scann_reorder', 100, false)
-        collect_if_unused(unused, 'scann_ah_dim', 2, false)
-        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
-        collect_if_unused(unused, 'scann_soar', false, false)
-        collect_if_unused(unused, 'scann_leaves', null, false)
-        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
-    }
-    else {
-        collect_if_unused(unused, 'ngt_index', 'ngt', false)
-        collect_if_unused(unused, 'ngt_edge_size_for_creation', 10, false)
-        collect_if_unused(unused, 'ngt_edge_size_for_search', 40, false)
-        collect_if_unused(unused, 'ngt_num_threads', 8, false)
-        collect_if_unused(unused, 'ngt_max_no_of_edges', null, false)
-        collect_if_unused(unused, 'ngt_num_of_search_objects', 20, false)
-        collect_if_unused(unused, 'ngt_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_blob_search_range_coefficient', null, false)
-        collect_if_unused(unused, 'ngt_search_radius', null, false)
-        collect_if_unused(unused, 'ngt_result_expansion', null, false)
-        collect_if_unused(unused, 'ngt_exploration_size', 256, false)
-        collect_if_unused(unused, 'ngt_exact_result_expansion', 0.0, false)
-        collect_if_unused(unused, 'ngt_num_of_probes', 1, false)
-        collect_if_unused(unused, 'ngt_qg_subvector_dimensions', null, false)
-        collect_if_unused(unused, 'ngt_qbg_subvectors', null, false)
-        collect_if_unused(unused, 'ngt_qbg_cluster_data_type', 'pq4', false)
-        collect_if_unused(unused, 'cuvs_index', 'cagra', false)
-        collect_if_unused(unused, 'cuvs_n_lists', null, false)
-        collect_if_unused(unused, 'cuvs_n_probes', null, false)
-        collect_if_unused(unused, 'cuvs_pq_bits', 8, false)
-        collect_if_unused(unused, 'cuvs_pq_dim', 0, false)
-        collect_if_unused(unused, 'cuvs_intermediate_graph_degree', 128, false)
-        collect_if_unused(unused, 'cuvs_graph_degree', 64, false)
-        collect_if_unused(unused, 'cuvs_build_algo', 'nn_descent', false)
-        collect_if_unused(unused, 'cuvs_itopk_size', 64, false)
-        collect_if_unused(unused, 'scann_reorder', 100, false)
-        collect_if_unused(unused, 'scann_ah_dim', 2, false)
-        collect_if_unused(unused, 'scann_anisotropic', 0.2, false)
-        collect_if_unused(unused, 'scann_soar', false, false)
-        collect_if_unused(unused, 'scann_leaves', null, false)
-        collect_if_unused(unused, 'scann_leaves_to_search', null, false)
-        collect_if_unused(unused, 'faiss_nlist', null, ivf.contains(kind))
-        collect_if_unused(unused, 'faiss_nprobe', null, ivf.contains(kind))
-        collect_if_unused(unused, 'faiss_pq_m', 16, pq.contains(kind))
-        collect_if_unused(unused, 'faiss_pq_nbits', 8, pq.contains(kind))
-        collect_if_unused(unused, 'faiss_pq_m_refine', 4, kind == 'IVFPQR')
-        collect_if_unused(unused, 'faiss_hnsw_m', 32, hnsw.contains(kind))
-        collect_if_unused(unused, 'faiss_hnsw_ef_construction', 40, hnsw.contains(kind))
-        collect_if_unused(unused, 'faiss_hnsw_ef_search', 16, hnsw.contains(kind))
-        collect_if_unused(unused, 'faiss_lsh_nbits', null, lsh.contains(kind))
-        collect_if_unused(unused, 'faiss_sq_type', '8bit', sq.contains(kind))
-    }
+    def unused = []
+    def faiss = library == 'faiss'
+    def cagra = library == 'cagra'
+    def ivf = library == 'ivf'
+    def hnswlib = library == 'hnswlib'
+    collect_if_unused(unused, 'faiss_index', 'flatip', faiss)
+    collect_if_unused(unused, 'faiss_gpu', false, faiss)
+    collect_if_unused(unused, 'faiss_nlist', null, faiss && kind == 'IVFFlat')
+    collect_if_unused(unused, 'faiss_nprobe', null, faiss && kind == 'IVFFlat')
+    collect_if_unused(unused, 'faiss_hnsw_m', 32, faiss && kind == 'HNSW')
+    collect_if_unused(unused, 'faiss_hnsw_ef_construction', 200, faiss && kind == 'HNSW')
+    collect_if_unused(unused, 'faiss_hnsw_ef_search', 64, faiss && kind == 'HNSW')
+    collect_if_unused(unused, 'cuvs_n_lists', null, ivf)
+    collect_if_unused(unused, 'cuvs_n_probes', null, ivf)
+    collect_if_unused(unused, 'cagra_intermediate_graph_degree', 128, cagra)
+    collect_if_unused(unused, 'cagra_graph_degree', 64, cagra)
+    collect_if_unused(unused, 'cagra_build_algo', 'nn_descent', cagra && params.quantize in ['none', 'sq'])
+    collect_if_unused(unused, 'cagra_nndescent_iterations', 6, cagra && params.quantize in ['pq', 'opq'])
+    collect_if_unused(unused, 'cagra_itopk_size', 64, cagra)
+    collect_if_unused(unused, 'cagra_to_hnsw', false, cagra)
+    collect_if_unused(unused, 'hnswlib_m', 32, hnswlib)
+    collect_if_unused(unused, 'hnswlib_ef_construction', 200, hnswlib)
+    collect_if_unused(unused, 'hnswlib_ef_search', 200, hnswlib)
+    collect_if_unused(unused, 'hnswlib_random_seed', 1, hnswlib)
+    collect_if_unused(unused, 'hnswlib_num_threads', 0, hnswlib)
+    collect_if_unused(unused, 'pq_m', 16, params.quantize in ['pq', 'opq'])
+    collect_if_unused(unused, 'pq_nbits', 4, params.quantize in ['pq', 'opq'])
 
     if (!unused.isEmpty()) {
         def suffix = library == 'faiss' ? (' / --faiss_index ' + kind.toLowerCase()) : ''
@@ -604,8 +324,9 @@ workflow {
     def kind    = faiss_index_kind()
     params.index = library
     validate_faiss_gpu(library, kind)
-    validate_cuvs_gpu(library)
-    validate_hnswlib_params(library)
+    validate_cagra_gpu(library)
+    validate_quantize_index(library, params.quantize)
+    validate_search_params()
     warn_unused_index_params(library, kind)
 
     def input_path    = resolve_optional_path(params.input)
@@ -639,7 +360,8 @@ workflow {
         params.database ?: [],
         reuse_windows,
         evd_existing,
-        library
+        library,
+        params.quantize
     )
 
     samples_ch = result.graphs

@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
-"""Search a quantized-node HNSWLIB database and emit candidate seeds."""
+"""ADC search of a node-PQ HNSWLIB index using original float query windows."""
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hnswlib_index import encode_code_windows, load_index, load_quantization, similarity_from_distance
-
-
-def load_json(path: Path) -> dict:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    return payload
+from node_quantization import load_json, normalize_rows
 
 
 def pair_window_shards(windows_dir: Path) -> list[tuple[Path, Path]]:
@@ -34,7 +29,7 @@ def pair_window_shards(windows_dir: Path) -> list[tuple[Path, Path]]:
             f"only-windows={only_windows} only-manifests={only_manifests}"
         )
     if not window_map:
-        raise ValueError(f"no quantized query windows found in {windows_dir}")
+        raise ValueError(f"no query windows found in {windows_dir}")
     return [(window_map[key], manifest_map[key]) for key in sorted(window_map)]
 
 
@@ -60,27 +55,36 @@ def load_targets(path: Path) -> list[tuple[str, int, int]]:
     return [(row[0], row[1], row[2]) for row in rows]  # type: ignore[index]
 
 
-def check_compatible(manifest: dict, db_meta: dict) -> None:
-    keys = (
-        ("window_size", "window_size"),
-        ("stride", "window_stride"),
-        ("window_dim", "window_dim"),
-        ("checkpoint_sha256", "checkpoint_sha256"),
-        ("n_centroids", "n_centroids"),
-        ("embedding_dim", "embedding_dim"),
-    )
-    mismatches = [
-        f"{query_key}={manifest.get(query_key)!r} vs {db_key}={db_meta.get(db_key)!r}"
-        for query_key, db_key in keys
-        if manifest.get(query_key) != db_meta.get(db_key)
-    ]
-    if mismatches:
-        raise ValueError("query windows are incompatible with the HNSWLIB database: " + "; ".join(mismatches))
+def load_float_windows(windows_dir: Path) -> tuple[np.ndarray, list[tuple[str, int, int]], dict]:
+    mapping: list[tuple[str, int, int]] = []
+    blocks: list[np.ndarray] = []
+    reference = None
+    for window_path, manifest_path in pair_window_shards(windows_dir):
+        manifest = load_json(manifest_path)
+        if reference is None:
+            reference = manifest
+        window_size = int(manifest["window_size"])
+        stride = int(manifest["stride"])
+        with np.load(window_path) as arrays:
+            for record in manifest.get("records", []):
+                identifier = str(record["identifier"])
+                values = np.asarray(arrays[identifier])
+                if values.ndim != 2:
+                    raise ValueError(f"{identifier} has invalid window shape {values.shape}")
+                blocks.append(np.ascontiguousarray(values, dtype=np.float32))
+                for offset in range(values.shape[0]):
+                    start = offset * stride
+                    mapping.append((identifier, start, start + window_size))
+    if not blocks or reference is None:
+        raise ValueError("no query windows found")
+    stacked = np.concatenate(blocks, axis=0)
+    return stacked, mapping, reference
 
 
 def search_windows(
     query_windows_dir: Path,
     database: Path,
+    executable: Path,
     k: int,
     min_similarity: float,
     ef_search: int | None,
@@ -91,111 +95,133 @@ def search_windows(
     db_meta = load_json(database / "meta.json")
     if str(db_meta.get("backend", "")).lower() != "hnswlib":
         raise ValueError(f"{database} is not an HNSWLIB database")
-    centroids, similarity_matrix, _quantization_metadata = load_quantization(database / "quantization")
-    if similarity_matrix.shape != (centroids.shape[0], centroids.shape[0]):
-        raise ValueError("centroid similarity matrix has an invalid shape")
-    search_ef = int(ef_search if ef_search is not None else db_meta.get("hnsw_ef_search", 100))
-    index = load_index(database / "index.bin", int(db_meta["window_dim"]), search_ef, num_threads)
-    targets = load_targets(database / "windows.tsv")
-    if index.get_current_count() != len(targets):
+    queries, query_map, query_meta = load_float_windows(query_windows_dir)
+    window_size = int(db_meta["window_size"])
+    dim = int(db_meta.get("embedding_dim", 128))
+    if queries.shape[1] != window_size * dim:
         raise ValueError(
-            f"HNSWLIB element_count={index.get_current_count()} does not match windows.tsv rows={len(targets)}"
+            f"query windows have width {queries.shape[1]}, expected {window_size * dim}"
         )
-    search_k = min(k, len(targets))
+    queries = queries.reshape(queries.shape[0], window_size, dim)
+    queries = np.concatenate(
+        [normalize_rows(queries[i])[None, ...] for i in range(queries.shape[0])], axis=0
+    ).astype(np.float32, copy=False)
+    import tempfile
+
+    tmp = Path(tempfile.mkdtemp(prefix="ginflow-hnsw-search-"))
+    query_bin = tmp / "query_windows.bin"
+    labels_bin = tmp / "labels.bin"
+    distances_bin = tmp / "distances.bin"
+    queries.reshape(queries.shape[0], -1).tofile(query_bin)
+    codebook = np.load(database / "quantization" / "codebook.npy")
+    codebook_bin = database / "quantization" / "codebook.bin"
+    if not codebook_bin.exists():
+        np.ascontiguousarray(codebook, dtype=np.float32).tofile(codebook_bin)
+    rotation = database / "quantization" / "rotation.npy"
+    rotation_bin = database / "quantization" / "rotation.bin"
+    if rotation.exists() and not rotation_bin.exists():
+        np.ascontiguousarray(np.load(rotation), dtype=np.float32).tofile(rotation_bin)
+    search_ef = int(ef_search if ef_search is not None else db_meta.get("hnsw_ef_search", 200))
+    command = [
+        str(executable),
+        "search",
+        "--queries",
+        str(query_bin),
+        "--codebook",
+        str(codebook_bin),
+        "--index",
+        str(database / "index.bin"),
+        "--query-count",
+        str(queries.shape[0]),
+        "--window-size",
+        str(window_size),
+        "--pq-m",
+        str(int(db_meta["pq_m"])),
+        "--nbits",
+        str(int(db_meta["pq_nbits"])),
+        "--dim",
+        str(dim),
+        "--k",
+        str(k),
+        "--ef-search",
+        str(search_ef),
+        "--threads",
+        str(num_threads),
+        "--labels-out",
+        str(labels_bin),
+        "--distances-out",
+        str(distances_bin),
+    ]
+    if rotation.exists():
+        command.extend(["--rotation", str(rotation_bin)])
+    try:
+        subprocess.run(command, check=True)
+        labels = np.fromfile(labels_bin, dtype=np.uint64).reshape(queries.shape[0], k)
+        distances = np.fromfile(distances_bin, dtype=np.float32).reshape(queries.shape[0], k)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    targets = load_targets(database / "windows.tsv")
     hits: list[tuple] = []
-    for window_path, manifest_path in pair_window_shards(query_windows_dir):
-        manifest = load_json(manifest_path)
-        check_compatible(manifest, db_meta)
-        window_size = int(manifest["window_size"])
-        stride = int(manifest["stride"])
-        with np.load(window_path) as arrays:
-            for record in manifest.get("records", []):
-                identifier = str(record["identifier"])
-                if identifier not in arrays.files:
-                    raise KeyError(f"{identifier} is in {manifest_path} but missing from {window_path}")
-                codes = np.asarray(arrays[identifier])
-                vectors = encode_code_windows(codes, centroids)
-                if vectors.shape[0] == 0:
-                    continue
-                labels, distances = index.knn_query(vectors, k=search_k, num_threads=num_threads or -1)
-                scores = similarity_from_distance(distances)
-                for offset, (row_labels, row_scores) in enumerate(zip(labels, scores)):
-                    query_start = offset * stride
-                    query_end = query_start + window_size
-                    rank = 0
-                    for target_label, score in zip(row_labels, row_scores):
-                        if int(target_label) < 0:
-                            continue
-                        value = float(score)
-                        if value < min_similarity:
-                            continue
-                        rank += 1
-                        target_id, target_start, target_end = targets[int(target_label)]
-                        hits.append(
-                            (
-                                identifier,
-                                query_start,
-                                query_end,
-                                target_id,
-                                target_start,
-                                target_end,
-                                value,
-                                rank,
-                            )
-                        )
-                        if rank >= k:
-                            break
+    for query_id, (query_name, query_start, query_end) in enumerate(query_map):
+        for rank in range(k):
+            label = int(labels[query_id, rank])
+            if label < 0 or label >= len(targets) or label == np.iinfo(np.uint64).max:
+                continue
+            # ADC distances are negative inner products.
+            score = float(-distances[query_id, rank]) / float(window_size)
+            if score < min_similarity:
+                continue
+            target_id, target_start, target_end = targets[label]
+            hits.append(
+                (
+                    query_name,
+                    query_start,
+                    query_end,
+                    target_id,
+                    target_start,
+                    target_end,
+                    score,
+                    rank + 1,
+                )
+            )
+    _ = query_meta
     return hits
 
 
 def write_seeds(path: Path, hits: list[tuple]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(
-            [
-                "query_id",
-                "query_start",
-                "query_end",
-                "target_id",
-                "target_start",
-                "target_end",
-                "score",
-                "rank",
-            ]
+            ["query_id", "query_start", "query_end", "target_id", "target_start", "target_end", "score", "rank"]
         )
-        for row in hits:
-            writer.writerow([row[0], row[1], row[2], row[3], row[4], row[5], f"{row[6]:.6f}", row[7]])
+        writer.writerows(hits)
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--windows-dir", type=Path, required=True)
     parser.add_argument("--database", type=Path, required=True)
+    parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--k", type=int, default=50)
-    parser.add_argument("--min-similarity", type=float, default=0.8)
-    parser.add_argument("--ef-search", type=int)
+    parser.add_argument("--k", type=int, required=True)
+    parser.add_argument("--min-similarity", type=float, default=float("-inf"))
+    parser.add_argument("--ef-search", type=int, default=None)
     parser.add_argument("--num-threads", type=int, default=0)
-    return parser.parse_args(argv)
+    return parser.parse_args()
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    try:
-        hits = search_windows(
-            args.windows_dir,
-            args.database,
-            args.k,
-            args.min_similarity,
-            args.ef_search,
-            args.num_threads,
-        )
-        write_seeds(args.output, hits)
-    except (OSError, KeyError, ValueError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 1
-    print(json.dumps({"output": str(args.output), "n_seeds": len(hits)}))
+def main() -> int:
+    args = parse_args()
+    hits = search_windows(
+        args.windows_dir,
+        args.database,
+        args.executable,
+        args.k,
+        args.min_similarity,
+        args.ef_search,
+        args.num_threads,
+    )
+    write_seeds(args.output, hits)
     return 0
 
 

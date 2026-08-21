@@ -95,7 +95,8 @@ nextflow run main.nf \
     --query tests/data/queries_rouskin_structures.tsv \
     --outdir results/rouskin-30k \
     --index hnswlib \
-    --hnswlib_candidate_k 5000 \
+    --quantize pq \
+    --candidate_k 5000 \
     --exact_rerank true
 ```
 
@@ -114,14 +115,14 @@ nextflow run main.nf \
     -profile conda \
     -resume \
     --index hnswlib \
+    --quantize pq \
     --input tests/data/rouskin_sample_6k.tsv \
     --query tests/data/queries_rouskin_structures.tsv \
     --outdir results/rouskin-hnswlib \
-    --node_quantization_k 4096 \
     --hnswlib_m 32 \
     --hnswlib_ef_construction 200 \
     --hnswlib_ef_search 5000 \
-    --hnswlib_candidate_k 5000 \
+    --candidate_k 5000 \
     --exact_rerank true
 ```
 
@@ -154,7 +155,7 @@ The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--da
 | `--query` + `--database` | Embed the query table and search an existing `faiss/` directory |
 | `--input` + `--query` | Build the database, search it, and publish it for later runs |
 
-`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `index.bin`, `scann/`, `ngt/`, or `cuvs/`). cuVS databases require `-profile gpu` for the later search as well. If `--input` and `--query` are the same file, embeddings are computed once.
+`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `cuvs/`, `cagra.index`, or `index.bin`). CAGRA/IVF GPU search needs `-profile gpu` unless the database was converted with `--cagra_to_hnsw`. If `--input` and `--query` are the same file, embeddings are computed once.
 
 Window search parameters:
 
@@ -162,63 +163,19 @@ Window search parameters:
 |---|---|---|
 | `--window_size` | `11` | Nucleotides per window |
 | `--window_stride` | `1` | Step between window starts |
-| `--seed_k` | `50` | Neighbours kept per query window before the threshold |
-| `--seed_min_similarity` | `0.8` | Minimum cosine similarity |
+| `--seed_k` | `50` | Neighbours kept per query window after rerank. Increase with database size. |
+| `--candidate_k` | `200` | ANN pool before exact rerank. Increase with database size. |
+| `--seed_min_similarity` | `0.8` | Minimum cosine similarity on original windows |
 | `--search_shard_size` | `--shard_size` | Query records per search task |
-| `--index` | `faiss` | Index **library**: `faiss`, `scann`, `ngt`, `cuvs`, `hnswlib` (or alias `hnsw`) |
-| `--faiss_index` | `flatip` | FAISS **structure** (only with `--index faiss`) |
-| `--ngt_index` | `ngt` | NGT **structure** (`ngt`, `qg`, or `qbg`) when `--index ngt` |
-| `--cuvs_index` | `cagra` | cuVS **structure** (`cagra`, `ivf`, or `ivf-pq`) when `--index cuvs`; requires `-profile gpu` |
+| `--index` | `faiss` | `faiss`, `cagra`, `ivf`, or `hnswlib` |
+| `--quantize` | `none` | `none`, `sq`, `pq`, or `opq` (node-level, before index windows) |
+| `--faiss_index` | `flatip` | FAISS structure: `flatip`, `flatl2`, `ivfflat`, `hnsw` |
+| `--cagra_to_hnsw` | `false` | GPU CAGRA build, then CPU search |
+| `--exact_rerank` | `true` | Exact original-window rerank (skipped for FlatIP/FlatL2) |
 
-For quantized-node HNSWLIB candidate selection, use `--index hnswlib`. The
-CPU path uses the pinned custom C++ build driver; the optional GPU path uses a
-cuVS CAGRA companion index and requires `-profile docker,gpu` (or an equivalent
-GPU runtime profile). The default is `k=2048` centroids. Configure it with
-`--node_quantization_k`, `--node_quantization_sample_size`, and
-`--node_quantization_niter`, then tune `--hnswlib_m`,
-`--hnswlib_ef_construction`, and `--hnswlib_ef_search`. Use
-`--hnswlib_candidate_k` to control the candidate pool and
-`--exact_rerank true` to score that pool with the original float16 windows.
-`--hnswlib_rerank true` remains a compatibility alias.
+The FAISS path represents each window as the concatenation of `w` per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is cosine similarity. `--quantize pq|opq` instead indexes windows of **node codes** with ADC search. These sliding windows are built **after** embedding; they are not the optional `start` / `end` columns on the structures table (see [Sliced graphs](#sliced-graphs)).
 
-To use the GPU companion for a build and query in one run:
-
-```bash
-nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
-    --input structures.tsv \
-    --query queries.tsv \
-    --index hnswlib \
-    --hnswlib_gpu true \
-    --hnswlib_gpu_candidate_k 50 \
-    --hnswlib_gpu_itopk_size 256 \
-    --outdir results
-```
-
-The GPU index uses a non-clipping global int8 scale for the original normalized
-window vectors only. The automatic scale uses the validated value 850 when it
-does not clip and lowers it for larger-valued inputs; pass
-`--hnswlib_gpu_int8_scale` to override it. CAGRA selects candidates with that
-representation; the final seed score is recomputed from the preserved
-original embeddings, so `--hnswlib_gpu_candidate_k` is the main recall/latency
-knob. A query-only run detects a published `HNSWLIB_GPU_CAGRA` database and
-automatically selects the GPU path when `-profile gpu` is present. Use
-`--hnswlib_gpu false` to force the CPU HNSW path when rebuilding a database.
-
-CPU HNSWLIB generates candidate windows from centroid codes only. The GPU
-companion instead uses int8-scaled original window vectors for CAGRA candidate
-selection. In both modes, the full original 128-dimensional float16 node
-embeddings remain in `embeddings/` and `faiss/embeddings.npz` and are used by
-the exact reranker, SW, alignment, and plotting stages.
-
-The FAISS/full-vector path represents each window as the concatenation of `w`
-per-nucleotide 128-d vectors (1408-d), L2-normalized so an inner product is
-cosine similarity. The HNSWLIB candidate path additionally builds matching
-windows of centroid codes. These sliding windows are built **after** embedding;
-they are not the optional `start` / `end` columns on the structures table (see
-[Sliced graphs](#sliced-graphs)).
-
-**Index library vs FAISS type, every library-specific flag, GPU, and unused-parameter warnings:** [Window indexes](indexes.md). Passing `--scann_*` with `--index faiss`, or `--faiss_nlist` with `flatip`, prints a launch warning and ignores the flag. `--faiss_index scann` is an error; use `--index scann`.
+**Index choice, GPU vs CPU, memory examples, and unused-parameter warnings:** [Window indexes](indexes.md).
 
 Seeds are then clustered along nearby diagonals and each cluster is aligned with [GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW). Alignment runs on a padded crop of the cluster (`--align_pad`, default 32), not the full molecules.
 
@@ -301,26 +258,18 @@ nextflow run nicoaira/ginflow \
 
 `--faiss_gpu` without `-profile gpu` is a pipeline error. With both, `BUILD_FAISS_INDEX` and `SEARCH_FAISS` switch to `environment.gpu.yml` (`pytorch::faiss-gpu=1.10.0`, CUDA 12.1 runtime) and the FAISS GPU Wave image. That runtime matches host drivers that report CUDA 12.1 or 12.2 (for example NVIDIA driver 535.x). A newer conda-forge CUDA 12.9 build will not start on those drivers.
 
-ScaNN is CPU-only and uses its own image (`environment.scann.yml`, `scann==1.4.2`):
-
-```bash
-nextflow run nicoaira/ginflow \
-    -profile docker \
-    --index scann \
-    --input structures.tsv \
-    --query queries.tsv \
-    --outdir results
-```
-
-cuVS is GPU-only and uses the RAPIDS/CuPy image for both index construction and search. Choose `cagra`, `ivf` (IVF-Flat), or `ivf-pq` with `--cuvs_index`; all cuVS runs require `-profile gpu`:
+CAGRA and cuVS IVF-Flat are GPU-built. Convert a CAGRA graph for CPU search with `--cagra_to_hnsw true`:
 
 ```bash
 nextflow run nicoaira/ginflow \
     -profile docker,gpu \
-    --index cuvs --cuvs_index cagra \
+    --index cagra \
+    --cagra_to_hnsw true \
     --input structures.tsv --query queries.tsv \
     --outdir results
 ```
+
+PQ/OPQ CAGRA (same `--index cagra`) needs a GPU to **build**; later `--search_device cpu` walks the serialized graph on CPU. CPU-only PQ builds use `--index hnswlib`.
 
 ## Outputs
 

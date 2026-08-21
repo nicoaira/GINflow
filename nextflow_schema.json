@@ -8,7 +8,9 @@
         "input_output_options": {
             "title": "Input/output options",
             "type": "object",
-            "required": ["outdir"],
+            "required": [
+                "outdir"
+            ],
             "properties": {
                 "input": {
                     "type": "string",
@@ -102,7 +104,10 @@
                 "embed_device": {
                     "type": "string",
                     "default": "cpu",
-                    "enum": ["cpu", "cuda"],
+                    "enum": [
+                        "cpu",
+                        "cuda"
+                    ],
                     "description": "Documented embed device. CUDA requires -profile gpu, which sets accelerator=1 on EMBED_RNA_GRAPHS and selects the GPU Wave image."
                 },
                 "ginfinity_full_precision": {
@@ -142,7 +147,7 @@
                     "type": "integer",
                     "default": 50,
                     "minimum": 1,
-                    "description": "Maximum neighbours kept per query window before applying --seed_min_similarity."
+                    "description": "Maximum neighbours kept per query window after optional exact rerank. Increase with database size (for example 50 for small sets, 200+ for millions of windows)."
                 },
                 "seed_min_similarity": {
                     "type": "number",
@@ -156,34 +161,66 @@
                     "minimum": 1,
                     "description": "Query records per index-search job. Defaults to --shard_size. Does not change database graph/embed shards. Ignored when --input and --query are the same file (search reuses the database shards)."
                 },
-                "node_quantization_k": {
+                "candidate_k": {
                     "type": "integer",
-                    "default": 2048,
+                    "default": 200,
                     "minimum": 1,
-                    "description": "Requested number of cosine k-means node centroids for --index hnswlib. The effective value is capped by the available training node vectors."
+                    "description": "Candidate pool retrieved from an approximate index before optional exact rerank to --seed_k. Must be >= --seed_k. Increase with database size (200 default; 1000 around 1M windows; 5000 around 4M+)."
                 },
-                "node_quantization_sample_size": {
+                "quantize": {
+                    "type": "string",
+                    "default": "none",
+                    "enum": [
+                        "none",
+                        "sq",
+                        "pq",
+                        "opq"
+                    ],
+                    "description": "Node-level compression applied before index windows are formed. none keeps float windows; sq is scalar int8 with standard L2/IP; pq/opq product-quantize each 128-d node then form code windows. See docs/indexes.md."
+                },
+                "pq_m": {
                     "type": "integer",
-                    "default": 500000,
+                    "default": 16,
                     "minimum": 1,
-                    "description": "Maximum number of node vectors sampled to fit the HNSWLIB quantizer."
+                    "description": "PQ/OPQ subquantizers per 128-d node. Must divide 128. Applies to --quantize pq|opq."
                 },
-                "node_quantization_niter": {
+                "pq_nbits": {
                     "type": "integer",
-                    "default": 25,
-                    "minimum": 1,
-                    "description": "Spherical k-means iterations for node quantization."
+                    "default": 4,
+                    "enum": [
+                        4,
+                        8
+                    ],
+                    "description": "Bits per PQ subquantizer. 4-bit M=16 is the recommended compact layout. Applies to --quantize pq|opq."
                 },
-                "node_quantization_seed": {
+                "pq_sample_size": {
+                    "type": "integer",
+                    "default": 250000,
+                    "minimum": 1,
+                    "description": "Maximum node vectors sampled to fit PQ/OPQ."
+                },
+                "pq_niter": {
+                    "type": "integer",
+                    "default": 12,
+                    "minimum": 1,
+                    "description": "k-means iterations per PQ subspace."
+                },
+                "opq_iters": {
+                    "type": "integer",
+                    "default": 10,
+                    "minimum": 1,
+                    "description": "OPQ outer Procrustes iterations. Applies to --quantize opq."
+                },
+                "pq_seed": {
                     "type": "integer",
                     "default": 1,
-                    "description": "Random seed for reproducible node centroid fitting."
+                    "description": "Random seed for PQ/OPQ/SQ fitting."
                 },
                 "hnswlib_m": {
                     "type": "integer",
                     "default": 32,
                     "minimum": 2,
-                    "description": "HNSWLIB graph degree for the quantized candidate index."
+                    "description": "HNSW graph degree for --index hnswlib (CPU PQ/OPQ path)."
                 },
                 "hnswlib_ef_construction": {
                     "type": "integer",
@@ -193,41 +230,38 @@
                 },
                 "hnswlib_ef_search": {
                     "type": "integer",
-                    "default": 100,
+                    "default": 200,
                     "minimum": 1,
                     "description": "HNSWLIB search-time exploration factor."
                 },
                 "hnswlib_random_seed": {
                     "type": "integer",
                     "default": 1,
-                    "description": "Random seed for reproducible HNSWLIB graph construction."
+                    "description": "Random seed for HNSWLIB graph construction."
                 },
                 "hnswlib_num_threads": {
                     "type": "integer",
                     "default": 0,
                     "minimum": 0,
-                    "description": "HNSWLIB worker threads. Zero uses the library default/all available threads."
-                },
-                "hnswlib_candidate_k": {
-                    "type": "integer",
-                    "default": 50,
-                    "minimum": 1,
-                    "description": "Number of compact centroid-code HNSW candidates retrieved before keeping --seed_k results or optionally reranking with the original float16 windows. Applies to --index hnswlib."
+                    "description": "HNSWLIB worker threads. Zero uses the library default."
                 },
                 "hnswlib_rerank": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Compatibility alias for --exact_rerank. Rerank the compact HNSW candidate pool in the dedicated RERANK_CANDIDATES process."
+                    "description": "Compatibility alias for --exact_rerank."
                 },
                 "exact_rerank": {
                     "type": "boolean",
-                    "default": false,
-                    "description": "Run the dedicated exact candidate-reranking process after HNSWLIB/CAGRA candidate search. The original residue embeddings are the scoring source; node quantization remains candidate-only."
+                    "default": true,
+                    "description": "Rerank ANN candidates with original-window inner product, then keep --seed_k seeds. Skipped automatically for exact FAISS FlatIP/FlatL2."
                 },
                 "exact_rerank_device": {
                     "type": "string",
                     "default": "cpu",
-                    "enum": ["cpu", "cuda"],
+                    "enum": [
+                        "cpu",
+                        "cuda"
+                    ],
                     "description": "Exact reranking device. CPU uses multiple workers; cuda uses CuPy batches and requires -profile gpu."
                 },
                 "exact_rerank_batch_size": {
@@ -248,298 +282,120 @@
                     "minimum": 0,
                     "description": "CPU exact-reranking workers. Zero uses the process CPU allocation; ignored on CUDA."
                 },
-                "hnswlib_gpu": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Use the optional GPU CAGRA companion index for HNSWLIB query search. Requires -profile gpu; original windows are int8-scaled for candidate search and final scores use the preserved embeddings."
-                },
-                "hnswlib_gpu_candidate_k": {
-                    "type": "integer",
-                    "default": 50,
-                    "minimum": 1,
-                    "description": "GPU CAGRA candidates retained before exact scoring with the original embeddings. Applies to --hnswlib_gpu."
-                },
-                "hnswlib_gpu_itopk_size": {
-                    "type": "integer",
-                    "default": 256,
-                    "minimum": 1,
-                    "description": "CAGRA intermediate candidate beam. Larger values improve GPU recall at query-time memory and latency cost. Applies to --hnswlib_gpu."
-                },
-                "hnswlib_gpu_search_batch_size": {
-                    "type": "integer",
-                    "default": 512,
-                    "minimum": 1,
-                    "description": "Maximum query windows searched in one GPU batch. Reduce this when the CAGRA search beam exceeds available GPU memory. Applies to --hnswlib_gpu."
-                },
-                "hnswlib_gpu_intermediate_graph_degree": {
-                    "type": "integer",
-                    "default": 128,
-                    "minimum": 1,
-                    "description": "CAGRA intermediate graph degree used to build the GPU companion index."
-                },
-                "hnswlib_gpu_graph_degree": {
-                    "type": "integer",
-                    "default": 64,
-                    "minimum": 1,
-                    "description": "CAGRA retained graph degree used to build the GPU companion index."
-                },
-                "hnswlib_gpu_build_algo": {
-                    "type": "string",
-                    "default": "nn_descent",
-                    "enum": ["ivf_pq", "nn_descent"],
-                    "description": "CAGRA graph construction algorithm for the GPU companion index."
-                },
-                "hnswlib_gpu_int8_scale": {
-                    "type": ["number", "null"],
-                    "minimum": 0,
-                    "description": "Optional global int8 scale for GPU window vectors. Null uses the empirically validated scale 850 when safe and lowers it only when needed to avoid clipping."
-                },
                 "index": {
                     "type": "string",
                     "default": "faiss",
-                    "enum": ["faiss", "scann", "ngt", "cuvs", "hnswlib", "hnsw"],
-                    "description": "Index library used to build and search the window database. faiss (default) uses --faiss_index, scann uses Google ScaNN, ngt uses --ngt_index, cuvs uses --cuvs_index, and hnswlib quantizes nodes into centroid codes before HNSWLIB candidate search. Unused library-specific flags are warned at launch. See docs/indexes.md."
+                    "enum": [
+                        "faiss",
+                        "cagra",
+                        "ivf",
+                        "hnswlib"
+                    ],
+                    "description": "Index used to build and search windows. faiss uses --faiss_index; cagra is cuVS CAGRA for none/sq and custom PQ-CAGRA for pq/opq; ivf is cuVS IVF-Flat; hnswlib is CPU custom-distance PQ/OPQ. See docs/indexes.md."
                 },
-                "ngt_index": {
+                "search_device": {
                     "type": "string",
-                    "default": "ngt",
-                    "enum": ["ngt", "qg", "qbg"],
-                    "description": "NGT structure. ngt is the regular graph, qg is the quantized graph, and qbg is the quantized blob graph. Applies to --index ngt. CPU-only."
+                    "default": "auto",
+                    "enum": [
+                        "auto",
+                        "gpu",
+                        "cpu"
+                    ],
+                    "description": "Where CAGRA search runs. gpu needs -profile gpu. cpu uses a converted HNSW graph for uncompressed/SQ CAGRA (--cagra_to_hnsw) or the CPU ADC walker for PQ-CAGRA."
                 },
-                "ngt_edge_size_for_creation": {
+                "cagra_to_hnsw": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "After a GPU CAGRA build, convert the graph for CPU search. Uncompressed/SQ: cuVS CAGRA to HNSW. PQ/OPQ: CPU ADC search of the same serialized graph."
+                },
+                "cagra_intermediate_graph_degree": {
                     "type": "integer",
-                    "default": 10,
+                    "default": 128,
                     "minimum": 1,
-                    "description": "Initial graph edges per node during NGT construction. Higher values can improve recall at build-time and index-size cost. Applies to --index ngt with ngt or qg."
+                    "description": "CAGRA intermediate graph degree."
                 },
-                "ngt_edge_size_for_search": {
+                "cagra_graph_degree": {
                     "type": "integer",
-                    "default": 40,
+                    "default": 64,
                     "minimum": 1,
-                    "description": "Graph edges explored per node during NGT search, and the regular-graph search edge setting written at build time. Applies to all NGT structures; the build-time setting is used by ngt and qg."
+                    "description": "CAGRA retained graph degree. For PQ-CAGRA, 32 is a practical compact setting."
                 },
-                "ngt_num_threads": {
-                    "type": "integer",
-                    "default": 8,
-                    "minimum": 1,
-                    "description": "Threads used by ngtpy batch insertion/index construction. Applies to --index ngt with ngt or qg."
-                },
-                "ngt_max_no_of_edges": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "Maximum NGT edges explored at search time; when building qg/qbg it is also passed to qbg build-qg/build -E and used as the QBG Python loader's max_no_of_edges. Unset uses --ngt_edge_size_for_search for search and the current QBG loader fallback of 128. Applies to all NGT structures."
-                },
-                "ngt_num_of_search_objects": {
-                    "type": "integer",
-                    "default": 20,
-                    "minimum": 1,
-                    "description": "Initial candidate objects explored by NGT's two-stage search. Higher values generally improve recall at search-time cost. Applies to all NGT structures."
-                },
-                "ngt_search_range_coefficient": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "NGT search epsilon/search-range coefficient. Unset uses the binding default (0.1 for regular NGT, 0.02 for QG/QBG). Applies to all NGT structures."
-                },
-                "ngt_blob_search_range_coefficient": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Additional QBG blob-stage search epsilon. Unset leaves the QBG binding default. Applies only to qbg."
-                },
-                "ngt_search_radius": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Optional maximum NGT distance/radius for search. Unset means no radius limit. Applies to all NGT structures."
-                },
-                "ngt_result_expansion": {
-                    "type": "number",
-                    "minimum": 0,
-                    "description": "Expansion ratio for approximate quantized search candidates. Higher values can improve recall at search-time cost. Applies to qg and qbg; unset preserves binding defaults."
-                },
-                "ngt_exploration_size": {
-                    "type": "integer",
-                    "default": 256,
-                    "minimum": 1,
-                    "description": "QBG exploration size for the blob-graph search. Higher values can improve recall at search-time cost. Applies only to qbg."
-                },
-                "ngt_exact_result_expansion": {
-                    "type": "number",
-                    "default": 0.0,
-                    "minimum": 0,
-                    "description": "QBG exact-result expansion factor used after approximate search. Applies only to qbg."
-                },
-                "ngt_num_of_probes": {
-                    "type": "integer",
-                    "default": 1,
-                    "minimum": 1,
-                    "description": "QBG probe count for the two-stage search. One probe avoids empty results on small collections with current NGT releases; higher values can improve recall at cost. Applies only to qbg."
-                },
-                "ngt_qg_subvector_dimensions": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "QG quantizer subvector dimension passed to qbg create-qg -Q. Unset uses qbg's dimension heuristic. Applies only to qg."
-                },
-                "ngt_qbg_subvectors": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "QBG local quantizer division/subvector count passed to qbg create -N. Unset uses qbg's default. Applies only to qbg."
-                },
-                "ngt_qbg_cluster_data_type": {
+                "cagra_build_algo": {
                     "type": "string",
-                    "default": "pq4",
-                    "enum": ["pq4", "sq8"],
-                    "description": "QBG cluster/codebook storage type passed to qbg create -C. pq4 is compact; sq8 can improve quantization fidelity at higher storage cost. Applies only to qbg."
+                    "default": "nn_descent",
+                    "enum": [
+                        "ivf_pq",
+                        "nn_descent",
+                        "iterative_cagra_search",
+                        "ace"
+                    ],
+                    "description": "cuVS CAGRA graph builder for uncompressed/SQ windows."
                 },
-                "cuvs_index": {
-                    "type": "string",
-                    "default": "cagra",
-                    "enum": ["cagra", "ivf", "ivf-pq"],
-                    "description": "cuVS GPU structure. cagra is a GPU graph, ivf is IVF-Flat, and ivf-pq is compressed IVF. Applies to --index cuvs and requires -profile gpu."
+                "cagra_nndescent_iterations": {
+                    "type": "integer",
+                    "default": 6,
+                    "minimum": 1,
+                    "description": "NN-Descent iterations for PQ-CAGRA graph construction."
+                },
+                "cagra_itopk_size": {
+                    "type": "integer",
+                    "default": 64,
+                    "minimum": 1,
+                    "description": "CAGRA intermediate search beam. Raised to at least --candidate_k at search time."
                 },
                 "cuvs_n_lists": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "cuVS IVF coarse clusters. Applies to --index cuvs with ivf or ivf-pq. Unset = min(4*sqrt(n), n)."
+                    "description": "cuVS IVF-Flat coarse clusters. Applies to --index ivf."
                 },
                 "cuvs_n_probes": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "cuVS IVF clusters searched per query. Applies to --index cuvs with ivf or ivf-pq. Unset = min(20, n_lists)."
-                },
-                "cuvs_pq_bits": {
-                    "type": "integer",
-                    "default": 8,
-                    "enum": [4, 5, 6, 7, 8],
-                    "description": "Bits per product-quantization code. Applies to --index cuvs with ivf-pq."
-                },
-                "cuvs_pq_dim": {
-                    "type": "integer",
-                    "default": 0,
-                    "minimum": 0,
-                    "description": "cuVS ivf-pq compressed dimension. 0 selects the cuVS heuristic; otherwise use a dimension compatible with the vector dimension."
-                },
-                "cuvs_intermediate_graph_degree": {
-                    "type": "integer",
-                    "default": 128,
-                    "minimum": 1,
-                    "description": "cagra intermediate graph degree. Higher values can improve recall at build-time memory cost."
-                },
-                "cuvs_graph_degree": {
-                    "type": "integer",
-                    "default": 64,
-                    "minimum": 1,
-                    "description": "cagra final graph degree. Higher values can improve recall at search-time memory cost."
-                },
-                "cuvs_build_algo": {
-                    "type": "string",
-                    "default": "nn_descent",
-                    "enum": ["ivf_pq", "nn_descent", "iterative_cagra_search", "ace"],
-                    "description": "cagra initial graph builder. nn_descent is a practical GPU default; ace is for datasets that need partitioned builds."
-                },
-                "cuvs_itopk_size": {
-                    "type": "integer",
-                    "default": 64,
-                    "minimum": 1,
-                    "description": "cagra intermediate search result count. Higher values usually improve recall at search-time cost."
+                    "description": "cuVS IVF-Flat lists searched per query. Applies to --index ivf."
                 },
                 "faiss_index": {
                     "type": "string",
                     "default": "flatip",
-                    "enum": ["flatip", "flatl2", "hnsw", "ivfflat", "lsh", "sq", "pq", "ivfsq", "ivfpq", "ivfpqr"],
-                    "description": "FAISS index type. Applies to: --index faiss. Default flatip is exact cosine search. GPU (--faiss_gpu) supports flatip, flatl2, ivfflat, ivfpq, and ivfsq only. See docs/indexes.md."
+                    "enum": [
+                        "flatip",
+                        "flatl2",
+                        "hnsw",
+                        "ivfflat"
+                    ],
+                    "description": "FAISS type for --index faiss. GPU (--faiss_gpu) supports flatip, flatl2, and ivfflat only. HNSW is CPU-only."
                 },
                 "faiss_gpu": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Build and search the FAISS index on GPU when the type supports it. Applies to: --index faiss with flatip, flatl2, ivfflat, ivfpq, or ivfsq. Requires -profile gpu. Error if the profile is missing, the FAISS type has no GPU implementation, or --index is scann."
+                    "description": "Build and search FAISS Flat/IVF on GPU. Requires -profile gpu. Not available for FAISS HNSW."
                 },
                 "faiss_nlist": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "IVF coarse centroids. Applies to: --index faiss with ivfflat, ivfpq, ivfsq, ivfpqr. Unset = min(4*sqrt(n), n/39, n)."
+                    "description": "IVF coarse centroids for --faiss_index ivfflat."
                 },
                 "faiss_nprobe": {
                     "type": "integer",
                     "minimum": 1,
-                    "description": "IVF lists visited at search time. Applies to: --index faiss with ivfflat, ivfpq, ivfsq, ivfpqr. Unset = min(8, nlist) at build, or the value stored in meta.json at search."
-                },
-                "faiss_pq_m": {
-                    "type": "integer",
-                    "default": 16,
-                    "minimum": 1,
-                    "description": "Product-quantizer subvectors. Applies to: --index faiss with pq, ivfpq, ivfpqr. Must divide the window dimension (1408 when --window_size 11)."
-                },
-                "faiss_pq_nbits": {
-                    "type": "integer",
-                    "default": 8,
-                    "enum": [4, 8, 12, 16],
-                    "description": "Bits per PQ subquantizer. Applies to: --index faiss with pq, ivfpq, ivfpqr."
-                },
-                "faiss_pq_m_refine": {
-                    "type": "integer",
-                    "default": 4,
-                    "minimum": 1,
-                    "description": "Extra PQ codes used to rerank ivfpqr hits. Applies to: --index faiss with ivfpqr."
+                    "description": "IVF lists visited at search time for --faiss_index ivfflat."
                 },
                 "faiss_hnsw_m": {
                     "type": "integer",
                     "default": 32,
                     "minimum": 2,
-                    "description": "HNSW graph neighbors per node (M). Applies to: --index faiss with hnsw."
+                    "description": "FAISS HNSW graph neighbors (M). CPU only."
                 },
                 "faiss_hnsw_ef_construction": {
                     "type": "integer",
-                    "default": 40,
+                    "default": 200,
                     "minimum": 1,
-                    "description": "HNSW construction exploration depth. Applies to: --index faiss with hnsw."
+                    "description": "FAISS HNSW construction exploration depth."
                 },
                 "faiss_hnsw_ef_search": {
                     "type": "integer",
-                    "default": 16,
+                    "default": 64,
                     "minimum": 1,
-                    "description": "HNSW search exploration depth. Applies to: --index faiss with hnsw. Also applied at search time."
-                },
-                "faiss_lsh_nbits": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "LSH code length in bits. Applies to: --index faiss with lsh. Unset = 2 * window_dim."
-                },
-                "faiss_sq_type": {
-                    "type": "string",
-                    "default": "8bit",
-                    "enum": ["8bit", "6bit", "4bit", "fp16"],
-                    "description": "Scalar quantizer width. Applies to: --index faiss with sq or ivfsq."
-                },
-                "scann_reorder": {
-                    "type": "integer",
-                    "default": 100,
-                    "minimum": 1,
-                    "description": "ScaNN exact-reorder pool after asymmetric hashing. Applies to: --index scann. Raised to at least --seed_k. Unused for brute-force ScaNN (n < 20k unless --scann_leaves is set)."
-                },
-                "scann_ah_dim": {
-                    "type": "integer",
-                    "default": 2,
-                    "minimum": 1,
-                    "description": "ScaNN asymmetric-hash dimensions per block. Applies to: --index scann. 2 is the official recommendation."
-                },
-                "scann_anisotropic": {
-                    "type": "number",
-                    "default": 0.2,
-                    "description": "ScaNN anisotropic vector-quantization threshold. Applies to: --index scann."
-                },
-                "scann_soar": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Enable ScaNN SOAR spilling on partitioned indexes. Applies to: --index scann when a tree is used."
-                },
-                "scann_leaves": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "ScaNN tree leaves. Applies to: --index scann. Unset = sqrt(n) when n >= 100k. Setting this forces a partitioned index even for small databases."
-                },
-                "scann_leaves_to_search": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "description": "ScaNN leaves visited at search time. Applies to: --index scann when a tree is used. Unset = min(8, leaves)."
+                    "description": "FAISS HNSW search exploration depth."
                 }
             }
         },
@@ -580,7 +436,7 @@
             }
         },
         "alignment_options": {
-            "title": "Smith–Waterman",
+            "title": "Smith\u2013Waterman",
             "type": "object",
             "properties": {
                 "align_pad": {
@@ -599,7 +455,7 @@
                     "type": "integer",
                     "default": 1000,
                     "minimum": 20,
-                    "description": "Reverse-sequence null alignments used to fit Karlin–Altschul λ and K."
+                    "description": "Reverse-sequence null alignments used to fit Karlin\u2013Altschul \u03bb and K."
                 },
                 "evd_max_length": {
                     "type": "integer",
@@ -615,13 +471,18 @@
                 "plot_backend": {
                     "type": "string",
                     "default": "none",
-                    "enum": ["none", "rnartistcore", "r4rna", "both"],
+                    "enum": [
+                        "none",
+                        "rnartistcore",
+                        "r4rna",
+                        "both"
+                    ],
                     "description": "Draw aligned regions with RNArtistCore 2Ds, a unified R4RNA alignment arc plot, both, or skip plotting."
                 },
                 "plot_sw": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Draw crop cosine and substitution-score matrices, with the Smith–Waterman traceback on the score plot."
+                    "description": "Draw crop cosine and substitution-score matrices, with the Smith\u2013Waterman traceback on the score plot."
                 },
                 "plot_max_pairs": {
                     "type": "integer",
@@ -637,18 +498,33 @@
                 "report_theme": {
                     "type": "string",
                     "default": "light",
-                    "enum": ["light", "dark"],
+                    "enum": [
+                        "light",
+                        "dark"
+                    ],
                     "description": "Colour theme of report.html. Light (gray-100 page, white cards) is the default; pass dark for a gray-900 report. The page also has a theme toggle."
                 }
             }
         }
     },
     "allOf": [
-        { "$ref": "#/$defs/input_output_options" },
-        { "$ref": "#/$defs/graph_options" },
-        { "$ref": "#/$defs/embedding_options" },
-        { "$ref": "#/$defs/search_options" },
-        { "$ref": "#/$defs/cluster_options" },
-        { "$ref": "#/$defs/alignment_options" }
+        {
+            "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/graph_options"
+        },
+        {
+            "$ref": "#/$defs/embedding_options"
+        },
+        {
+            "$ref": "#/$defs/search_options"
+        },
+        {
+            "$ref": "#/$defs/cluster_options"
+        },
+        {
+            "$ref": "#/$defs/alignment_options"
+        }
     ]
 }

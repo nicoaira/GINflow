@@ -1,0 +1,26 @@
+CAGRA PQ-ADC for GINflow
+=======================
+
+This directory contains a CAGRA-style GPU graph index whose search kernel
+evaluates node-level product-quantized sliding windows with Asymmetric
+Distance Computation (ADC) from a shared-memory lookup table.
+
+Portions of the graph traversal, visited hashmap, and reverse-edge / prune
+construction are adapted from NVIDIA cuVS CAGRA:
+
+  https://github.com/rapidsai/cuvs
+  SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES.
+  SPDX-License-Identifier: Apache-2.0
+
+cuVS CAGRA does not expose a custom device distance.  The dataset descriptor
+and `compute_distance` path in cuVS are closed over float/half/int8 and VPQ
+layouts that operate on a single concatenated vector.  GINflow instead stores
+one PQ code per node, forms windows of those codes, and needs
+
+    score(q, db) = sum_p sum_m LUT[p][m][db_code[p][m]]
+
+with the LUT built from the original (unquantized) query node subvectors.
+That is the modification applied here.
+
+Node-level PQ training, window slicing, and the Python API are original
+GINflow code.

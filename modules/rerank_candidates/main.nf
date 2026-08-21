@@ -1,7 +1,7 @@
 process RERANK_CANDIDATES {
     tag "${meta.id}"
     label 'process_medium'
-    accelerator { params.exact_rerank_device == 'cuda' ? 1 : 0 }
+    accelerator { params.exact_rerank_device == 'cuda' ? 1 : null }
 
     conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?

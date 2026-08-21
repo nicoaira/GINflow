@@ -21,6 +21,9 @@ struct Options {
     std::string command;
     std::string codes;
     std::string similarity;
+    std::string codebook;
+    std::string queries;
+    std::string rotation;
     std::string index;
     std::string labels_out;
     std::string distances_out;
@@ -29,6 +32,7 @@ struct Options {
     std::size_t window_size = 0;
     std::size_t pq_m = 0;
     std::size_t nbits = 0;
+    std::size_t dim = 128;
     std::size_t k = 0;
     std::size_t m = 32;
     std::size_t ef_construction = 200;
@@ -75,6 +79,9 @@ Options parse_options(int argc, char **argv) {
         }
         if (key == "--codes") options.codes = require_value(key, value);
         else if (key == "--similarity") options.similarity = require_value(key, value);
+        else if (key == "--codebook") options.codebook = require_value(key, value);
+        else if (key == "--queries") options.queries = require_value(key, value);
+        else if (key == "--rotation") options.rotation = require_value(key, value);
         else if (key == "--index") options.index = require_value(key, value);
         else if (key == "--labels-out") options.labels_out = require_value(key, value);
         else if (key == "--distances-out") options.distances_out = require_value(key, value);
@@ -83,6 +90,7 @@ Options parse_options(int argc, char **argv) {
         else if (key == "--window-size") options.window_size = parse_size(key, value);
         else if (key == "--pq-m") options.pq_m = parse_size(key, value);
         else if (key == "--nbits") options.nbits = parse_size(key, value);
+        else if (key == "--dim") options.dim = parse_size(key, value);
         else if (key == "--k") options.k = parse_size(key, value);
         else if (key == "--m") options.m = parse_size(key, value);
         else if (key == "--ef-construction") options.ef_construction = parse_size(key, value);
@@ -207,6 +215,108 @@ private:
     std::size_t data_size_;
 };
 
+struct ADCDistanceParams {
+    std::size_t pq_m;
+    std::size_t ksub;
+    std::size_t nbits;
+    std::size_t dsub;
+    std::size_t node_code_bytes;
+    std::size_t window_size;
+};
+
+float adc_distance(const void *left, const void *right, const void *raw_params) {
+    const auto *params = static_cast<const ADCDistanceParams *>(raw_params);
+    const auto *lut = static_cast<const float *>(left);
+    const auto *codes = static_cast<const std::uint8_t *>(right);
+    float score = 0.0f;
+    for (std::size_t position = 0; position < params->window_size; ++position) {
+        const std::size_t code_offset = position * params->node_code_bytes;
+        for (std::size_t subquantizer = 0; subquantizer < params->pq_m; ++subquantizer) {
+            const std::size_t code = unpack_code(codes + code_offset, subquantizer, params->nbits);
+            if (code >= params->ksub) {
+                return std::numeric_limits<float>::infinity();
+            }
+            const std::size_t lut_index =
+                (position * params->pq_m + subquantizer) * params->ksub + code;
+            score += lut[lut_index];
+        }
+    }
+    return score;
+}
+
+class ADCSpace final : public hnswlib::SpaceInterface<float> {
+public:
+    ADCSpace(std::size_t pq_m, std::size_t ksub, std::size_t nbits, std::size_t dsub, std::size_t window_size)
+        : params_{pq_m, ksub, nbits, dsub, (pq_m * nbits + 7) / 8, window_size},
+          data_size_(window_size * ((pq_m * nbits + 7) / 8)) {}
+
+    std::size_t get_data_size() override { return data_size_; }
+    hnswlib::DISTFUNC<float> get_dist_func() override { return adc_distance; }
+    void *get_dist_func_param() override { return &params_; }
+
+private:
+    ADCDistanceParams params_;
+    std::size_t data_size_;
+};
+
+std::vector<float> read_floats(const std::string &path, std::size_t count) {
+    const std::uint64_t expected = static_cast<std::uint64_t>(count) * sizeof(float);
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input) throw std::runtime_error("cannot open float file: " + path);
+    const std::streamoff size = input.tellg();
+    if (size < 0 || static_cast<std::uint64_t>(size) != expected) {
+        throw std::runtime_error("float file has unexpected size: " + path);
+    }
+    input.seekg(0, std::ios::beg);
+    std::vector<float> values(count);
+    input.read(reinterpret_cast<char *>(values.data()), static_cast<std::streamsize>(expected));
+    if (!input) throw std::runtime_error("failed reading float file: " + path);
+    return values;
+}
+
+void apply_rotation(std::vector<float> &queries, const std::vector<float> &rotation, std::size_t dim) {
+    if (rotation.size() != dim * dim) throw std::runtime_error("rotation matrix has unexpected size");
+    const std::size_t n = queries.size() / dim;
+    std::vector<float> rotated(queries.size(), 0.0f);
+    for (std::size_t row = 0; row < n; ++row) {
+        for (std::size_t col = 0; col < dim; ++col) {
+            float acc = 0.0f;
+            for (std::size_t inner = 0; inner < dim; ++inner) {
+                acc += queries[row * dim + inner] * rotation[inner * dim + col];
+            }
+            rotated[row * dim + col] = acc;
+        }
+    }
+    queries.swap(rotated);
+}
+
+void fill_adc_lut(
+    const float *query_window,
+    const float *codebook,
+    std::vector<float> &lut,
+    std::size_t window_size,
+    std::size_t pq_m,
+    std::size_t ksub,
+    std::size_t dsub
+) {
+    lut.assign(window_size * pq_m * ksub, 0.0f);
+    for (std::size_t position = 0; position < window_size; ++position) {
+        const float *query_node = query_window + position * pq_m * dsub;
+        for (std::size_t sub = 0; sub < pq_m; ++sub) {
+            const float *query_sub = query_node + sub * dsub;
+            const float *book = codebook + (sub * ksub) * dsub;
+            for (std::size_t code = 0; code < ksub; ++code) {
+                float dot = 0.0f;
+                const float *centroid = book + code * dsub;
+                for (std::size_t d = 0; d < dsub; ++d) {
+                    dot += query_sub[d] * centroid[d];
+                }
+                lut[(position * pq_m + sub) * ksub + code] = -dot;
+            }
+        }
+    }
+}
+
 void configure_threads(std::size_t threads) {
 #ifdef _OPENMP
     if (threads > 0) omp_set_num_threads(static_cast<int>(threads));
@@ -261,34 +371,59 @@ void write_results(
 
 void search_index(const Options &options) {
     require_common(options);
-    if (options.query_count < 1 || options.k < 1 || options.index.empty() || options.codes.empty()
-        || options.similarity.empty() || options.labels_out.empty() || options.distances_out.empty()) {
-        throw std::runtime_error("search requires code/index/similarity paths, query count, k, and output paths");
+    if (options.query_count < 1 || options.k < 1 || options.index.empty()
+        || options.labels_out.empty() || options.distances_out.empty()) {
+        throw std::runtime_error("search requires index path, query count, k, and output paths");
     }
-    const std::vector<std::uint8_t> codes = read_codes(options.codes, options.query_count, code_bytes(options));
-    const std::vector<float> similarity = read_similarity(options.similarity, options.pq_m, ksub(options));
-    PQSpace space(options.pq_m, ksub(options), options.nbits, options.window_size, similarity.data());
+    configure_threads(options.threads);
+    const std::size_t subs = ksub(options);
+    const std::size_t dsub = options.dim / options.pq_m;
+    if (options.dim % options.pq_m != 0) {
+        throw std::runtime_error("embedding dim must be divisible by pq_m");
+    }
+    ADCSpace space(options.pq_m, subs, options.nbits, dsub, options.window_size);
     hnswlib::HierarchicalNSW<float> index(&space, options.index);
     index.setEf(std::max(options.ef_search, options.k));
-    configure_threads(options.threads);
     const std::size_t available = index.getCurrentElementCount();
     const std::size_t result_count = std::min(options.k, available);
     std::vector<std::uint64_t> labels(options.query_count * options.k, std::numeric_limits<std::uint64_t>::max());
     std::vector<float> distances(options.query_count * options.k, std::numeric_limits<float>::infinity());
+
+    if (options.queries.empty() || options.codebook.empty()) {
+        throw std::runtime_error("ADC search requires --queries (float windows) and --codebook");
+    }
+    const std::size_t query_floats = options.query_count * options.window_size * options.dim;
+    std::vector<float> queries = read_floats(options.queries, query_floats);
+    if (!options.rotation.empty()) {
+        const std::vector<float> rotation = read_floats(options.rotation, options.dim * options.dim);
+        apply_rotation(queries, rotation, options.dim);
+    }
+    const std::vector<float> codebook = read_floats(
+        options.codebook, options.pq_m * subs * dsub
+    );
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic, 32) if (options.threads > 1)
+#pragma omp parallel if (options.threads > 1)
 #endif
-    for (std::int64_t row = 0; row < static_cast<std::int64_t>(options.query_count); ++row) {
-        const auto result = index.searchKnnCloserFirst(
-            codes.data() + static_cast<std::size_t>(row) * code_bytes(options), result_count
-        );
-        for (std::size_t rank = 0; rank < result.size(); ++rank) {
-            labels[static_cast<std::size_t>(row) * options.k + rank] = result[rank].second;
-            distances[static_cast<std::size_t>(row) * options.k + rank] = result[rank].first;
+    {
+        std::vector<float> lut;
+#ifdef _OPENMP
+#pragma omp for schedule(dynamic, 32)
+#endif
+        for (std::int64_t row = 0; row < static_cast<std::int64_t>(options.query_count); ++row) {
+            const float *query_window =
+                queries.data() + static_cast<std::size_t>(row) * options.window_size * options.dim;
+            fill_adc_lut(
+                query_window, codebook.data(), lut, options.window_size, options.pq_m, subs, dsub
+            );
+            const auto result = index.searchKnnCloserFirst(lut.data(), result_count);
+            for (std::size_t rank = 0; rank < result.size(); ++rank) {
+                labels[static_cast<std::size_t>(row) * options.k + rank] = result[rank].second;
+                distances[static_cast<std::size_t>(row) * options.k + rank] = result[rank].first;
+            }
         }
     }
     write_results(options.labels_out, options.distances_out, labels, distances);
-    std::cout << "searched PQ hnswlib index: queries=" << options.query_count
+    std::cout << "searched PQ hnswlib index with ADC: queries=" << options.query_count
               << " k=" << options.k
               << " pq_m=" << options.pq_m
               << " nbits=" << options.nbits

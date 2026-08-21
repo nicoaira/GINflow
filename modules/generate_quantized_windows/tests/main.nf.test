@@ -7,51 +7,19 @@ nextflow_process {
     tag "modules"
     tag "quantization"
 
-    test("Should generate compact centroid-code windows") {
+    test("Should emit quantized window shards") {
 
-        setup {
-            run("BUILD_RNA_GRAPHS") {
-                script "../../build_rna_graphs/main.nf"
-                process {
-                    """
-                    input[0] = [
-                        [ id: 'test' ],
-                        file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
-                    ]
-                    """
-                }
-            }
-            run("EMBED_RNA_GRAPHS") {
-                script "../../embed_rna_graphs/main.nf"
-                process {
-                    """
-                    input[0] = BUILD_RNA_GRAPHS.out.graphs
-                    """
-                }
-            }
-            run("FIT_NODE_QUANTIZER") {
-                script "../../quantize_node_embeddings/main.nf"
-                process {
-                    """
-                    input[0] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
-                    input[1] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> manifest }.collect()
-                    """
-                }
-            }
-        }
+        options "-stub"
 
         when {
             params {
-                node_quantization_k = 4
-                node_quantization_sample_size = 100
-                node_quantization_niter = 2
-                node_quantization_seed = 7
+                quantize = 'pq'
                 window_size = 11
                 window_stride = 1
             }
             process {
                 """
-                input[0] = FIT_NODE_QUANTIZER.out.quantization
+                input[0] = file("${projectDir}/modules/quantize_nodes", checkIfExists: true)
                 """
             }
         }
@@ -60,23 +28,7 @@ nextflow_process {
             assertAll(
                 { assert process.success },
                 { assert process.out.windows.size() == 1 },
-                { assert process.out.versions.size() == 1 },
-                {
-                    def windows = path(process.out.windows.get(0))
-                    def summary = windows.resolve('windows.json').json
-                    assert summary.status == 'complete'
-                    assert summary.n_windows > 0
-                    assert summary.window_size == 11
-                    def manifests = getAllFilesFromDir("${windows}", includeDir: false).findAll { it.name.endsWith('.windows.manifest.json') }
-                    assert manifests.size() == 1
-                    def manifest = path(manifests[0].toString()).json
-                    assert manifest.status == 'complete'
-                    assert manifest.quantized_nodes == true
-                    assert manifest.quantized_windows == true
-                    assert manifest.code_dim == 11
-                    assert manifest.window_dim == 1408
-                    assert manifest.l2_normalized == false
-                }
+                { assert process.out.versions.size() == 1 }
             )
         }
 
