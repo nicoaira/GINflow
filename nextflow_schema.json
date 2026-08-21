@@ -362,12 +362,12 @@
                         "hnsw",
                         "ivfflat"
                     ],
-                    "description": "FAISS type for --index faiss. GPU (--faiss_gpu) supports flatip, flatl2, and ivfflat only. HNSW is CPU-only."
+                    "description": "FAISS type for --index faiss. GPU (--faiss_gpu) supports flatip and flatl2 only. ivfflat and hnsw are CPU-only; GPU IVF is --index ivf."
                 },
                 "faiss_gpu": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Build and search FAISS Flat/IVF on GPU. Requires -profile gpu. Not available for FAISS HNSW."
+                    "description": "Build and search FAISS FlatIP/FlatL2 on GPU. Requires -profile gpu. Not available for FAISS IVF or HNSW; GPU IVF is --index ivf."
                 },
                 "faiss_nlist": {
                     "type": "integer",

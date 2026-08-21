@@ -222,9 +222,12 @@ def validate_faiss_gpu(library, kind) {
     if (library != 'faiss') {
         error "--faiss_gpu applies only to --index faiss, not --index ${library}."
     }
-    def gpu_types = ['FlatIP', 'FlatL2', 'IVFFlat'] as Set
+    def gpu_types = ['FlatIP', 'FlatL2'] as Set
     if (params.input && !gpu_types.contains(kind)) {
-        error "--faiss_gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: flatip, flatl2, ivfflat. FAISS HNSW is CPU-only; use --index cagra for a GPU graph."
+        def hint = kind == 'IVFFlat' \
+            ? ' FAISS IVF is CPU-only; use --index ivf for GPU IVF-Flat, or --index cagra for a GPU graph.' \
+            : ' FAISS HNSW is CPU-only; use --index cagra for a GPU graph.'
+        error "--faiss_gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: flatip, flatl2.${hint}"
     }
     def profiles = workflow.profile.tokenize(',').collect { it.trim() }
     if (!profiles.contains('gpu')) {

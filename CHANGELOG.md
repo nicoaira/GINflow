@@ -21,8 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Changed`
 
-- `--index` is `faiss|cagra|ivf|hnswlib`. cuVS IVF-Flat is `--index ivf`.
-- FAISS public types are `flatip`, `flatl2`, `ivfflat`, and CPU-only `hnsw`. FAISS 1.10 has no GPU HNSW; use `--index cagra` for a GPU graph.
+- `--index` is `faiss|cagra|ivf|hnswlib`. cuVS IVF-Flat is `--index ivf` (the GPU IVF path).
+- FAISS public types are `flatip`, `flatl2`, `ivfflat`, and `hnsw`. `--faiss_gpu` is exact FlatIP/FlatL2 only. FAISS IVF and HNSW are CPU-only; GPU IVF is `--index ivf`, GPU graph is `--index cagra`.
 - Default `--exact_rerank true`, `--candidate_k 200`. Raise `--seed_k` and `--candidate_k` with database size (see [docs/indexes.md](docs/indexes.md)).
 - Index guide rewritten without benchmark tables.
 

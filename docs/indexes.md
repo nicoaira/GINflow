@@ -22,12 +22,14 @@ stock cuVS CAGRA over standard-distance windows. With `--quantize pq` or `opq`
 it is GINflow’s custom PQ-CAGRA (node codes + ADC). You do not pick the CAGRA
 implementation yourself.
 
+![Quantize, build, and search](images/ginflow_metro_index.svg)
+
 ## Devices: who can build and who can search
 
 | Index | Quantize | Build | Search | Notes |
 |---|---|---|---|---|
 | FAISS `flatip` / `flatl2` | none, sq | CPU or GPU (`--faiss_gpu`) | CPU or GPU | Exact. Default. GPU needs `-profile gpu`. |
-| FAISS `ivfflat` | none, sq | CPU or GPU | CPU or GPU | Approximate IVF. GPU needs `-profile gpu`. |
+| FAISS `ivfflat` | none, sq | **CPU only** | **CPU only** | Approximate IVF. GPU IVF is `--index ivf`. |
 | FAISS `hnsw` | none, sq | **CPU only** | **CPU only** | FAISS 1.10 has no GPU HNSW. For a GPU graph use `--index cagra`. |
 | cuVS IVF-Flat (`--index ivf`) | none, sq | **GPU only** | **GPU only** | `-profile gpu`. |
 | CAGRA (`--index cagra`) | none, sq | **GPU only** | GPU, or CPU after `--cagra_to_hnsw` | Stock cuVS graph. |
@@ -90,10 +92,10 @@ Add graph links: CAGRA degree 32 ≈ 128 B/window; degree 64 or HNSW `M=32` ≈
 
 1. **Fits in RAM as FAISS FlatIP** (a few million windows on a 32 GB box) →
    `--quantize none --index faiss --faiss_index flatip`. Exact, simplest.
-2. **Same data, GPU, faster queries** → `--index cagra` or `--faiss_gpu true`
-   with `flatip` / `ivfflat`.
+2. **Same data, GPU, faster queries** → `--index cagra`, or `--faiss_gpu true`
+   with `flatip` / `flatl2`. GPU IVF is `--index ivf`.
 3. **Larger than Flat, still want stock libraries** → `--faiss_index ivfflat`
-   or `hnsw`, or `--index ivf`. Add `--quantize sq` if you want a cheaper
+   (CPU) or `hnsw`, or `--index ivf` (GPU). Add `--quantize sq` if you want a cheaper
    standard-distance representation.
 4. **Build on GPU, serve on CPU** → `--index cagra --cagra_to_hnsw true`, then
    query with `--search_device cpu`.
@@ -134,13 +136,13 @@ around 1M windows and `--candidate_k 5000` around 4M+.
 ## FAISS: `--index faiss`
 
 Pinned FAISS 1.10. The on-disk `index.faiss` is always a CPU index;
-`--faiss_gpu` uses the GPU only inside the task.
+`--faiss_gpu` uses the GPU only inside the task, and only for exact Flat.
 
 | `--faiss_index` | Exact? | GPU | Typical use |
 |---|---:|---:|---|
 | `flatip` (default) | Yes | Yes | Exact cosine on L2-normalized windows. |
 | `flatl2` | Yes | Yes | Exact L2, converted to a cosine-like seed score. |
-| `ivfflat` | No | Yes | First ANN to try for large databases. |
+| `ivfflat` | No | **No** | CPU IVF. GPU IVF is `--index ivf`. |
 | `hnsw` | No | **No** | High-recall CPU graph. GPU graph → `--index cagra`. |
 
 `--faiss_nlist` / `--faiss_nprobe` apply to `ivfflat` (auto from `n` when unset).
@@ -167,7 +169,8 @@ CPU walker). Recommended graph for the compact 4-bit layout:
 ## IVF-Flat: `--index ivf`
 
 cuVS IVF-Flat. GPU build and GPU search. `--cuvs_n_lists` and `--cuvs_n_probes`
-default from `n`. Standard distance only (`none` or `sq`).
+default from `n`. Standard distance only (`none` or `sq`). This is the GPU IVF
+path; FAISS `--faiss_index ivfflat` is CPU-only.
 
 ## hnswlib: `--index hnswlib`
 

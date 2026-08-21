@@ -27,7 +27,7 @@ The current steps are:
   <img src="docs/images/ginflow_metro.svg" alt="GINflow pipeline metro map" width="100%">
 </p>
 
-Three coloured routes match the run modes (`--input`, `--input --query`, `--query --database`). Dashed lines are optional plotters (`--plot_backend`, `--plot_sw`). Open circles are optional steps.
+One pipeline from embeddings to the HTML report. An existing database joins at Search. Open circles are optional. Quantize and the index backends are on a separate map in [docs/indexes.md](docs/indexes.md).
 
 ---
 

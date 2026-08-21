@@ -23,9 +23,9 @@ INDEX_TYPES = (
     "IVFFlat",
 )
 
-# Classic GPU FAISS implements Flat and IVFFlat. HNSW stays on CPU
-# (https://github.com/facebookresearch/faiss/wiki/Faiss-indexes).
-GPU_INDEX_TYPES = frozenset({"FlatIP", "FlatL2", "IVFFlat"})
+# Exact Flat on GPU via classic FAISS (`index_cpu_to_gpu`). IVF-Flat GPU is
+# `--index ivf` (cuVS), not `--faiss_gpu`. HNSW stays on CPU.
+GPU_INDEX_TYPES = frozenset({"FlatIP", "FlatL2"})
 
 _ALIASES = {
     "FLAT": "FlatIP",
@@ -128,9 +128,12 @@ def require_gpu(index_type: str) -> None:
     kind = normalize_index_type(index_type)
     if kind not in GPU_INDEX_TYPES:
         supported = ", ".join(sorted(kind.lower() for kind in GPU_INDEX_TYPES))
+        extra = ""
+        if kind == "IVFFlat":
+            extra = " GPU IVF-Flat is --index ivf; a GPU graph is --index cagra."
         raise ValueError(
             f"--faiss_gpu is not supported for index type {kind.lower()}. "
-            f"GPU indexes: {supported}. Use CPU for {kind.lower()}."
+            f"GPU FAISS indexes: {supported}.{extra}"
         )
     if not gpu_runtime_available():
         raise ValueError(

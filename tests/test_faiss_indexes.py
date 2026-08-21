@@ -55,9 +55,9 @@ class TestHelpers(unittest.TestCase):
             normalize_index_type("CAGRA")
 
     def test_gpu_matrix(self) -> None:
-        for kind in ("flatip", "flatl2", "ivfflat"):
+        for kind in ("flatip", "flatl2"):
             self.assertTrue(supports_gpu(kind))
-        for kind in ("hnsw",):
+        for kind in ("hnsw", "ivfflat"):
             self.assertFalse(supports_gpu(kind))
         self.assertTrue(GPU_INDEX_TYPES.issubset(set(INDEX_TYPES)))
 
@@ -165,8 +165,12 @@ class TestGpuIndexes(unittest.TestCase):
     def test_gpu_flatl2(self) -> None:
         self._roundtrip_gpu(IndexOptions(index_type="flatl2", gpu=True))
 
-    def test_gpu_ivfflat(self) -> None:
-        self._roundtrip_gpu(IndexOptions(index_type="ivfflat", nlist=4, nprobe=4, gpu=True))
+    def test_gpu_ivfflat_is_rejected(self) -> None:
+        with self.assertRaises(ValueError) as ctx:
+            build_populated_index(
+                self.xb, IndexOptions(index_type="ivfflat", nlist=4, nprobe=4, gpu=True)
+            )
+        self.assertIn("--index ivf", str(ctx.exception))
 
     def test_gpu_rejected_for_cpu_only_types(self) -> None:
         for kind in sorted(set(INDEX_TYPES) - set(GPU_INDEX_TYPES)):

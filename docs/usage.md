@@ -251,7 +251,7 @@ nextflow run nicoaira/ginflow \
     -profile docker,gpu \
     --index faiss \
     --faiss_gpu \
-    --faiss_index ivfflat \
+    --faiss_index flatip \
     --input structures.tsv \
     --outdir results
 ```

@@ -20,6 +20,22 @@ nextflow_pipeline {
         }
     }
 
+    test("faiss_gpu is rejected for IVFFlat") {
+
+        when {
+            params {
+                outdir       = "$outputDir"
+                input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                faiss_gpu    = true
+                faiss_index  = 'ivfflat'
+            }
+        }
+
+        then {
+            assert workflow.failed
+        }
+    }
+
     test("faiss_gpu is rejected for HNSW") {
 
         when {
