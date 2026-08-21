@@ -22,6 +22,7 @@ import numpy as np
 
 from benchmark_hnswlib import load_queries, load_structures, normalize_rows, source_embeddings
 from benchmark_faiss_hnsw_int8 import recall_at
+from rerank_core import rerank_label_matrix
 
 
 def parse_int_list(value: str) -> list[int]:
@@ -63,36 +64,77 @@ def normalize_nodes(values: np.ndarray, original_dtype: str) -> np.ndarray:
     return normalize_rows(source)
 
 
+class OriginalNodeWindowStore:
+    """Lazily materialize normalized windows from the preserved node matrix."""
+
+    def __init__(self, embeddings: np.ndarray, records: list[Any], window_size: int, stride: int):
+        if not records:
+            raise ValueError("window store needs at least one record")
+        self.embeddings = embeddings
+        self.records = records
+        self.window_size = int(window_size)
+        self.stride = int(stride)
+        self.window_starts = np.asarray([record.window_start for record in records], dtype=np.int64)
+        n_windows = int(records[-1].window_start + records[-1].n_windows)
+        record_indices = np.searchsorted(
+            self.window_starts,
+            np.arange(n_windows, dtype=np.int64),
+            side="right",
+        ) - 1
+        offsets = np.arange(n_windows, dtype=np.int64) - self.window_starts[record_indices]
+        node_starts = np.asarray([record.node_start for record in records], dtype=np.int64)
+        self.window_node_starts = node_starts[record_indices] + offsets * self.stride
+        self.shape = (
+            n_windows,
+            self.window_size * int(embeddings.shape[1]),
+        )
+
+    def _window(self, ordinal: int) -> np.ndarray:
+        if ordinal < 0 or ordinal >= self.shape[0]:
+            raise IndexError(f"window ordinal {ordinal} is outside {self.shape[0]} windows")
+        start = int(self.window_node_starts[ordinal])
+        values = np.asarray(
+            self.embeddings[start : start + self.window_size], dtype=np.float32
+        ).reshape(-1)
+        norm = max(float(np.linalg.norm(values)), 1e-12)
+        return np.ascontiguousarray(values / np.float32(norm), dtype=np.float32)
+
+    def __getitem__(self, indices: object) -> np.ndarray:
+        values = np.asarray(indices)
+        if values.ndim == 0:
+            return self._window(int(values))
+        flat = values.reshape(-1)
+        starts = self.window_node_starts[flat.astype(np.int64, copy=False)]
+        node_offsets = np.arange(self.window_size, dtype=np.int64)
+        windows = np.asarray(
+            self.embeddings[starts[:, None] + node_offsets[None, :]], dtype=np.float32
+        ).reshape(flat.shape[0], self.shape[1])
+        norms = np.linalg.norm(windows, axis=1, keepdims=True)
+        rows = windows / np.maximum(norms, np.float32(1e-12))
+        return rows.reshape(*values.shape, self.shape[1])
+
+
 def rerank_candidates_allow_missing(
-    database_windows: np.ndarray,
+    database_windows: Any,
     query_windows: np.ndarray,
     labels: np.ndarray,
     output_k: int,
     batch_size: int,
+    workers: int = 1,
+    device: str = "cpu",
+    candidate_batch_size: int = 2048,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """Rerank C++ results while preserving rows with fewer than k neighbors."""
-    if labels.ndim != 2 or labels.shape[0] != query_windows.shape[0]:
-        raise ValueError("candidate labels and queries have incompatible shapes")
-    if output_k < 1 or output_k > labels.shape[1]:
-        raise ValueError("output_k must be within the candidate-label width")
-    final_labels = np.empty((labels.shape[0], output_k), dtype=np.int64)
-    final_scores = np.empty((labels.shape[0], output_k), dtype=np.float32)
-    started = time.perf_counter()
-    for start in range(0, labels.shape[0], batch_size):
-        stop = min(start + batch_size, labels.shape[0])
-        batch_labels = np.asarray(labels[start:stop], dtype=np.int64)
-        valid = (batch_labels >= 0) & (batch_labels < database_windows.shape[0])
-        safe_labels = np.where(valid, batch_labels, 0)
-        candidates = np.asarray(database_windows[safe_labels], dtype=np.float32)
-        scores = np.einsum(
-            "bd,bkd->bk", query_windows[start:stop], candidates, optimize=True
-        )
-        scores[~valid] = -np.inf
-        order = np.argsort(-scores, axis=1, kind="stable")[:, :output_k]
-        rows = np.arange(stop - start)[:, None]
-        final_labels[start:stop] = batch_labels[rows, order]
-        final_scores[start:stop] = scores[rows, order]
-    return final_labels, final_scores, time.perf_counter() - started
+    return rerank_label_matrix(
+        database_windows,
+        query_windows,
+        labels,
+        output_k,
+        batch_size=batch_size,
+        candidate_batch_size=candidate_batch_size,
+        workers=workers,
+        device=device,
+    )
 
 
 def pq_codebook_array(pq: Any, pq_m: int, ksub: int, dimension: int) -> np.ndarray:
@@ -384,10 +426,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     nbits_values = parse_int_list(args.nbits_values)
     candidates = parse_int_list(args.candidate_k_values)
     efs = parse_int_list(args.ef_search_values)
+    recall_ks = parse_int_list(args.recall_k_values)
     if any(bits > 8 for bits in nbits_values):
         raise ValueError("nbits must be <= 8")
-    if any(ef < candidate for ef in efs for candidate in candidates):
-        raise ValueError("every ef-search value must be >= every candidate-k value")
     if args.output_k > min(candidates):
         raise ValueError("output-k must not exceed the smallest candidate-k")
 
@@ -404,6 +445,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError("query windows and query selections are incompatible")
     if reference is not None and reference.shape[0] != len(queries):
         raise ValueError("reference labels and query selections are incompatible")
+    original_windows = OriginalNodeWindowStore(embeddings, records, args.window_size, args.stride)
 
     args.outdir.mkdir(parents=True, exist_ok=True)
     results: list[dict[str, Any]] = []
@@ -496,7 +538,14 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                                 args.threads, index_dir,
                             )
                             final_labels, final_scores, rerank_seconds = rerank_candidates_allow_missing(
-                                database_windows, query_windows, labels, args.output_k, args.rerank_batch_size
+                                original_windows,
+                                query_windows,
+                                labels,
+                                args.output_k,
+                                args.rerank_batch_size,
+                                args.rerank_workers,
+                                args.rerank_device,
+                                args.candidate_batch_size,
                             )
                             row: dict[str, Any] = {
                                 "backend": "hnswlib_cpp_node_pq",
@@ -513,6 +562,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                                 "hnsw_m": hnsw_m,
                                 "ef_construction": ef_construction,
                                 "ef_search": ef_search,
+                                "effective_ef_search": max(ef_search, candidate_k),
                                 "candidate_k": candidate_k,
                                 "output_k": args.output_k,
                                 "n_windows": window_count,
@@ -523,13 +573,19 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                                 "build_seconds": build_seconds,
                                 "build_peak_rss_mib": build_peak_rss_mib,
                                 "search_peak_rss_mib": search_peak_rss_mib,
+                                "rerank_workers": args.rerank_workers,
+                                "rerank_device": args.rerank_device,
+                                "rerank_batch_size": args.rerank_batch_size,
+                                "rerank_candidate_batch_size": args.candidate_batch_size,
                                 "index_bytes": index_path.stat().st_size,
                                 "candidate_mean_score": float(np.mean(-distances[:, 0])),
                                 "final_mean_score": float(np.mean(final_scores[:, 0])),
                                 "index_path": str(index_path),
                             }
                             if reference is not None:
-                                for k in (1, 5, 10, 50):
+                                for k in recall_ks:
+                                    if k > labels.shape[1] or k > reference.shape[1]:
+                                        continue
                                     row[f"candidate_recall_at_{k}"] = recall_at(reference, labels, k)
                                     row[f"final_recall_at_{k}"] = recall_at(reference, final_labels, k)
                             results.append(row)
@@ -573,11 +629,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ef-search-values", default="200,800")
     parser.add_argument("--candidate-k-values", default="50,100")
     parser.add_argument("--output-k", type=int, default=50)
+    parser.add_argument("--recall-k-values", default="1,5,10,50,100,500")
     parser.add_argument("--sample-size", type=int, default=250000)
     parser.add_argument("--pq-niter", type=int, default=20)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32768)
     parser.add_argument("--rerank-batch-size", type=int, default=32)
+    parser.add_argument("--candidate-batch-size", type=int, default=2048)
+    parser.add_argument("--rerank-workers", type=int, default=1)
+    parser.add_argument("--rerank-device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--threads", type=int, default=16)
     parser.add_argument("--window-size", type=int, default=11)
     parser.add_argument("--stride", type=int, default=1)

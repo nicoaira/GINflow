@@ -13,7 +13,13 @@ from typing import Any
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from faiss_index import IndexOptions, build_populated_index, meta_from_details
+from faiss_index import (
+    IndexOptions,
+    build_populated_index,
+    make_cpu_index,
+    meta_from_details,
+    normalize_index_type,
+)
 from cuvs_index import build_populated_index as build_cuvs_index, meta_from_details as cuvs_meta_from_details, serialize_index as serialize_cuvs_index
 from ngt_index import build_populated_index as build_ngt_index, meta_from_details as ngt_meta_from_details, serialize_index as serialize_ngt_index
 from scann_index import build_populated_searcher, is_scann_type, serialize_index
@@ -129,6 +135,95 @@ def load_shard(npz_path: Path, manifest: dict) -> tuple[np.ndarray, list[tuple[s
     return stacked, rows
 
 
+def build_streaming_faiss_index(
+    shards: list[tuple[Path, Path]],
+    options: IndexOptions,
+) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
+    """Build Flat/SQ indexes without concatenating the complete database."""
+    expected = None
+    reference_manifest = None
+    mapping: list[tuple[int, str, int, int]] = []
+    shard_counts: list[int] = []
+    n_records = 0
+    n_skipped = 0
+    total_windows = 0
+
+    for npz_path, manifest_path in shards:
+        manifest = load_json(manifest_path)
+        current = compat_tuple(manifest)
+        if expected is None:
+            expected = current
+            reference_manifest = manifest
+        elif current != expected:
+            raise ValueError(
+                f"{manifest_path} is incompatible with the first shard "
+                f"({dict(zip(COMPAT_KEYS, expected))} vs "
+                f"{dict(zip(COMPAT_KEYS, current))})"
+            )
+        window_size = int(manifest["window_size"])
+        count = 0
+        stride = int(manifest["stride"])
+        for record in manifest.get("records", []):
+            identifier = str(record["identifier"])
+            n_windows = record.get("n_windows")
+            if n_windows is None:
+                shape = record.get("shape")
+                n_windows = shape[0] if shape else None
+            if n_windows is None:
+                with np.load(npz_path) as arrays:
+                    if identifier not in arrays.files:
+                        raise KeyError(f"{identifier} is in {npz_path.name} manifest but missing from the NPZ")
+                    values = np.asarray(arrays[identifier])
+                    if values.ndim != 2:
+                        raise ValueError(f"{identifier} windows must be 2-D, got {values.shape}")
+                    n_windows = values.shape[0]
+            for offset in range(int(n_windows)):
+                mapping.append(
+                    (total_windows + count, identifier, offset * stride, offset * stride + window_size)
+                )
+                count += 1
+        shard_counts.append(count)
+        total_windows += count
+        n_records += len(manifest.get("records", [])) + len(manifest.get("skipped_short", []))
+        n_skipped += len(manifest.get("skipped_short", []))
+
+    if not reference_manifest or total_windows < 1:
+        raise ValueError("no windows to index (every sequence was shorter than --window-size)")
+    kind = normalize_index_type(options.index_type)
+    if kind not in {"FlatIP", "FlatL2", "SQ"} or options.gpu:
+        raise ValueError("streaming FAISS is only available for CPU FlatIP, FlatL2, and SQ indexes")
+    index, details = make_cpu_index(
+        int(reference_manifest["window_dim"]), total_windows, options
+    )
+    for (npz_path, manifest_path), expected_count in zip(shards, shard_counts):
+        vectors, _rows = load_shard(npz_path, load_json(manifest_path))
+        if vectors.shape[0] != expected_count:
+            raise ValueError(f"window count changed while reading {npz_path}")
+        if vectors.shape[0]:
+            if not index.is_trained:
+                train_count = min(vectors.shape[0], 100_000)
+                index.train(np.ascontiguousarray(vectors[:train_count], dtype=np.float32))
+            index.add(np.ascontiguousarray(vectors, dtype=np.float32))
+    details["gpu"] = False
+    details["streaming_add"] = True
+    meta = {
+        "window_size": int(reference_manifest["window_size"]),
+        "window_stride": int(reference_manifest["stride"]),
+        "embedding_dim": int(reference_manifest["embedding_dim"]),
+        "window_dim": int(reference_manifest["window_dim"]),
+        "l2_normalized": True,
+        "ginfinity_version": reference_manifest.get("ginfinity_version"),
+        "model_version": reference_manifest.get("model_version"),
+        "checkpoint_sha256": reference_manifest.get("checkpoint_sha256"),
+        "n_records": n_records,
+        "n_windows": total_windows,
+        "n_skipped_short": n_skipped,
+    }
+    meta.update(meta_from_details(details))
+    meta["streaming_add"] = True
+    return index, mapping, meta
+
+
 def build_index(
     shards: list[tuple[Path, Path]],
     options: IndexOptions | None = None,
@@ -140,6 +235,10 @@ def build_index(
 ) -> tuple[Any, list[tuple[int, str, int, int]], dict]:
     if not shards:
         raise ValueError("no window shards were provided")
+
+    chosen = options or IndexOptions()
+    if backend == "faiss" and normalize_index_type(chosen.index_type) in {"FlatIP", "FlatL2", "SQ"} and not chosen.gpu:
+        return build_streaming_faiss_index(shards, chosen)
 
     all_vectors = []
     mapping = []
@@ -172,7 +271,6 @@ def build_index(
         raise ValueError("no windows to index (every sequence was shorter than --window-size)")
 
     xb = np.ascontiguousarray(np.concatenate(all_vectors, axis=0), dtype=np.float32)
-    chosen = options or IndexOptions()
     if backend == "ngt":
         index, details = build_ngt_index(xb, ngt_index_type, ngt_options)
     elif backend == "cuvs":

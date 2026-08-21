@@ -217,7 +217,36 @@
                 "hnswlib_rerank": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Rerank the compact HNSW candidate pool with the original normalized float16 window embeddings before writing seeds. This preserves quantization for candidate selection only and applies to --index hnswlib."
+                    "description": "Compatibility alias for --exact_rerank. Rerank the compact HNSW candidate pool in the dedicated RERANK_CANDIDATES process."
+                },
+                "exact_rerank": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Run the dedicated exact candidate-reranking process after HNSWLIB/CAGRA candidate search. The original residue embeddings are the scoring source; node quantization remains candidate-only."
+                },
+                "exact_rerank_device": {
+                    "type": "string",
+                    "default": "cpu",
+                    "enum": ["cpu", "cuda"],
+                    "description": "Exact reranking device. CPU uses multiple workers; cuda uses CuPy batches and requires -profile gpu."
+                },
+                "exact_rerank_batch_size": {
+                    "type": "integer",
+                    "default": 32,
+                    "minimum": 1,
+                    "description": "Number of query windows processed per exact-reranking batch."
+                },
+                "exact_rerank_candidate_batch_size": {
+                    "type": "integer",
+                    "default": 2048,
+                    "minimum": 1,
+                    "description": "Candidate windows scored per sub-batch, bounding CPU RAM/GPU VRAM when candidate pools are large."
+                },
+                "exact_rerank_workers": {
+                    "type": "integer",
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "CPU exact-reranking workers. Zero uses the process CPU allocation; ignored on CUDA."
                 },
                 "hnswlib_gpu": {
                     "type": "boolean",

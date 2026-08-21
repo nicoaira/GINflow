@@ -10,6 +10,7 @@ include { BUILD_CUVS_INDEX }                 from '../modules/build_cuvs_index/m
 include { SEARCH_CUVS }                      from '../modules/search_cuvs/main'
 include { BUILD_HNSWLIB_INDEX }             from '../modules/build_hnswlib_index/main'
 include { SEARCH_HNSWLIB }                  from '../modules/search_hnswlib/main'
+include { RERANK_CANDIDATES }               from '../modules/rerank_candidates/main'
 include { CLUSTER_SEEDS }                    from '../modules/cluster_seeds/main'
 include { ALIGN_CLUSTERS }                   from '../modules/align_clusters/main'
 include { ESTIMATE_EVD as ESTIMATE_EVD_BUILD } from '../modules/estimate_evd/main'
@@ -39,6 +40,7 @@ workflow GINFLOW {
     ch_built_database  = channel.empty()
     ch_search_database = channel.empty()
     ch_seed_shards     = channel.empty()
+    ch_rerank_metrics  = channel.empty()
     ch_seeds           = channel.empty()
     ch_clusters        = channel.empty()
     ch_cluster_members = channel.empty()
@@ -209,6 +211,17 @@ workflow GINFLOW {
         else {
             error "Unsupported index library: ${index_library}"
         }
+        if (index_library == 'hnswlib' && (params.exact_rerank || params.hnswlib_rerank)) {
+            RERANK_CANDIDATES(
+                ch_seed_shards,
+                ch_search_database.collect(),
+                ch_query_windows.map { meta, npz, manifest -> npz }.collect(),
+                ch_query_windows.map { meta, npz, manifest -> manifest }.collect()
+            )
+            ch_versions       = ch_versions.mix(RERANK_CANDIDATES.out.versions)
+            ch_rerank_metrics = RERANK_CANDIDATES.out.metrics
+            ch_seed_shards    = RERANK_CANDIDATES.out.seeds
+        }
         ch_seeds = ch_seed_shards
             .map { meta, tsv -> tsv }
             .collectFile(name: 'seeds.tsv', keepHeader: true, skip: 1, sort: true)
@@ -284,6 +297,7 @@ workflow GINFLOW {
     quantization     = ch_quantization
     quantized_windows = ch_quantized_windows.map { meta, directory -> directory }
     database         = ch_built_database
+    rerank_metrics   = ch_rerank_metrics
     seeds            = ch_seeds
     clusters         = ch_clusters
     cluster_members  = ch_cluster_members

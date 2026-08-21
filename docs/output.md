@@ -95,7 +95,7 @@ SW, alignment, and plots.
 
 ## seeds.tsv
 
-Query-mode hits above `--seed_min_similarity`. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept. Without `--hnswlib_rerank`, HNSWLIB writes the raw position-wise centroid-score sum and applies the equivalent threshold multiplied by `--window_size`; with reranking, it writes the normal full-window cosine score from the original float16 embeddings.
+Query-mode hits above `--seed_min_similarity`. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept. Without exact reranking, HNSWLIB writes the raw position-wise centroid-score sum and applies the equivalent threshold multiplied by `--window_size`; with `--exact_rerank true`, it writes the normal full-window cosine score from the original float16 embeddings. The same run publishes `rerank_metrics.json` with batch/device/worker settings and elapsed time.
 
 ## clusters.tsv
 

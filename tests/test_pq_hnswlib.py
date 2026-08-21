@@ -18,6 +18,7 @@ INCLUDE = ROOT / "vendor" / "hnswlib-0.8.0"
 sys.path.insert(0, str(ROOT / "bin"))
 from benchmark_hnswlib import Record  # noqa: E402
 from benchmark_pq_hnswlib import (  # noqa: E402
+    OriginalNodeWindowStore,
     pack_pq_codes,
     pack_window_codes,
     rerank_candidates_allow_missing,
@@ -68,6 +69,23 @@ class TestPqHnswlib(unittest.TestCase):
         final_labels, scores, _ = rerank_candidates_allow_missing(database, queries, labels, 2, 2)
         np.testing.assert_array_equal(final_labels, np.asarray([[0, 1], [1, 0]], dtype=np.int64))
         np.testing.assert_allclose(scores, np.asarray([[1.0, 0.0], [1.0, 0.0]], dtype=np.float32))
+
+    def test_original_node_window_store_reconstructs_normalized_windows(self) -> None:
+        embeddings = np.asarray(
+            [[1, 0], [0, 2], [3, 0], [0, 4], [5, 0]], dtype=np.float16
+        )
+        records = [Record("a", 3, 0, 0, 2), Record("b", 2, 3, 2, 1)]
+        store = OriginalNodeWindowStore(embeddings, records, 2, 1)
+        expected = np.asarray(
+            [
+                [1, 0, 0, 2],
+                [0, 2, 3, 0],
+                [0, 4, 5, 0],
+            ],
+            dtype=np.float32,
+        )
+        expected /= np.linalg.norm(expected, axis=1, keepdims=True)
+        np.testing.assert_allclose(store[[0, 1, 2]], expected, rtol=1e-6, atol=1e-6)
 
     def test_cpp_distance_sums_positional_subquantizer_tables(self) -> None:
         rng = np.random.default_rng(13)

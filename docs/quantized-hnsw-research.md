@@ -10,6 +10,31 @@ been measured against the same FlatIP labels. The complete documented nf-test re
 the full default k=2048 test-corpus build have passed. Larger downstream
 comparisons and whole-pipeline resource measurements remain follow-up work.
 
+## Headline results
+
+The table below consolidates the measured search results from this document and
+the 30k WindowIVF follow-up. Recall is against exact FlatIP on the 6k set or
+the blockwise FlatIP-equivalent reference on the 30k set. Unless marked
+candidate-only, recall is after exact reranking with the original windows.
+Times are for the 512-query benchmark; one-time build or conversion times are
+shown in parentheses where useful.
+The 6k rows report R@50; the 30k rows report R@100/R@500.
+
+| Dataset | Search path / key configuration | Index | Query time | Recall vs reference | Main result |
+|---|---|---:|---:|---:|---|
+| Rouskin 6k (839,188 windows) | Exact FlatIP reference | 4.73 GB | 24.67 s | R@50 1.0000 | Reference baseline |
+| Rouskin 6k | Compact centroid-code HNSW + exact rerank (`k=4096`, HNSW M=32, `candidate_k=5000`) | 250 MB | 3.80 s (27.29 s build) | R@50 0.9755 | 18.9× smaller and clears the 97% target |
+| Rouskin 6k | Compact code-only HNSW (`k=16,384`, M=64) | 465 MB | — | Candidate R@50 0.5440 | Quantization alone is not sufficient for final ranking |
+| Rouskin 6k | GPU CAGRA int8 + exact rerank (`scale=850`, `candidate_k=50`) | 1.40 GB | ~0.105 s kernel (0.813 s load) | R@50 0.9900 | Fastest loaded query path |
+| Rouskin 6k | Converted cuVS CPU HNSW + exact rerank (`candidate_k=1000`) | 1.41 GB | 2.411 s (39.037 s CAGRA build + 15.034 s conversion) | R@50 0.9968 | Highest measured 6k recall |
+| Rouskin 6k | FAISS `IndexHNSWSQ` int8/IP + exact rerank (`candidate_k=1000`) | 1.41 GB | 16.64 s (735.742 s build) | R@50 0.9937 | Compact, but slower at the wide candidate pool |
+| Rouskin 6k | Node-PQ custom HNSW + exact rerank (PQ M=16/8-bit, HNSW M=64, `candidate_k=1000`) | 594 MB | 2.565 s (465.9 s build) | R@50 0.9941 | Strong CPU size/recall trade-off |
+| Rouskin 30k (4,115,576 windows) | Blockwise FlatIP-equivalent reference | Not serialized | 29.19 s | R@100/R@500 1.0000/1.0000 | Reference baseline |
+| Rouskin 30k | PQ-HNSW + exact rerank (PQ M=16/4, HNSW M=64, ef=10,000, `candidate_k=10,000`) | 2.55 GB | 14.05 s | R@100/R@500 0.9855/0.9792 | Best 30k PQ-HNSW point |
+| Rouskin 30k | Lower-memory PQ-HNSW point (PQ M=16/4, HNSW M=32, `candidate_k=5000`) | 1.50 GB | 8.19 s | R@100/R@500 0.9538/0.9291 | Smaller and faster, with lower recall |
+| Rouskin 30k | WindowIVF + exact rerank (nlist=16, nprobe=16, PQ M=16/4, `candidate_k=10,000`) | 395 MB | 133.71 s | R@100/R@500 0.9903/0.9857 | High recall, but the current scanner is too slow |
+| Rouskin 30k | CAGRA int8 attempt (`scale=127`, k=1000) | Not built | OOM after ~5.7 GiB upload | — | Did not fit on the 8 GiB RTX 3070 |
+
 This document is deliberately comprehensive. It records the design, the
 temporary benchmark layout, the measured trade-offs, and the cleanup TODOs so
 that large research caches under `/mnt/ssd_samsung` can be removed or rebuilt

@@ -198,6 +198,40 @@ nextflow_pipeline {
         }
     }
 
+    test("dispatch HNSWLIB search through batched exact reranking") {
+
+        tag "hnswlib-rerank"
+        options "-stub"
+
+        when {
+            params {
+                outdir                    = "$outputDir"
+                input                     = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query                     = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size                = 2
+                index                     = 'hnswlib'
+                node_quantization_k       = 8
+                hnswlib_m                 = 8
+                hnswlib_ef_construction   = 40
+                hnswlib_ef_search         = 20
+                hnswlib_candidate_k       = 8
+                seed_k                    = 8
+                exact_rerank              = true
+                exact_rerank_workers      = 2
+                exact_rerank_batch_size   = 2
+                exact_rerank_candidate_batch_size = 4
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/seeds.tsv").exists()
+            assert path("${params.outdir}/rerank_metrics.json").exists()
+            assert path("${params.outdir}/rerank_metrics.json").json.backend == 'exact_original_window_rerank'
+            assert path("${params.outdir}/report.html").exists()
+        }
+    }
+
     test("query an existing database (stub)") {
 
         tag "stub"

@@ -164,6 +164,8 @@ def normalize_parameter_values() {
     normalize_lowercase_choice('plot_backend', 'none', ['none', 'rnartistcore', 'r4rna', 'both'])
     normalize_lowercase_choice('report_theme', 'light', ['light', 'dark'])
     normalize_boolean_param('hnswlib_rerank', false)
+    normalize_boolean_param('exact_rerank', false)
+    normalize_lowercase_choice('exact_rerank_device', 'cpu', ['cpu', 'cuda'])
     normalize_boolean_param('hnswlib_gpu', false)
     normalize_lowercase_choice('hnswlib_gpu_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent'])
 }
@@ -321,6 +323,18 @@ def validate_hnswlib_params(library) {
     if (params.hnswlib_rerank && !params.input && !params.database) {
         error "--hnswlib_rerank requires a built or existing hnswlib database."
     }
+    if (params.exact_rerank && !params.input && !params.database) {
+        error "--exact_rerank requires a built or existing hnswlib database."
+    }
+    if (params.hnswlib_rerank) {
+        params.exact_rerank = true
+    }
+    if (params.exact_rerank_device == 'cuda') {
+        def profiles = workflow.profile.tokenize(',').collect { it.trim() }
+        if (!profiles.contains('gpu')) {
+            error "--exact_rerank_device cuda requires -profile gpu so RERANK_CANDIDATES gets a CUDA runtime."
+        }
+    }
 }
 
 def collect_if_unused(unused, name, default_value, applies) {
@@ -349,6 +363,11 @@ def warn_unused_index_params(library, kind) {
         collect_if_unused(unused, 'hnswlib_num_threads', 0, false)
         collect_if_unused(unused, 'hnswlib_candidate_k', 50, false)
         collect_if_unused(unused, 'hnswlib_rerank', false, false)
+        collect_if_unused(unused, 'exact_rerank', false, false)
+        collect_if_unused(unused, 'exact_rerank_device', 'cpu', false)
+        collect_if_unused(unused, 'exact_rerank_batch_size', 32, false)
+        collect_if_unused(unused, 'exact_rerank_candidate_batch_size', 2048, false)
+        collect_if_unused(unused, 'exact_rerank_workers', 0, false)
         collect_if_unused(unused, 'hnswlib_gpu', false, false)
         collect_if_unused(unused, 'hnswlib_gpu_candidate_k', 50, false)
         collect_if_unused(unused, 'hnswlib_gpu_itopk_size', 256, false)
@@ -643,6 +662,7 @@ workflow {
     database         = result.database
     quantization     = result.quantization
     quantized_windows = result.quantized_windows
+    rerank_metrics   = result.rerank_metrics
     seeds            = result.seeds
     clusters         = result.clusters
     cluster_members  = result.cluster_members
@@ -678,6 +698,9 @@ output {
     }
     quantized_windows {
         path { directory -> directory >> 'windows_quantized' }
+    }
+    rerank_metrics {
+        path { metrics -> metrics >> 'rerank_metrics.json' }
     }
     seeds {
         path '.'

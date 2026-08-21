@@ -338,6 +338,7 @@ def search_database(
     min_similarity: float,
     itopk_size: int | None,
     search_batch_size: int | None,
+    rerank: bool,
     manifests_dir: Path | None = None,
 ) -> list[tuple]:
     if k < 1:
@@ -358,8 +359,8 @@ def search_database(
     if batch_size < 1:
         raise ValueError("GPU search batch size must be positive")
     scale = float(meta["gpu_int8_scale"])
-    database_embeddings = load_embeddings([database / "embeddings.npz"])
-    query_embeddings = load_embeddings(query_embeddings_paths)
+    database_embeddings = load_embeddings([database / "embeddings.npz"]) if rerank else {}
+    query_embeddings = load_embeddings(query_embeddings_paths) if rerank else {}
     cp, cagra = require_gpu()
     index = cagra.load(str(database / "cagra" / "index.bin"))
     cp.cuda.Stream.null.synchronize()
@@ -373,6 +374,7 @@ def search_database(
         if values.shape[0] == 0:
             continue
         label_parts: list[np.ndarray] = []
+        distance_parts: list[np.ndarray] = []
         for start in range(0, values.shape[0], batch_size):
             stop = min(start + batch_size, values.shape[0])
             query_codes = cp.asarray(quantize_windows(values[start:stop], scale))
@@ -383,16 +385,22 @@ def search_database(
                 search_k,
             )
             cp.cuda.Stream.null.synchronize()
+            distance_parts.append(np.asarray(cp.asnumpy(_distances), dtype=np.float32))
             label_parts.append(np.asarray(cp.asnumpy(labels), dtype=np.uint64))
         labels = np.concatenate(label_parts, axis=0)
-        final_labels, final_scores = rerank_candidates(
-            labels,
-            mapping,
-            targets,
-            query_embeddings,
-            database_embeddings,
-            k,
-        )
+        distances = np.concatenate(distance_parts, axis=0)
+        if rerank:
+            final_labels, final_scores = rerank_candidates(
+                labels,
+                mapping,
+                targets,
+                query_embeddings,
+                database_embeddings,
+                k,
+            )
+        else:
+            final_labels = labels
+            final_scores = -distances
         stride = int(manifest["stride"])
         for (identifier, query_start, query_end), row_labels, row_scores in zip(
             mapping, final_labels, final_scores
@@ -470,6 +478,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     search.add_argument("--min-similarity", type=float, default=0.8)
     search.add_argument("--itopk-size", type=int)
     search.add_argument("--search-batch-size", type=int)
+    search.add_argument("--skip-rerank", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -502,6 +511,7 @@ def main(argv: list[str] | None = None) -> int:
                 min_similarity=args.min_similarity,
                 itopk_size=args.itopk_size,
                 search_batch_size=args.search_batch_size,
+                rerank=not args.skip_rerank,
                 manifests_dir=args.manifests_dir,
             )
             write_seeds(args.output, hits)

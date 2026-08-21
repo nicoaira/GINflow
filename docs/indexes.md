@@ -36,8 +36,9 @@ the custom C++ HNSW elements. For a pair of code windows `A` and `B`, its raw
 score is exactly `sum(S[A[p], B[p]])`. The public `--seed_min_similarity`
 threshold remains on the existing per-position scale, so a non-reranked HNSW
 search applies it internally as `window_size * seed_min_similarity`; with
-`--hnswlib_rerank true`, the original float16 windows provide the final score
-and threshold. The original float16 node embeddings are still packed into the
+`--exact_rerank true`, the original float16 windows provide the final score
+and threshold. The legacy `--hnswlib_rerank true` flag is an alias. The
+original float16 node embeddings are still packed into the
 database and remain the only embeddings used by `ALIGN_CLUSTERS` and
 `DRAW_SW`.
 
@@ -78,12 +79,14 @@ expanded `w x 128` vectors.
 artifacts used for assignment and the custom distance; `faiss/index.bin`
 stores the quantized code windows. `faiss/embeddings.npz` remains the original
 128-dimensional float16 residue data used by SW and alignment. With
-`--hnswlib_rerank true`, HNSW selects a candidate pool and the original windows
-are used for the final scores.
+`--exact_rerank true`, HNSW selects a candidate pool and a separate
+`RERANK_CANDIDATES` process uses the original windows for the final scores.
 
 The implementation plan, cache layout, validation record, and Rouskin
 FlatIP-recall benchmark are maintained in
 [quantized-hnsw-research.md](quantized-hnsw-research.md).
+The current batched-rerank, 30k, CAGRA, and WindowIVF work is tracked in
+[quantized-rerank-windowivf-30k.md](quantized-rerank-windowivf-30k.md).
 
 The HNSWLIB environment contains the pinned hnswlib 0.8.0 headers/API and a C++
 compiler. Use `-profile conda` or `-profile wave` for this backend; the existing
@@ -141,8 +144,13 @@ node codebook/similarity artifact. See the measured Rouskin comparison in
 | `--hnswlib_ef_search` | `100` | Default search-time exploration factor, persisted in `meta.json`. |
 | `--hnswlib_random_seed` | `1` | HNSW graph construction seed. |
 | `--hnswlib_num_threads` | `0` | HNSWLIB worker threads; zero keeps the library default. |
-| `--hnswlib_candidate_k` | `50` | Compact code-HNSW candidates retrieved before output or optional original-vector reranking. Must be at least `--seed_k`. |
-| `--hnswlib_rerank` | `false` | Rerank candidates with the original float16 windows and use the normal full-window cosine score. |
+| `--hnswlib_candidate_k` | `50` | Compact code-HNSW candidates retrieved before output or exact original-vector reranking. Must be at least `--seed_k`. |
+| `--exact_rerank` | `false` | Run the batched exact original-window reranker after candidate selection. |
+| `--exact_rerank_device` | `cpu` | Rerank on CPU or CUDA (`cuda` requires `-profile gpu`). |
+| `--exact_rerank_batch_size` | `32` | Query windows processed by one exact-reranking batch. |
+| `--exact_rerank_candidate_batch_size` | `2048` | Candidate columns materialized per batch. Lower this for memory, higher it for throughput. |
+| `--exact_rerank_workers` | `0` | CPU workers; zero uses the task CPU count. CUDA uses one GPU worker. |
+| `--hnswlib_rerank` | `false` | Compatibility alias that enables `--exact_rerank`. |
 
 ### Search parameters
 
@@ -155,8 +163,13 @@ node codebook/similarity artifact. See the measured Rouskin comparison in
 For the Rouskin high-recall profile, use `--node_quantization_k 4096`,
 `--hnswlib_m 32`, `--hnswlib_ef_construction 200`,
 `--hnswlib_ef_search 5000`, `--hnswlib_candidate_k 5000`, and
-`--hnswlib_rerank true`. The requested default remains `k=2048`; benchmark
+`--exact_rerank true`. The requested default remains `k=2048`; benchmark
 trade-offs are recorded in [quantized-hnsw-research.md](quantized-hnsw-research.md).
+
+Exact reranking is deliberately a separate process. Candidate selection can
+return 1,000–10,000 labels, while the reranker reads only those labels in
+bounded query/candidate batches and reconstructs normalized windows from the
+preserved `faiss/embeddings.npz`. Quantized codes never become the SW input.
 
 The published HNSW artifacts are `faiss/index.bin`, `faiss/quantization/`,
 `faiss/windows.tsv`, `faiss/embeddings.npz`, `faiss/records.tsv`, and

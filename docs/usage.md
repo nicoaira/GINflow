@@ -82,24 +82,32 @@ nextflow run nicoaira/ginflow \
     --outdir results
 ```
 
-### Rouskin query selections
+### Rouskin queries
 
-`tests/data/queries_rouskin_6k.tsv` is a benchmark selection table, not a
-structures table: it contains `transcript_id` and `window_offset` rather than
-RNA sequence and dot-bracket columns. Convert it into sliced query subjects
-with:
+`tests/data/queries_rouskin_structures.tsv` is the canonical shared query
+table. It contains 512 ordinary full-molecule rows and can be passed directly
+to `--query` for both the 6k and 30k databases:
 
 ```bash
-python3 bin/convert_query_selections.py \
-    --structures tests/data/rouskin_sample_6k.tsv \
-    --selections tests/data/queries_rouskin_6k.tsv \
-    --output tests/data/queries_rouskin_6k_structures.tsv \
-    --window-size 11
+nextflow run main.nf \
+    -profile docker \
+    --input tests/data/rouskin_sample_30k.tsv \
+    --query tests/data/queries_rouskin_structures.tsv \
+    --outdir results/rouskin-30k \
+    --index hnswlib \
+    --hnswlib_candidate_k 5000 \
+    --exact_rerank true
 ```
 
-The generated file has 512 rows with 0-based half-open `start`/`end` slices
-and can be passed directly to `--query`. To build and search the Rouskin data
-with the high-recall compact HNSW profile:
+For an apples-to-apples ANN benchmark, each full molecule must be reduced to a
+specific 11-nt query window. The reproducible benchmark cache used by the
+research driver is stored outside git at
+`/mnt/ssd_samsung/ginflow-hnsw-research/rouskin_shared_queries/query_selections.tsv`.
+It has one deterministic offset for each of the same 512 molecule IDs. This
+selection table is only a benchmark coordinate map; the pipeline input remains
+the full-molecule `queries_rouskin_structures.tsv` file.
+
+To build and search the 6k data with the high-recall compact HNSW profile:
 
 ```bash
 nextflow run main.nf \
@@ -107,28 +115,28 @@ nextflow run main.nf \
     -resume \
     --index hnswlib \
     --input tests/data/rouskin_sample_6k.tsv \
-    --query tests/data/queries_rouskin_6k_structures.tsv \
+    --query tests/data/queries_rouskin_structures.tsv \
     --outdir results/rouskin-hnswlib \
     --node_quantization_k 4096 \
     --hnswlib_m 32 \
     --hnswlib_ef_construction 200 \
     --hnswlib_ef_search 5000 \
     --hnswlib_candidate_k 5000 \
-    --hnswlib_rerank true
+    --exact_rerank true
 ```
 
-The converter preserves the full source sequence and structure while adding
-the selected slice coordinates, so GINFINITY can retain paired-neighbour
-context and emit an 11-residue query embedding.
+GINflow generates all sliding windows from the full query molecules. The
+benchmark driver selects the fixed coordinate map described above when it
+needs exactly 512 query windows for R@100/R@500 comparison.
 
 If you want ordinary full-molecule query subjects instead, add
 `--full-molecules`:
 
 ```bash
 python3 bin/convert_query_selections.py \
-    --structures tests/data/rouskin_sample_6k.tsv \
-    --selections tests/data/queries_rouskin_6k.tsv \
-    --output tests/data/queries_rouskin_6k_full_structures.tsv \
+    --structures tests/data/rouskin_sample_30k.tsv \
+    --selections /mnt/ssd_samsung/ginflow-hnsw-research/rouskin_shared_queries/query_selections.tsv \
+    --output /mnt/ssd_samsung/ginflow-hnsw-research/rouskin_shared_queries/selected_structures.tsv \
     --full-molecules
 ```
 
@@ -170,7 +178,8 @@ GPU runtime profile). The default is `k=2048` centroids. Configure it with
 `--node_quantization_niter`, then tune `--hnswlib_m`,
 `--hnswlib_ef_construction`, and `--hnswlib_ef_search`. Use
 `--hnswlib_candidate_k` to control the candidate pool and
-`--hnswlib_rerank true` to score that pool with the original float16 windows.
+`--exact_rerank true` to score that pool with the original float16 windows.
+`--hnswlib_rerank true` remains a compatibility alias.
 
 To use the GPU companion for a build and query in one run:
 

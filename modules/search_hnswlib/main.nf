@@ -28,9 +28,11 @@ process SEARCH_HNSWLIB {
     def ef_search = params.hnswlib_ef_search != null ? "--ef-search ${params.hnswlib_ef_search}" : ''
     def threads = params.hnswlib_num_threads != null ? "--num-threads ${params.hnswlib_num_threads}" : ''
     def candidate_k = params.hnswlib_candidate_k != null ? "--candidate-k ${params.hnswlib_candidate_k}" : ''
-    def rerank = params.hnswlib_rerank ? "--rerank --query-embeddings query_embeddings/*.npz" : ''
+    def separate_rerank = params.exact_rerank || params.hnswlib_rerank
+    def search_k = separate_rerank ? params.hnswlib_candidate_k : params.seed_k
+    def candidate_arg = separate_rerank ? '' : candidate_k
     def raw_min_score = (params.seed_min_similarity as BigDecimal) * (params.window_size as BigDecimal)
-    def compact_min_score = params.hnswlib_rerank ? params.seed_min_similarity : raw_min_score
+    def compact_min_score = separate_rerank ? '-inf' : raw_min_score
     def gpu = task.accelerator as boolean
     def command = gpu ? """
     hnswlib_gpu.py search \\
@@ -39,11 +41,12 @@ process SEARCH_HNSWLIB {
         --database ${database} \\
         --query-embeddings query_embeddings/*.npz \\
         --output ${prefix}.seeds.tsv \\
-        --k ${params.seed_k} \\
+        --k ${search_k} \\
         --candidate-k ${params.hnswlib_gpu_candidate_k} \\
-        --min-similarity ${params.seed_min_similarity} \\
+        --min-similarity ${separate_rerank ? '-inf' : params.seed_min_similarity} \\
         --itopk-size ${params.hnswlib_gpu_itopk_size} \\
         --search-batch-size ${params.hnswlib_gpu_search_batch_size} \\
+        ${separate_rerank ? '--skip-rerank' : ''} \\
         ${args}
     """ : """
     g++ -O3 -std=c++11 -fopenmp \\
@@ -57,9 +60,8 @@ process SEARCH_HNSWLIB {
             --windows-dir quantized_windows \\
             --database ${database} \\
             --output ${prefix}.seeds.tsv \\
-            --k ${params.seed_k} \\
-            ${candidate_k} \\
-            ${rerank} \\
+            --k ${search_k} \\
+            ${candidate_arg} \\
             --min-similarity ${compact_min_score} \\
             ${ef_search} \\
             ${threads} \\
