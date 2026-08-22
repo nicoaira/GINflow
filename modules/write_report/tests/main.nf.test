@@ -64,6 +64,8 @@ nextflow_process {
                     assert html.contains('alt="GINflow"')
                     assert html.contains('data-theme="light"')
                     assert html.contains('theme-toggle')
+                    assert html.contains('back-to-top')
+                    assert html.contains('Back to top')
                     assert html.contains('rel="icon"')
                     assert html.contains('image/svg+xml')
                 },

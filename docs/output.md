@@ -107,7 +107,7 @@ GINFINITY-SW local HSPs are collapsed by query-target pair, ranked by ascending 
 
 ## report.html
 
-Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and paginated (10 / 25 / 50 / 100 / 150 per page, default 10). The default theme is light; `--report_theme dark` writes a gray-900 page, and a toggle in the masthead switches themes when viewing. The summary table and each hit card show database E, pair E, bits, total score, maximum HSP score, and HSP count, with the aligned span on both molecules. RNArtistCore and SW plots use a two-column Query | Target (or cosine | SW scores) panel. R4RNA is a single full-width alignment arc plot. The masthead uses `docs/images/ginflow_logo.svg`; the favicon is `docs/images/ginflow_icon.svg`.
+Self-contained search report written on every query run. Open it in a browser: hits are grouped by query, filterable by E-value, and paginated (10 / 25 / 50 / 100 / 150 per page, default 10). The default theme is light; `--report_theme dark` writes a gray-900 page, and a toggle in the masthead switches themes when viewing. The summary table and each hit card show database E, pair E, bits, total score, maximum HSP score, and HSP count, with the aligned span on both molecules. A floating **Back to top** control appears after scrolling and returns to the report header. RNArtistCore and SW plots use a two-column Query | Target (or cosine | SW scores) panel. R4RNA is a single full-width alignment arc plot. The masthead uses `docs/images/ginflow_logo.svg`; the favicon is `docs/images/ginflow_icon.svg`.
 
 ## plots/
 

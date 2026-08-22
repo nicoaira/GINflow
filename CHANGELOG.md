@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- The HTML report has a keyboard-accessible floating Back to top control with smooth-scroll and reduced-motion support.
 - Pair-level BLAST-style alignment results: `MERGE_ALIGNMENTS` collapses all HSPs for a query-target pair, retaining `total_score`, `max_score`, HSP provenance, and recomputed E-values.
 - The HTML report table and hit cards now show total score, max score, HSP count, and pair E-value.
 - `--quantize none|sq|pq|opq` compresses 128-d nodes **before** index windows. PQ/OPQ persist a codebook, optional OPQ rotation, and an SDC lookup table from the same train process (not a separate Nextflow process). Search of PQ/OPQ graphs uses ADC.

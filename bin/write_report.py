@@ -502,6 +502,7 @@ CSS = """
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--glass); color: var(--ink); font-family: var(--sans); }
+html { scroll-behavior: smooth; }
 body { min-height: 100vh; }
 .mast {
   position: relative;
@@ -521,6 +522,18 @@ body { min-height: 100vh; }
   padding: .3rem .6rem; border-radius: 3px; cursor: pointer;
 }
 .theme-toggle:hover, .theme-toggle:focus-visible { outline: 2px solid var(--pair); }
+.back-to-top {
+  position: fixed; z-index: 20; right: 1.2rem; bottom: 1.2rem;
+  display: inline-flex; align-items: center; gap: .35rem;
+  font: inherit; font-size: .75rem; letter-spacing: .06em; text-transform: uppercase;
+  border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  padding: .45rem .65rem; border-radius: 999px; cursor: pointer;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transform: translateY(.5rem);
+  transition: opacity .2s ease, transform .2s ease, background .2s ease, color .2s ease;
+}
+.back-to-top.visible { opacity: .94; visibility: visible; pointer-events: auto; transform: translateY(0); }
+.back-to-top:hover, .back-to-top:focus-visible { outline: 2px solid var(--pair); background: var(--pair); color: #fff; }
 .mast-kicker {
   font-family: var(--mono);
   letter-spacing: .28em;
@@ -683,15 +696,17 @@ table.hits tr[hidden] { display: none; }
   .span-row { grid-template-columns: 1fr; }
   .mast-logo { height: 2.7rem; max-width: 6.8rem; }
   .theme-toggle { position: static; margin: 0 0 .8rem auto; display: block; }
+  .back-to-top { right: .8rem; bottom: .8rem; }
 }
 @media print {
-  .queries, .controls, .gel-wrap, .mast, .theme-toggle { break-inside: avoid; }
-  .theme-toggle { display: none; }
+  .queries, .controls, .gel-wrap, .mast, .theme-toggle, .back-to-top { break-inside: avoid; }
+  .theme-toggle, .back-to-top { display: none; }
   .hit { break-inside: avoid; display: block !important; }
   .aln { background: #fff; color: #000; border: 1px solid #ccc; }
   body { background: #fff; }
 }
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   * { transition: none !important; }
 }
 """
@@ -712,6 +727,12 @@ JS = """
       document.documentElement.setAttribute("data-theme", next);
       toggle.textContent = themeLabel(next);
     });
+  }
+  const topLink = document.getElementById("back-to-top");
+  if (topLink) {
+    const updateTopLink = () => topLink.classList.toggle("visible", window.scrollY > 500);
+    window.addEventListener("scroll", updateTopLink, { passive: true });
+    updateTopLink();
   }
   const state = { query: "all", emax: Infinity, hideSelf: false, q: "", selected: 0, page: 0, pageSize: 10 };
   const rows = Array.from(document.querySelectorAll("tr[data-hit]"));
@@ -923,7 +944,7 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
 <style>{CSS}</style>
 </head>
 <body>
-<header class="mast">
+<header class="mast" id="report-top">
   <button type="button" class="theme-toggle" id="theme-toggle">{escape(toggle_label)}</button>
   {brand}
   <p class="mast-kicker">ginflow</p>
@@ -994,6 +1015,7 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
   from reverse-sequence null alignments ({escape(str(evd.get("fit_method", "length-aware Gumbel MLE")))}).
   Generated {escape(generated)}.</p>
 </footer>
+<a class="back-to-top" id="back-to-top" href="#report-top" aria-label="Back to top" title="Back to top">↑ <span>Top</span></a>
 <script>{JS}</script>
 </body>
 </html>
