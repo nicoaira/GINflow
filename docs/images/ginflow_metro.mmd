@@ -5,49 +5,50 @@
 %%metro legend: bl
 %%metro compact_offsets: true
 %%metro directional: true
-%%metro caption: GINFINITY graphs · vector-index seeds · GINFINITY-SW alignments
+%%metro caption: GINFINITY graphs · index seeds · SW alignments
 %%metro line_order: definition
 %%metro diamond_style: symmetric
 %%metro section_y_gap: 70
 
 %%metro file: input_tsv | TSV | Structures
 %%metro file: query_tsv | TSV | Queries
-%%metro dir: faiss_out | FAISS | Database
-%%metro dir: faiss_in | FAISS | Existing DB
+%%metro dir: index_out | DB | Database
+%%metro dir: index_in | DB | Existing DB
 %%metro file: alignments_out | TSV | Alignments
 %%metro file: report_out | HTML | Report
-
-%%metro off_track: faiss_in
 
 %%metro line: index | Build database | #24B064
 %%metro line: search | Build and search | #0570b0
 %%metro line: existing | Search existing DB | #e63946
-%%metro line: rnartist | RNArtistCore | #ECDC86 | dashed
-%%metro line: r4rna | R4RNA | #00acc1 | dashed
-%%metro line: sw | SW matrices | #9b59b6 | dashed
 
 %%metro marker: estimate_evd | circle, open
-%%metro marker: draw_rnartist | circle, open
-%%metro marker: draw_r4rna | circle, open
-%%metro marker: draw_sw | circle, open
+%%metro marker: rerank | circle, open
+%%metro marker: plot_alignments | circle, open
+%%metro marker: db_quantize | circle, open
+%%metro marker: db_qwindows | circle, open
+%%metro marker: q_quantize | circle, open
+%%metro marker: q_qwindows | circle, open
 %%metro marker_legend: circle, open | Optional
 
 %%metro process: db_graphs | PREPARE_DB:BUILD_RNA_GRAPHS
 %%metro process: db_embed | PREPARE_DB:EMBED_RNA_GRAPHS
+%%metro process: db_quantize | PREPARE_DB:(FIT_NODE_QUANTIZER|APPLY_NODE_QUANTIZER)
+%%metro process: db_qwindows | PREPARE_DB:GENERATE_QUANTIZED_WINDOWS
 %%metro process: db_windows | PREPARE_DB:GENERATE_WINDOWS
 %%metro process: q_graphs | PREPARE_QUERY:BUILD_RNA_GRAPHS
 %%metro process: q_embed | PREPARE_QUERY:EMBED_RNA_GRAPHS
+%%metro process: q_quantize | PREPARE_QUERY:(FIT_NODE_QUANTIZER|APPLY_NODE_QUANTIZER)
+%%metro process: q_qwindows | PREPARE_QUERY:GENERATE_QUANTIZED_WINDOWS
 %%metro process: q_windows | PREPARE_QUERY:GENERATE_WINDOWS
-%%metro process: build_index | BUILD_(FAISS|SCANN|NGT|CUVS)_INDEX
+%%metro process: build_index | BUILD_(FAISS|CUVS|PQ_CAGRA|HNSWLIB)_INDEX
 %%metro process: estimate_evd | ESTIMATE_EVD
-%%metro process: search_index | SEARCH_(FAISS|SCANN|NGT|CUVS)
+%%metro process: search_index | SEARCH_(FAISS|CUVS|PQ_CAGRA|HNSWLIB)
+%%metro process: rerank | RERANK_CANDIDATES
 %%metro process: cluster_seeds | CLUSTER_SEEDS
 %%metro process: split_clusters | SPLIT_CLUSTERS
 %%metro process: align_clusters | ALIGN_CLUSTERS
 %%metro process: merge_alignments | MERGE_ALIGNMENTS
-%%metro process: draw_rnartist | DRAW_RNARTISTCORE
-%%metro process: draw_r4rna | DRAW_R4RNA
-%%metro process: draw_sw | DRAW_SW
+%%metro process: plot_alignments | DRAW_(RNARTISTCORE|R4RNA|SW)
 %%metro process: write_report | WRITE_REPORT
 
 %%metro grid: prepare_db | 0,0
@@ -55,73 +56,82 @@
 %%metro grid: index | 1,0
 %%metro grid: retrieve | 2,0
 %%metro grid: align | 3,0
-%%metro grid: report | 4,0
+%%metro grid: report | 3,1
 
 graph LR
-    subgraph prepare_db [Prepare database]
+    subgraph prepare_db [Prepare embeddings]
         input_tsv[ ]
         db_graphs[Build graphs]
         db_embed[Embed graphs]
-        db_windows[Slice windows]
+        db_windows[Generate windows]
+        db_quantize[Quantize\nembeddings]
+        db_qwindows[Generate\nquantized\nwindows]
         input_tsv -->|index,search| db_graphs
         db_graphs -->|index,search| db_embed
         db_embed -->|index,search| db_windows
+        db_embed -->|index,search| db_quantize
+        db_quantize -->|index,search| db_qwindows
     end
 
     subgraph prepare_query [Prepare query]
         query_tsv[ ]
         q_graphs[Build graphs]
         q_embed[Embed graphs]
-        q_windows[Slice windows]
+        q_windows[Generate windows]
+        q_quantize[Quantize\nembeddings]
+        q_qwindows[Generate\nquantized\nwindows]
         query_tsv -->|search,existing| q_graphs
         q_graphs -->|search,existing| q_embed
         q_embed -->|search,existing| q_windows
+        q_embed -->|search,existing| q_quantize
+        q_quantize -->|search,existing| q_qwindows
     end
 
     subgraph index [Index]
-        faiss_in[ ]
         build_index[Build index]
         estimate_evd[Estimate EVD]
-        faiss_out[ ]
-        faiss_in -->|existing| estimate_evd
+        index_out[ ]
         build_index -->|index,search| estimate_evd
-        estimate_evd -->|index| faiss_out
+        estimate_evd -->|index| index_out
     end
 
     subgraph retrieve [Search]
+        %%metro exit: right | search,existing
+        index_in[ ]
         search_index[Search index]
+        rerank[Rerank]
         cluster_seeds[Cluster seeds]
         split_clusters[Split clusters]
-        search_index -->|search,existing| cluster_seeds
+        index_in -->|existing| search_index
+        search_index -->|search,existing| rerank
+        rerank -->|search,existing| cluster_seeds
         cluster_seeds -->|search,existing| split_clusters
     end
 
     subgraph align [Align]
-        align_clusters[GINFINITY-SW]
+        %%metro direction: TB
+        %%metro entry: left | search,existing
+        %%metro exit: bottom | search,existing
+        align_clusters[SW Alignment]
         merge_alignments[Merge alignments]
-        alignments_out[ ]
-        align_clusters -->|search,existing,rnartist,r4rna,sw| merge_alignments
-        merge_alignments -->|search,existing| alignments_out
+        align_clusters -->|search,existing| merge_alignments
     end
 
     subgraph report [Report]
-        draw_rnartist[RNArtistCore]
-        draw_r4rna[R4RNA]
-        draw_sw[SW matrices]
+        %%metro direction: RL
+        %%metro entry: top | search,existing
+        plot_alignments[Plot alignments]
         write_report[Write report]
         report_out[ ]
-        draw_rnartist -->|rnartist| write_report
-        draw_r4rna -->|r4rna| write_report
-        draw_sw -->|sw| write_report
-        write_report -->|search,existing,rnartist,r4rna,sw| report_out
+        plot_alignments -->|search,existing| write_report
+        write_report -->|search,existing| report_out
     end
 
     %% Inter-section edges
     db_windows -->|index,search| build_index
+    db_qwindows -->|index,search| build_index
     q_windows -->|search,existing| search_index
-    estimate_evd -->|search,existing| search_index
+    q_qwindows -->|search,existing| search_index
+    estimate_evd -->|search| search_index
     split_clusters -->|search,existing| align_clusters
-    merge_alignments -->|search,existing| write_report
-    merge_alignments -->|rnartist| draw_rnartist
-    merge_alignments -->|r4rna| draw_r4rna
-    merge_alignments -->|sw| draw_sw
+    merge_alignments -->|search,existing| plot_alignments
