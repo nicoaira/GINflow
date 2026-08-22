@@ -187,6 +187,9 @@ Seeds are then clustered along nearby diagonals and each cluster is aligned with
 | `--cluster_max_diagonal_span` | `96` | Max diagonal breadth of one cluster |
 | `--cluster_max_seed_rank` | `10` | Ignore seed hits worse than this rank |
 | `--align_pad` | `32` | Extra nucleotides on each side of the cluster crop |
+| `--align_max_alignments` | `16` | Maximum disjoint local HSPs used for pair-level EVD calibration |
+| `--align_min_score` | `0.0` | Minimum HSP score retained for pair-level EVD calibration |
+| `--align_min_match_count` | `1` | Minimum matched columns retained for pair-level EVD calibration |
 | `--evd_samples` | `1000` | Reverse-sequence null alignments used to fit λ and K |
 | `--evd_max_length` | `400` | Max null-sequence length during EVD calibration |
 
@@ -202,7 +205,7 @@ Optional structure plots (`--plot_backend rnartistcore`, `r4rna`, or `both`) dra
 | `--plot_highlight_colour` | `#24B064` | Colour of the aligned span, shared pairs, matching bases, and SW traceback (nf-core green) |
 | `--report_theme` | `light` | `light` or `dark` colour theme for `report.html` |
 
-Alignments are ranked by ascending database E-value. E = K m N exp(−λS), where m is the query length and N is the number of residues in the searchable database. λ and K are fit at database-build time from Smith–Waterman scores of reversed real embeddings (preserves local embedding correlation, destroys homology). The legacy `K = exp(−λμ)` conversion is not used; K comes from a length-aware Gumbel MLE so that μ = ln(Kmn)/λ.
+Alignments are first collapsed by query-target pair. Each row reports the sum of disjoint local HSP scores (`total_score`) and the strongest HSP (`max_score`); `score` is retained as a legacy alias for `total_score`. Pairs are ranked by ascending database E-value, computed once from the aggregate score: E = K m N exp(−λS_total), where m is the query length and N is the number of residues in the searchable database. λ and K are fit at database-build time from reverse-sequence multi-HSP scores (preserves local embedding correlation, destroys homology). The legacy `K = exp(−λμ)` conversion is not used; K comes from a length-aware Gumbel MLE so that μ = ln(Kmn)/λ.
 
 ## Run
 

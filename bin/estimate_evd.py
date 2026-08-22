@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from ginfinity_sw import ScoringParameters, align
+from ginfinity_sw import ScoringParameters, align_multiple
 
 
 EULER_MASCHERONI = 0.5772156649015329
@@ -74,6 +74,9 @@ def sample_null_scores(
     n_samples: int,
     max_length: int,
     max_cells: int,
+    max_alignments: int,
+    min_score: float,
+    min_match_count: int,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     identifiers = list(embeddings)
@@ -85,7 +88,15 @@ def sample_null_scores(
     # by compilation.
     probe_q = embeddings[identifiers[0]][: min(8, embeddings[identifiers[0]].shape[0])]
     probe_t = embeddings[identifiers[1]][: min(8, embeddings[identifiers[1]].shape[0])]
-    align(probe_q, probe_t, params=params, traceback=False, max_cells=max_cells)
+    align_multiple(
+        probe_q,
+        probe_t,
+        params=params,
+        max_alignments=max_alignments,
+        min_score=min_score,
+        min_match_count=min_match_count,
+        max_cells=max_cells,
+    )
 
     attempts = 0
     limit = max(n_samples * 8, n_samples + 16)
@@ -97,7 +108,15 @@ def sample_null_scores(
         cells = int(query.shape[0]) * int(target.shape[0])
         if cells == 0 or cells > max_cells:
             continue
-        score = float(align(query, target, params=params, traceback=False, max_cells=max_cells).score)
+        score = float(align_multiple(
+            query,
+            target,
+            params=params,
+            max_alignments=max_alignments,
+            min_score=min_score,
+            min_match_count=min_match_count,
+            max_cells=max_cells,
+        ).total_score)
         scores.append(score)
         query_lengths.append(int(query.shape[0]))
         target_lengths.append(int(target.shape[0]))
@@ -265,6 +284,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--samples", type=int, default=1000)
     parser.add_argument("--max-length", type=int, default=400)
     parser.add_argument("--max-cells", type=int, default=16_777_216)
+    parser.add_argument("--max-alignments", type=int, default=16)
+    parser.add_argument("--min-score", type=float, default=0.0)
+    parser.add_argument("--min-match-count", type=int, default=1)
     parser.add_argument("--seed", type=int, default=1)
     return parser.parse_args(argv)
 
@@ -274,12 +296,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.samples < 20:
         print("error: --samples must be >= 20", file=sys.stderr)
         return 2
+    if args.max_alignments < 1:
+        print("error: --max-alignments must be >= 1", file=sys.stderr)
+        return 2
+    if not math.isfinite(args.min_score):
+        print("error: --min-score must be finite", file=sys.stderr)
+        return 2
+    if args.min_match_count < 1:
+        print("error: --min-match-count must be >= 1", file=sys.stderr)
+        return 2
     try:
         embeddings = load_embeddings(args.database / "embeddings.npz")
         params, scoring_sha256 = load_parameters(args.parameters)
         rng = np.random.default_rng(args.seed)
         scores, q_len, t_len = sample_null_scores(
-            embeddings, params, args.samples, args.max_length, args.max_cells, rng
+            embeddings,
+            params,
+            args.samples,
+            args.max_length,
+            args.max_cells,
+            args.max_alignments,
+            args.min_score,
+            args.min_match_count,
+            rng,
         )
         fit = fit_karlin_altschul(scores, q_len, t_len)
     except (OSError, ValueError, TypeError) as exc:
@@ -291,6 +330,10 @@ def main(argv: list[str] | None = None) -> int:
         "K": fit["K"],
         "null_model": "reverse_sequence",
         "fit_method": "length_aware_gumbel_mle",
+        "score_definition": "sum_of_disjoint_local_hsp_scores",
+        "max_alignments": args.max_alignments,
+        "min_score": args.min_score,
+        "min_match_count": args.min_match_count,
         "n_samples": int(scores.size),
         "n_positive": fit["n_positive"],
         "n_zero": fit["n_zero"],

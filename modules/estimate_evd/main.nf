@@ -4,8 +4,8 @@ process ESTIMATE_EVD {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e6/e6f98c10bebcb0d03b7c62b0ee42a9034c8114e4a1b07f47a9ae42bdca4ccd69/data' :
-        'community.wave.seqera.io/library/python_ginfinity-sw:5c1c3fedfe3d92e0' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e7/e74cfb57864deb17f17a966196bf9cde064bb56aa8df1fb6fe2d906008ba4148/data' :
+        'community.wave.seqera.io/library/python_ginfinity-sw:b934c840797fac86' }"
 
     input:
     path database
@@ -28,6 +28,9 @@ process ESTIMATE_EVD {
         --samples ${params.evd_samples} \\
         --max-length ${params.evd_max_length} \\
         --max-cells ${params.align_max_cells} \\
+        --max-alignments ${params.align_max_alignments} \\
+        --min-score ${params.align_min_score} \\
+        --min-match-count ${params.align_min_match_count} \\
         --seed ${params.evd_seed} \\
         ${args}
 

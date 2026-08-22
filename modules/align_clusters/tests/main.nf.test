@@ -97,21 +97,27 @@ nextflow_process {
                     def header = path(process.out.alignments.get(0)).readLines()[0]
                     assert header.contains('evalue')
                     assert header.contains('bit_score')
+                    assert header.contains('total_score')
+                    assert header.contains('max_score')
+                    assert header.contains('log_evalue')
                     assert header.contains('query_aligned')
                     assert header.contains('target_aligned')
                     def rows = path(process.out.alignments.get(0)).readLines().drop(1).findAll { it }
                     assert rows.size() > 0
-                    def evals = rows.collect { line -> line.split('\t')[5] as double }
+                    def columns = header.split('\t')
+                    def index = { name -> columns.findIndexOf { it == name } }
+                    def evals = rows.collect { line -> line.split('\t', -1)[index('evalue')] as double }
                     assert evals == evals.toSorted()
                     def selfHits = rows.findAll { line ->
                         def cols = line.split('\t')
-                        cols[1] == cols[2]
+                        cols[index('query_id')] == cols[index('target_id')]
                     }
                     assert selfHits.size() > 0
                     selfHits.each { line ->
-                        def cols = line.split('\t')
-                        assert (cols[3] as double) > 0
-                        assert (cols[5] as double) >= 0
+                        def cols = line.split('\t', -1)
+                        assert (cols[index('total_score')] as double) > 0
+                        assert (cols[index('max_score')] as double) > 0
+                        assert (cols[index('evalue')] as double) >= 0
                     }
                 },
                 {

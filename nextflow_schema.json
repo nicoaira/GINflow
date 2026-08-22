@@ -451,6 +451,23 @@
                     "minimum": 1,
                     "description": "Maximum DP cells (crop length product) allowed for one cluster."
                 },
+                "align_max_alignments": {
+                    "type": "integer",
+                    "default": 16,
+                    "minimum": 1,
+                    "description": "Maximum number of disjoint local HSPs used when calibrating pair-level scores."
+                },
+                "align_min_score": {
+                    "type": "number",
+                    "default": 0.0,
+                    "description": "Minimum local HSP score retained for pair-level EVD calibration."
+                },
+                "align_min_match_count": {
+                    "type": "integer",
+                    "default": 1,
+                    "minimum": 1,
+                    "description": "Minimum number of matched residue columns in an HSP retained for EVD calibration."
+                },
                 "evd_samples": {
                     "type": "integer",
                     "default": 1000,

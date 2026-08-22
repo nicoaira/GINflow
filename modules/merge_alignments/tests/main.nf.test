@@ -7,16 +7,18 @@ nextflow_process {
     tag "modules"
     tag "merge_alignments"
 
-    test("Should rank concatenated alignment tables by E-value") {
+    test("Should collapse multiple HSPs into one query-target result") {
 
         when {
             process {
                 """
                 input[0] = [
                     file("${projectDir}/tests/data/plot_fixture.tsv", checkIfExists: true),
+                    file("${moduleDir}/tests/data/multi.tsv", checkIfExists: true),
                     file("${moduleDir}/tests/data/second.tsv", checkIfExists: true)
                 ]
                 input[1] = []
+                input[2] = file("${projectDir}/modules/write_report/tests/data/evd.json", checkIfExists: true)
                 """
             }
         }
@@ -27,10 +29,20 @@ nextflow_process {
                 { assert process.out.alignments.size() == 1 },
                 {
                     def lines = path(process.out.alignments.get(0)).readLines().findAll { it }
-                    assert lines[0].contains('evalue')
-                    def evals = lines.drop(1).collect { it.split('\t')[5] as double }
+                    assert lines[0].contains('total_score')
+                    assert lines[0].contains('max_score')
+                    assert lines[0].contains('alignment_count')
+                    def header = lines[0].split('\t')
+                    def index = { name -> header.findIndexOf { it == name } }
+                    def records = lines.drop(1).collect { it.split('\t', -1) }
+                    def evals = records.collect { it[index('evalue')] as double }
                     assert evals == evals.toSorted()
                     assert evals.size() == 2
+                    def pair = records.find { it[index('query_id')] == 'X06694.1/9-124' }
+                    assert pair[index('total_score')] as double == 16.0
+                    assert pair[index('max_score')] as double == 10.0
+                    assert pair[index('alignment_count')] as int == 2
+                    assert pair[index('score')] as double == 16.0
                 },
                 {
                     assert snapshot(process.out.versions).match()

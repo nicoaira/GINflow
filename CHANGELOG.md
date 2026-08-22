@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- Pair-level BLAST-style alignment results: `MERGE_ALIGNMENTS` collapses all HSPs for a query-target pair, retaining `total_score`, `max_score`, HSP provenance, and recomputed E-values.
+- The HTML report table and hit cards now show total score, max score, HSP count, and pair E-value.
 - `--quantize none|sq|pq|opq` compresses 128-d nodes **before** index windows. PQ/OPQ persist a codebook, optional OPQ rotation, and an SDC lookup table from the same train process (not a separate Nextflow process). Search of PQ/OPQ graphs uses ADC.
 - Unified `--index cagra`: stock cuVS CAGRA for uncompressed/SQ windows, custom PQ-CAGRA for `--quantize pq|opq`.
 - `--cagra_to_hnsw` / `--search_device cpu` to build CAGRA on GPU and search on CPU.
@@ -49,7 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Metro-map pipeline schematic (`docs/images/ginflow_metro.svg`) generated with [nf-metro](https://github.com/seqeralabs/nf-metro) from `docs/images/ginflow_metro.mmd`.
 - FAISS seed search: `GENERATE_WINDOWS` slices concatenated `w=11` windows, `BUILD_FAISS_INDEX` writes a reusable `IndexFlatIP` database, and `SEARCH_FAISS` returns seeds above `--seed_min_similarity`. Modes are inferred from `--input` / `--query` / `--database`.
 - Seed clustering (`CLUSTER_SEEDS`) and GINFINITY-SW alignment (`ALIGN_CLUSTERS`) on a padded crop of each cluster. The FAISS directory now also packs residue embeddings and sequences so query-only runs can align.
-- Database E-values: `ESTIMATE_EVD` fits Karlin–Altschul λ, K from reverse-sequence GINFINITY-SW scores; `ALIGN_CLUSTERS` ranks hits by ascending E = K m N exp(−λS).
+- Database E-values: `ESTIMATE_EVD` fits Karlin–Altschul λ, K from reverse-sequence multi-HSP GINFINITY-SW scores; `MERGE_ALIGNMENTS` ranks pair results by ascending E = K m N exp(−λS_total).
 - Optional alignment plots: `DRAW_RNARTISTCORE` and `DRAW_R4RNA` (`--plot_backend`). Conda packages `nicolas.aira::rnartistcore=0.4.6` (OpenJDK 17–21) and `nicolas.aira::r-r4rna=2.0.9`, with Wave-frozen Docker and Singularity images. Each process draws molecules in parallel with `task.cpus` (6 on `process_medium`).
 - Optional SW-matrix plots: `DRAW_SW` (`--plot_sw`) writes crop cosine and substitution-score SVGs with the Smith–Waterman traceback on the score plot. Uses the existing GINFINITY-SW container. Inlined in `report.html`.
 - Search HTML report: `WRITE_REPORT` writes a self-contained `report.html` on every query run (ranked hits, span rails, inlined plots).
@@ -84,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graph and embed modules use `nicolas.aira::ginfinity=1.2.1` (sliced graphs; float16 embeddings).
 - FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`). GPU FAISS uses `pytorch::faiss-gpu=1.10.0` (CUDA 12.1 runtime) so it runs on host drivers that report CUDA 12.1/12.2 (e.g. 535.x). conda-forge `faiss-gpu` 1.10 is CUDA 12.9-only.
 - HNSWLIB modules use conda-forge `hnswlib=0.8.0` with Python 3.12 and NumPy 2.2.6; use `-profile conda` or `-profile wave` because the pinned FAISS/ScaNN Docker images do not include hnswlib.
-- Alignment uses `nicolas.aira::ginfinity-sw=1.0.1`.
+- Alignment uses `nicolas.aira::ginfinity-sw=1.1.0` and its disjoint multi-HSP collapse API.
 - Plotting uses `nicolas.aira::rnartistcore=0.4.6` and `nicolas.aira::r-r4rna=2.0.9`.
 
 ### `Deprecated`

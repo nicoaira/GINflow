@@ -1,11 +1,11 @@
 {
-    "Should rank concatenated alignment tables by E-value": {
+    "Should collapse multiple HSPs into one query-target result": {
         "content": [
             [
                 "versions.yml:md5,a1f1ff968d7d936340d42c269310d5fb"
             ]
         ],
-        "timestamp": "2026-08-15T12:25:10.186185442",
+        "timestamp": "2026-08-22T13:21:59.613943015",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.04.6"

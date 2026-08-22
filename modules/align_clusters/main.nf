@@ -4,8 +4,8 @@ process ALIGN_CLUSTERS {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e6/e6f98c10bebcb0d03b7c62b0ee42a9034c8114e4a1b07f47a9ae42bdca4ccd69/data' :
-        'community.wave.seqera.io/library/python_ginfinity-sw:5c1c3fedfe3d92e0' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e7/e74cfb57864deb17f17a966196bf9cde064bb56aa8df1fb6fe2d906008ba4148/data' :
+        'community.wave.seqera.io/library/python_ginfinity-sw:b934c840797fac86' }"
 
     input:
     path clusters
@@ -52,7 +52,7 @@ process ALIGN_CLUSTERS {
     stub:
     def prefix = task.ext.prefix ?: clusters.baseName
     """
-    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\tbit_score\\tevalue\\tevalue_pair\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tseed_count\\tmax_seed_score\\tquery_sequence\\tquery_structure\\ttarget_sequence\\ttarget_structure\\tquery_aligned\\ttarget_aligned" > ${prefix}.alignments.tsv
+    echo -e "cluster_id\\tquery_id\\ttarget_id\\tscore\\ttotal_score\\tmax_score\\tbit_score\\tevalue\\tevalue_pair\\tlog_evalue\\talignment_count\\tquery_start\\tquery_end\\ttarget_start\\ttarget_end\\tquery_length\\ttarget_length\\tmatch_count\\taligned_columns\\tungapped_columns\\tbase_matches\\tstructure_matches\\tseed_count\\tmax_seed_score\\tquery_sequence\\tquery_structure\\ttarget_sequence\\ttarget_structure\\tquery_aligned\\ttarget_aligned" > ${prefix}.alignments.tsv
     touch ${prefix}.alignments.txt
     echo '{}' > ${prefix}.alignment_stats.json
 

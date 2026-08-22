@@ -2,10 +2,10 @@
     "Should align smoke-test self-clusters": {
         "content": [
             [
-                "versions.yml:md5,7d3ec8f1675183f3fc6d66261773a6b7"
+                "versions.yml:md5,cefcf1c94be62e9b2f7dedbac994b28f"
             ]
         ],
-        "timestamp": "2026-08-14T16:14:19.805066305",
+        "timestamp": "2026-08-22T13:23:10.588261645",
         "meta": {
             "nf-test": "0.9.5",
             "nextflow": "26.04.6"

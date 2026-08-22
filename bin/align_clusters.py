@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Align seed clusters with GINFINITY-SW on a padded crop of each HSP."""
+"""Align seed clusters with GINFINITY-SW on a padded crop of each HSP.
+
+This process deliberately emits one row per seed cluster. MERGE_ALIGNMENTS is
+the pair-level boundary: it combines all rows with the same query and target
+into one BLAST-style result.
+"""
 from __future__ import annotations
 
 import argparse
@@ -105,9 +110,13 @@ ALIGNMENT_COLUMNS = [
     "query_id",
     "target_id",
     "score",
+    "total_score",
+    "max_score",
     "bit_score",
     "evalue",
     "evalue_pair",
+    "log_evalue",
+    "alignment_count",
     "query_start",
     "query_end",
     "target_start",
@@ -116,6 +125,9 @@ ALIGNMENT_COLUMNS = [
     "target_length",
     "match_count",
     "aligned_columns",
+    "ungapped_columns",
+    "base_matches",
+    "structure_matches",
     "seed_count",
     "max_seed_score",
     "query_sequence",
@@ -134,6 +146,36 @@ def aligned_strings(result: Alignment, query_seq: str, target_seq: str) -> tuple
         query_parts.append("-" if query < 0 else query_seq[query])
         target_parts.append("-" if target < 0 else target_seq[target])
     return "".join(query_parts), "".join(target_parts)
+
+
+def structure_state(character: str) -> int:
+    return 0 if character == "(" else (2 if character == ")" else 1)
+
+
+def identity_counts(
+    result: Alignment,
+    query_seq: str,
+    query_structure: str,
+    target_seq: str,
+    target_structure: str,
+) -> tuple[int, int, int]:
+    """Return base matches, structure-state matches, and ungapped columns."""
+    base_matches = 0
+    structure_matches = 0
+    ungapped = 0
+    for query, target in result.columns:
+        if query < 0 or target < 0:
+            continue
+        ungapped += 1
+        base_matches += int(
+            query_seq[query].upper().replace("T", "U")
+            == target_seq[target].upper().replace("T", "U")
+        )
+        structure_matches += int(
+            structure_state(query_structure[query])
+            == structure_state(target_structure[target])
+        )
+    return base_matches, structure_matches, ungapped
 
 
 def load_json(path: Path) -> dict:
@@ -337,15 +379,25 @@ def main(argv: list[str] | None = None) -> int:
         query_aligned, target_aligned = aligned_strings(
             result, query_meta[query_id][0], target_meta[target_id][0]
         )
+        base_matches, structure_matches, ungapped_columns = identity_counts(
+            result,
+            query_meta[query_id][0],
+            query_meta[query_id][1],
+            target_meta[target_id][0],
+            target_meta[target_id][1],
+        )
         rows.append({
             "cluster_id": cluster["cluster_id"],
             "query_id": query_id,
             "target_id": target_id,
             "score": result.score,
+            "total_score": result.score,
+            "max_score": result.score,
             "bit_score": bits,
             "evalue": evalue_db,
             "evalue_pair": evalue_from_log(log_pair),
             "log_evalue": log_db,
+            "alignment_count": 1,
             "query_start": result.query_span[0],
             "query_end": result.query_span[1],
             "target_start": result.target_span[0],
@@ -354,6 +406,9 @@ def main(argv: list[str] | None = None) -> int:
             "target_length": target_length,
             "match_count": result.match_count,
             "aligned_columns": len(result.columns),
+            "ungapped_columns": ungapped_columns,
+            "base_matches": base_matches,
+            "structure_matches": structure_matches,
             "seed_count": cluster.get("seed_count", ""),
             "max_seed_score": cluster.get("max_score", ""),
             "query_sequence": query_meta[query_id][0],
@@ -380,9 +435,13 @@ def main(argv: list[str] | None = None) -> int:
             "query_id": item["query_id"],
             "target_id": item["target_id"],
             "score": f"{item['score']:.6f}",
+            "total_score": f"{item['total_score']:.6f}",
+            "max_score": f"{item['max_score']:.6f}",
             "bit_score": f"{item['bit_score']:.3f}",
             "evalue": f"{item['evalue']:.6g}",
             "evalue_pair": f"{item['evalue_pair']:.6g}",
+            "log_evalue": f"{item['log_evalue']:.6g}",
+            "alignment_count": item["alignment_count"],
             "query_start": item["query_start"],
             "query_end": item["query_end"],
             "target_start": item["target_start"],
@@ -391,6 +450,9 @@ def main(argv: list[str] | None = None) -> int:
             "target_length": item["target_length"],
             "match_count": item["match_count"],
             "aligned_columns": item["aligned_columns"],
+            "ungapped_columns": item["ungapped_columns"],
+            "base_matches": item["base_matches"],
+            "structure_matches": item["structure_matches"],
             "seed_count": item["seed_count"],
             "max_seed_score": item["max_seed_score"],
             "query_sequence": item["query_sequence"],
@@ -405,7 +467,8 @@ def main(argv: list[str] | None = None) -> int:
             t_seq, t_struct = target_meta[item["target_id"]]
             header = (
                 f"# cluster {item['cluster_id']}  {item['query_id']} vs {item['target_id']}  "
-                f"score={item['score']:.4f}  bits={item['bit_score']:.2f}  E={item['evalue']:.3g}"
+                f"hsp_score={item['score']:.4f}  bits={item['bit_score']:.2f}  "
+                f"E_hsp={item['evalue']:.3g}"
             )
             texts.append(header + "\n" + format_alignment(item["result"], q_seq, q_struct, t_seq, t_struct))
 
@@ -419,6 +482,7 @@ def main(argv: list[str] | None = None) -> int:
     stats = {
         "clusters": len(clusters),
         "alignments": len(formatted_rows),
+        "hsp_alignments": len(formatted_rows),
         "skipped": skipped,
         "lambda": lam,
         "K": k_value,

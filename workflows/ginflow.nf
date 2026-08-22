@@ -252,7 +252,8 @@ workflow GINFLOW {
 
         MERGE_ALIGNMENTS(
             ALIGN_CLUSTERS.out.alignments.collect().ifEmpty([]),
-            ALIGN_CLUSTERS.out.text.collect().ifEmpty([])
+            ALIGN_CLUSTERS.out.text.collect().ifEmpty([]),
+            ch_evd.collect()
         )
         ch_versions       = ch_versions.mix(MERGE_ALIGNMENTS.out.versions)
         ch_alignments     = MERGE_ALIGNMENTS.out.alignments

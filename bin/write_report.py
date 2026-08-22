@@ -187,10 +187,19 @@ def build_hits(
         t_end = parse_int(row.get("target_end"))
         aligned = parse_int(row.get("aligned_columns"))
         matches = parse_int(row.get("match_count"))
+        ungapped = parse_int(row.get("ungapped_columns"), aligned)
+        base_matches = parse_int(row.get("base_matches"), -1)
+        structure_matches = parse_int(row.get("structure_matches"), -1)
         block = texts.get((cluster_id, query_id, target_id), {})
         cover_q = (q_end - q_start) / q_len if q_len else 0.0
         cover_t = (t_end - t_start) / t_len if t_len else 0.0
         pair_id = matches / aligned if aligned else 0.0
+        base_identity = block.get("base_identity")
+        structure_identity = block.get("structure_identity")
+        if base_matches >= 0 and ungapped:
+            base_identity = 100.0 * base_matches / ungapped
+        if structure_matches >= 0 and ungapped:
+            structure_identity = 100.0 * structure_matches / ungapped
         hits.append({
             "index": index,
             "rank": index + 1,
@@ -198,11 +207,15 @@ def build_hits(
             "query_id": query_id,
             "target_id": target_id,
             "self": query_id == target_id,
-            "score": parse_float(row.get("score")),
+            "score": parse_float(row.get("total_score"), parse_float(row.get("score"))),
+            "total_score": parse_float(row.get("total_score"), parse_float(row.get("score"))),
+            "max_score": parse_float(row.get("max_score"), parse_float(row.get("score"))),
+            "alignment_count": parse_int(row.get("alignment_count"), 1),
             "bit_score": parse_float(row.get("bit_score")),
             "evalue": evalue,
             "evalue_pair": parse_float(row.get("evalue_pair"), math.inf),
             "evalue_label": fmt_evalue(evalue),
+            "evalue_pair_label": fmt_evalue(parse_float(row.get("evalue_pair"), math.inf)),
             "eclass": e_class(evalue),
             "neglog10e": log10_e(evalue),
             "query_start": q_start,
@@ -217,8 +230,8 @@ def build_hits(
             "coverage_query": cover_q,
             "coverage_target": cover_t,
             "pair_identity": pair_id,
-            "base_identity": block.get("base_identity"),
-            "structure_identity": block.get("structure_identity"),
+            "base_identity": base_identity,
+            "structure_identity": structure_identity,
             "query_sequence": row.get("query_sequence", ""),
             "query_structure": row.get("query_structure", ""),
             "target_sequence": row.get("target_sequence", ""),
@@ -239,7 +252,7 @@ def query_summaries(hits: list[dict]) -> list[dict]:
         grouped.setdefault(hit["query_id"], []).append(hit)
     summaries = []
     for query_id, group in grouped.items():
-        best = min(group, key=lambda item: (item["evalue"], -item["score"]))
+        best = min(group, key=lambda item: (item["evalue"], -item["total_score"], -item["max_score"]))
         summaries.append({
             "query_id": query_id,
             "n_hits": len(group),
@@ -372,8 +385,11 @@ def hit_article(hit: dict, colour: str) -> str:
     </div>
     <dl class="metrics">
       <div><dt>E</dt><dd class="e {hit['eclass']}">{escape(hit['evalue_label'])}</dd></div>
+      <div><dt>E pair</dt><dd>{escape(hit['evalue_pair_label'])}</dd></div>
       <div><dt>bits</dt><dd>{hit['bit_score']:.1f}</dd></div>
-      <div><dt>score</dt><dd>{hit['score']:.2f}</dd></div>
+      <div><dt>total score</dt><dd>{hit['total_score']:.2f}</dd></div>
+      <div><dt>max score</dt><dd>{hit['max_score']:.2f}</dd></div>
+      <div><dt>HSPs</dt><dd>{hit['alignment_count']}</dd></div>
       <div><dt>base id</dt><dd>{escape(fmt_pct(base_id))}</dd></div>
       <div><dt>structure id</dt><dd>{escape(fmt_pct(hit["structure_identity"]))}</dd></div>
     </dl>
@@ -856,7 +872,11 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
             f'<td class="idc">{escape(hit["query_id"])}</td>'
             f'<td class="idc">{escape(hit["target_id"])}{self_mark}</td>'
             f'<td class="e {hit["eclass"]}">{escape(hit["evalue_label"])}</td>'
+            f'<td>{escape(hit["evalue_pair_label"])}</td>'
             f'<td>{hit["bit_score"]:.1f}</td>'
+            f'<td>{hit["total_score"]:.2f}</td>'
+            f'<td>{hit["max_score"]:.2f}</td>'
+            f'<td>{hit["alignment_count"]}</td>'
             f'<td>{escape(fmt_pct(base_id))}</td>'
             f'<td>{escape(fmt_pct(hit["structure_identity"]))}</td>'
             f'<td>{hit["query_start"]}–{hit["query_end"]}</td>'
@@ -870,9 +890,9 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
     residues = evd.get("database_residues")
     n_db = evd.get("database_sequences")
     methods = (
-        f"E = K m N exp(−λS), with m = query length and N = {residues} database residues"
+        f"E = K m N exp(−λS_total), with m = query length and N = {residues} database residues; each row is one query-target pair and retains total and max disjoint-HSP scores"
         if residues else
-        "E = K m N exp(−λS), with m = query length and N = searchable residues"
+        "E = K m N exp(−λS_total), with m = query length and N = searchable residues; each row is one query-target pair and retains total and max disjoint-HSP scores"
     )
     lam_txt = f"{lam:.4g}" if isinstance(lam, (int, float)) else "—"
     k_txt = f"{k_value:.4g}" if isinstance(k_value, (int, float)) else "—"
@@ -909,7 +929,7 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
   <p class="mast-kicker">ginflow</p>
   <h1>Search report</h1>
   {brand_end}
-  <p class="lede">Local GINFINITY-SW alignments ranked like BLAST, lowest database E-value first. The green mark is the aligned span; gray is the rest of the molecule.</p>
+  <p class="lede">Local GINFINITY-SW results collapsed by query-target pair and ranked like BLAST, lowest database E-value first. Each result shows total and maximum HSP scores; the green mark is the aligned span and gray is the rest of the molecule.</p>
   <ul class="stats">
     <li><b>{n_query}</b><span>queries</span></li>
     <li><b>{n_align}</b><span>alignments</span></li>
@@ -957,7 +977,7 @@ def render_html(hits: list[dict], queries: list[dict], evd: dict, meta: dict, co
     </div>
     <div class="table-wrap">
       <table class="hits" id="hit-table">
-        <thead><tr><th>#</th><th>query</th><th>target</th><th>E</th><th>bits</th><th>base id</th><th>structure id</th><th>q span</th><th>t span</th></tr></thead>
+        <thead><tr><th>#</th><th>query</th><th>target</th><th>E</th><th>E pair</th><th>bits</th><th>total score</th><th>max score</th><th>HSPs</th><th>base id</th><th>structure id</th><th>q span</th><th>t span</th></tr></thead>
         <tbody>{''.join(rows_html)}</tbody>
       </table>
     </div>
