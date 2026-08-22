@@ -133,6 +133,7 @@ def match_plot(
     target_id: str,
     kind: str,
     cluster_id: str = "",
+    allow_fallback: bool = True,
 ) -> str | None:
     safe_q = safe_name(query_id)
     safe_t = safe_name(target_id)
@@ -143,11 +144,48 @@ def match_plot(
     for exact in names:
         if exact in svgs:
             return svgs[exact]
+    if not allow_fallback:
+        return None
     suffix = f"_{kind}.svg"
     for name, body in svgs.items():
         if name.endswith(suffix) and safe_q in name and safe_t in name:
             return body
     return None
+
+
+def match_plots(
+    svgs: dict[str, str],
+    index: int,
+    query_id: str,
+    target_id: str,
+    kind: str,
+    cluster_ids: list[str],
+) -> list[str]:
+    """Find every plot available for the HSPs in one collapsed pair row."""
+    found: list[str] = []
+    for cluster_id in cluster_ids:
+        body = match_plot(
+            svgs,
+            index,
+            query_id,
+            target_id,
+            kind,
+            cluster_id,
+            allow_fallback=False,
+        )
+        if body is not None:
+            found.append(body)
+    if found:
+        return found
+    fallback = match_plot(
+        svgs,
+        index,
+        query_id,
+        target_id,
+        kind,
+        allow_fallback=True,
+    )
+    return [fallback] if fallback is not None else []
 
 
 def fmt_pct(value: float | None) -> str:
@@ -178,6 +216,11 @@ def build_hits(
         query_id = row.get("query_id", f"query_{index}")
         target_id = row.get("target_id", f"target_{index}")
         cluster_id = row.get("cluster_id", str(index))
+        cluster_ids = [
+            value.strip()
+            for value in row.get("cluster_ids", "").split(",")
+            if value.strip()
+        ] or [cluster_id]
         evalue = parse_float(row.get("evalue"), math.inf)
         q_len = parse_int(row.get("query_length"))
         t_len = parse_int(row.get("target_length"))
@@ -204,6 +247,7 @@ def build_hits(
             "index": index,
             "rank": index + 1,
             "cluster_id": cluster_id,
+            "cluster_ids": cluster_ids,
             "query_id": query_id,
             "target_id": target_id,
             "self": query_id == target_id,
@@ -237,11 +281,11 @@ def build_hits(
             "target_sequence": row.get("target_sequence", ""),
             "target_structure": row.get("target_structure", ""),
             "alignment_text": block.get("text", ""),
-            "plot_rn_query": match_plot(rn_svgs, index, query_id, target_id, "query", cluster_id),
-            "plot_rn_target": match_plot(rn_svgs, index, query_id, target_id, "target", cluster_id),
-            "plot_r4": match_plot(r4_svgs, index, query_id, target_id, "alignment", cluster_id),
-            "plot_sw_similarity": match_plot(sw_svgs or {}, index, query_id, target_id, "similarity", cluster_id),
-            "plot_sw_scores": match_plot(sw_svgs or {}, index, query_id, target_id, "scores", cluster_id),
+            "plot_rn_query": match_plots(rn_svgs, index, query_id, target_id, "query", cluster_ids),
+            "plot_rn_target": match_plots(rn_svgs, index, query_id, target_id, "target", cluster_ids),
+            "plot_r4": match_plots(r4_svgs, index, query_id, target_id, "alignment", cluster_ids),
+            "plot_sw_similarity": match_plots(sw_svgs or {}, index, query_id, target_id, "similarity", cluster_ids),
+            "plot_sw_scores": match_plots(sw_svgs or {}, index, query_id, target_id, "scores", cluster_ids),
         })
     return hits
 
@@ -318,15 +362,28 @@ def marked_seq(seq: str, start: int, end: int) -> str:
     )
 
 
-def plot_cell(svg: str | None, caption: str) -> str:
-    if svg:
-        return (
-            f'<figure class="plot"><figcaption>{escape(caption)}</figcaption>{svg}</figure>'
-        )
+def plot_cell(svgs: str | list[str] | None, caption: str) -> str:
+    if isinstance(svgs, str):
+        svgs = [svgs]
+    if svgs:
+        figures = []
+        multiple = len(svgs) > 1
+        for index, svg in enumerate(svgs, start=1):
+            label = f"{caption} · HSP {index}" if multiple else caption
+            figures.append(
+                f'<figure class="plot"><figcaption>{escape(label)}</figcaption>{svg}</figure>'
+            )
+        return f'<div class="plot-stack">{"".join(figures)}</div>'
     return f'<div class="plot plot-empty"><span class="muted">No {escape(caption)}</span></div>'
 
 
-def plot_row_pair(label: str, left: str | None, right: str | None, left_cap: str, right_cap: str) -> str:
+def plot_row_pair(
+    label: str,
+    left: str | list[str] | None,
+    right: str | list[str] | None,
+    left_cap: str,
+    right_cap: str,
+) -> str:
     return (
         "<tr>"
         f'<th scope="row">{escape(label)}</th>'
@@ -673,6 +730,7 @@ table.hits tr[hidden] { display: none; }
 }
 .plot-grid td { width: calc((100% - 7.4rem) / 2); background: var(--plot-bg); }
 .plot-grid td.wide { width: auto; }
+.plot-stack { display: grid; gap: .8rem; }
 .plot { margin: 0; background: var(--plot-bg); padding: .2rem; }
 .plot figcaption { font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--mute); margin: .1rem .2rem .35rem; }
 .plot svg { width: 100%; height: auto; display: block; background: #fff; }
@@ -786,12 +844,19 @@ JS = """
     if (next) next.disabled = state.page >= pages - 1 || shown.length === 0;
   }
   function resetPage() { state.page = 0; }
+  function scrollToReportTop() {
+    document.getElementById("report-top")?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    });
+  }
   document.getElementById("flt-query")?.addEventListener("click", (ev) => {
     const btn = ev.target.closest(".query-btn");
     if (!btn) return;
     state.query = btn.getAttribute("data-query");
     resetPage();
     render();
+    scrollToReportTop();
   });
   document.getElementById("flt-e")?.addEventListener("change", (ev) => {
     const v = ev.target.value;

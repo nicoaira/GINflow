@@ -66,6 +66,9 @@ nextflow_process {
                     assert html.contains('theme-toggle')
                     assert html.contains('back-to-top')
                     assert html.contains('Back to top')
+                    assert html.contains('scrollToReportTop')
+                    assert html.contains('scrollIntoView')
+                    assert html.contains('plot-stack')
                     assert html.contains('rel="icon"')
                     assert html.contains('image/svg+xml')
                 },

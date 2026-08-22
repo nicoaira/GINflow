@@ -1,2 +1,3 @@
 cluster_id	query_id	target_id	score	bit_score	evalue	evalue_pair	query_start	query_end	target_start	target_end	query_length	target_length	match_count	aligned_columns	seed_count	max_seed_score
 1	X06694.1/9-124	X13842.1/1-150	6	3	0.2	0.3	105	125	110	130	132	152	12	20	2	0.8
+2	X06694.1/9-124	X13842.1/1-150	4	2	0.4	0.5	135	155	140	160	132	152	8	20	1	0.7

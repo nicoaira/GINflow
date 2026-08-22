@@ -350,6 +350,24 @@ def plot_hit(
     ]
 
 
+def selected_pair_rows(
+    rows: list[dict[str, str]], max_pairs: int
+) -> list[tuple[int, dict[str, str]]]:
+    """Select whole query-target pairs, retaining every HSP in each pair."""
+    groups: dict[tuple[str, str], list[tuple[int, dict[str, str]]]] = {}
+    order: list[tuple[str, str]] = []
+    for index, row in enumerate(rows):
+        key = (row.get("query_id", ""), row.get("target_id", ""))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append((index, row))
+    selected: list[tuple[int, dict[str, str]]] = []
+    for key in order[:max_pairs]:
+        selected.extend(groups[key])
+    return selected
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--alignments", type=Path, required=True)
@@ -386,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     jobs = []
-    for index, row in enumerate(rows[:args.max_pairs]):
+    for index, row in selected_pair_rows(rows, args.max_pairs):
         jobs.append((row, index, clusters.get(row.get("cluster_id", ""))))
 
     args.outdir.mkdir(parents=True, exist_ok=True)

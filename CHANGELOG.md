@@ -69,6 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - R4RNA plots are now one alignment-coordinate SVG per pair (query arcs up, target arcs flipped down, shared x, identity ribbon). The report shows that figure full-width instead of separate query and target diagrams. `alignments.tsv` keeps gapped `query_aligned` / `target_aligned` strings.
 - Default git branch is `main` (`manifest.defaultBranch` and the schema `$id`).
 - `--plot_max` is now `--plot_max_pairs` (default 25): max alignment pairs **per query**. Each pair plots both partners. `DRAW_R4RNA`, `DRAW_SW`, and `DRAW_RNARTISTCORE` run once per query.
+- `--plot_max_pairs` now counts unique query-target pairs; every HSP belonging to a selected pair is plotted and shown in the report.
 - `ALIGN_CLUSTERS` and plot processes run per query (`SPLIT_CLUSTERS` then `MERGE_ALIGNMENTS` for the shared `alignments.tsv` / `report.html`). Index search stays batched by query shard; `--search_shard_size` sets query records per search task (default: `--shard_size`).
 - `report.html` plot panel is a two-column Query | Target grid (one row per RNArtistCore, R4RNA, and alignment plot). Results are paginated: 10 per page by default, or 25 / 50 / 100 / 150.
 - README, R4RNA / RNArtistCore plots, and `report.html` use the nf-core palette (green `#24B064`, yellow `#ECDC86`, brown `#3F2B29`, dark green `#396E35`, Bootstrap grays). `--plot_highlight_colour` now defaults to `#24B064`.

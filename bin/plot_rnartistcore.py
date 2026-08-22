@@ -111,9 +111,27 @@ def pair_stem(row: dict[str, str], index: int) -> str:
     return f"{safe_name(cluster)}_{safe_name(qid)}__{safe_name(tid)}"
 
 
+def selected_pair_rows(
+    rows: list[dict[str, str]], max_pairs: int
+) -> list[tuple[int, dict[str, str]]]:
+    """Select whole query-target pairs, retaining every HSP in each pair."""
+    groups: dict[tuple[str, str], list[tuple[int, dict[str, str]]]] = {}
+    order: list[tuple[str, str]] = []
+    for index, row in enumerate(rows):
+        key = (row.get("query_id", ""), row.get("target_id", ""))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append((index, row))
+    selected: list[tuple[int, dict[str, str]]] = []
+    for key in order[:max_pairs]:
+        selected.extend(groups[key])
+    return selected
+
+
 def collect_jobs(rows: list[dict[str, str]], max_pairs: int, colour: str) -> list[tuple]:
     jobs: list[tuple] = []
-    for index, row in enumerate(rows[:max_pairs]):
+    for index, row in selected_pair_rows(rows, max_pairs):
         prefix = pair_stem(row, index)
         for kind, seq_key, ss_key, start_key, end_key in (
             ("query", "query_sequence", "query_structure", "query_start", "query_end"),

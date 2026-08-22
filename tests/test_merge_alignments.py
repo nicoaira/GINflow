@@ -34,14 +34,23 @@ def hsp(cluster_id: str, score: float, query_start: int, target_start: int) -> d
 class TestMergeAlignments(unittest.TestCase):
     def test_pair_scores_and_evalues_use_total_score(self) -> None:
         evd = {"lambda": 2.0, "K": 0.5, "database_residues": 100}
-        result = aggregate_pair([hsp("a", 10, 2, 3), hsp("b", 6, 20, 30)], evd)
+        result = aggregate_pair(
+            [
+                hsp("a", 10, 2, 3),
+                hsp("b", 6, 20, 30),
+                hsp("c", 4, 38, 55),
+            ],
+            evd,
+        )
 
-        self.assertEqual(result["score"], "16")
-        self.assertEqual(result["total_score"], "16")
+        self.assertEqual(result["score"], "20")
+        self.assertEqual(result["total_score"], "20")
         self.assertEqual(result["max_score"], "10")
-        self.assertEqual(result["alignment_count"], "2")
-        expected_database_e = 0.5 * 50 * 100 * math.exp(-2.0 * 16.0)
-        expected_pair_e = 0.5 * 50 * 80 * math.exp(-2.0 * 16.0)
+        self.assertEqual(result["alignment_count"], "3")
+        self.assertEqual(result["cluster_ids"], "a,b,c")
+        self.assertEqual(result["hsp_scores"], "[10.0,6.0,4.0]")
+        expected_database_e = 0.5 * 50 * 100 * math.exp(-2.0 * 20.0)
+        expected_pair_e = 0.5 * 50 * 80 * math.exp(-2.0 * 20.0)
         self.assertAlmostEqual(float(result["evalue"]), expected_database_e)
         self.assertAlmostEqual(float(result["evalue_pair"]), expected_pair_e)
 

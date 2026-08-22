@@ -111,7 +111,7 @@ Self-contained search report written on every query run. Open it in a browser: h
 
 ## plots/
 
-Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`, and/or when `--plot_sw` is set. Each query gets its own draw task. RNArtistCore writes a query SVG and a target SVG per pair. R4RNA writes one alignment-coordinate SVG per pair (query arcs above, target arcs below, identity ribbon between the backbones). SW plots write a cosine SVG and a score SVG (traceback on the scores). `--plot_max_pairs` (default 25) is the number of alignment pairs per query, not the number of SVG files. The aligned span, shared pairs, matching bases, and SW path use `--plot_highlight_colour`.
+Published when `--plot_backend` is `rnartistcore`, `r4rna`, or `both`, and/or when `--plot_sw` is set. Each query gets its own draw task. RNArtistCore writes a query SVG and a target SVG per HSP row. R4RNA writes one alignment-coordinate SVG per HSP row (query arcs above, target arcs below, identity ribbon between the backbones). SW plots write a cosine SVG and a score SVG (traceback on the scores). `--plot_max_pairs` (default 25) counts unique query-target pairs per query, not HSP rows or SVG files; every HSP in each selected pair is rendered, so the SVG count can be larger. The aligned span, shared pairs, matching bases, and SW path use `--plot_highlight_colour`.
 
 - `plots/rnartistcore/*.svg` — RNArtistCore 2Ds
 - `plots/r4rna/*.svg` — R4RNA alignment arc diagrams

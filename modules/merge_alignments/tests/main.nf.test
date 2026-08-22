@@ -39,10 +39,10 @@ nextflow_process {
                     assert evals == evals.toSorted()
                     assert evals.size() == 2
                     def pair = records.find { it[index('query_id')] == 'X06694.1/9-124' }
-                    assert pair[index('total_score')] as double == 16.0
+                    assert pair[index('total_score')] as double == 20.0
                     assert pair[index('max_score')] as double == 10.0
-                    assert pair[index('alignment_count')] as int == 2
-                    assert pair[index('score')] as double == 16.0
+                    assert pair[index('alignment_count')] as int == 3
+                    assert pair[index('score')] as double == 20.0
                 },
                 {
                     assert snapshot(process.out.versions).match()

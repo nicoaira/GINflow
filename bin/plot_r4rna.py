@@ -331,6 +331,24 @@ def pair_stem(row: dict[str, str], index: int) -> str:
     return f"{safe_name(cluster)}_{safe_name(query_id)}__{safe_name(target_id)}"
 
 
+def selected_pair_rows(
+    rows: list[dict[str, str]], max_pairs: int
+) -> list[tuple[int, dict[str, str]]]:
+    """Select whole query-target pairs, retaining every HSP in each pair."""
+    groups: dict[tuple[str, str], list[tuple[int, dict[str, str]]]] = {}
+    order: list[tuple[str, str]] = []
+    for index, row in enumerate(rows):
+        key = (row.get("query_id", ""), row.get("target_id", ""))
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append((index, row))
+    selected: list[tuple[int, dict[str, str]]] = []
+    for key in order[:max_pairs]:
+        selected.extend(groups[key])
+    return selected
+
+
 def draw_row(row: dict[str, str], index: int, highlight: str) -> tuple[str, str] | None:
     aligned = resolved_alignment(row)
     query_id = row.get("query_id", f"query_{index}")
@@ -378,7 +396,10 @@ def main(argv: list[str] | None = None) -> int:
     args.outdir.mkdir(parents=True, exist_ok=True)
     with args.alignments.open(newline="") as handle:
         rows = list(csv.DictReader(handle, delimiter="\t"))
-    jobs = [(row, index, args.highlight_colour) for index, row in enumerate(rows[: args.max_pairs])]
+    jobs = [
+        (row, index, args.highlight_colour)
+        for index, row in selected_pair_rows(rows, args.max_pairs)
+    ]
     workers = max(1, min(args.cpus, len(jobs) or 1))
     drawn = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
