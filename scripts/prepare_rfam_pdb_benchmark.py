@@ -6,8 +6,9 @@ builds and calibrates covariance models from the current Rfam seed for every
 selected family and its clanmates, removes significant hits from the two
 Rouskin backgrounds, and appends twelve labelled family mates per family.
 
-The generated TSVs deliberately contain only the fields GINFINITY needs. The
-selection and cleaning audit trails live beside them in the output directory.
+The query TSVs contain the fields GINFINITY needs; cleaned background TSVs add
+an ``rfam`` provenance column. The selection and cleaning audit trails live
+beside them in the output directory.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -33,6 +35,7 @@ import numpy as np
 
 
 REQUIRED_COLUMNS = ("transcript_id", "sequence", "secondary_structure")
+RFAM_TRANSCRIPT_RE = re.compile(r"^(RF\d{5})")
 BIN_ORDER = ("gt70", "55_70", "lt55")
 BIN_LABELS = {
     "gt70": ">70%",
@@ -79,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset-root",
         type=Path,
-        default=Path("/home/nicolas/programs/research-gine-rna-encoder/dataset/rfam_pdb_families"),
+        default=Path("."),
         help="Directory containing one molecules.jsonl directory per Rfam family.",
     )
     parser.add_argument(
@@ -361,12 +364,17 @@ def read_table(path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def write_structure_table(path: Path, rows: Iterable[dict[str, str]]) -> None:
+def write_structure_table(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    extra_columns: Sequence[str] = (),
+) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=list(REQUIRED_COLUMNS), delimiter="\t", lineterminator="\n")
+        fieldnames = [*REQUIRED_COLUMNS, *extra_columns]
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, delimiter="\t", lineterminator="\n")
         writer.writeheader()
         for row in rows:
-            writer.writerow({column: row[column] for column in REQUIRED_COLUMNS})
+            writer.writerow({column: row[column] for column in fieldnames})
 
 
 def write_rows(path: Path, fieldnames: Sequence[str], rows: Iterable[dict[str, object]]) -> None:
@@ -492,9 +500,15 @@ def target_rows(selections: Sequence[FamilySelection]) -> list[dict[str, str]]:
                     "transcript_id": target_id,
                     "sequence": molecule.sequence,
                     "secondary_structure": molecule.structure,
+                    "rfam": selection.family,
                 }
             )
     return rows
+
+
+def background_rfam(transcript_id: str) -> str:
+    match = RFAM_TRANSCRIPT_RE.match(transcript_id)
+    return match.group(1) if match else "NA"
 
 
 def write_selection_files(outdir: Path, selections: Sequence[FamilySelection]) -> None:
@@ -503,14 +517,15 @@ def write_selection_files(outdir: Path, selections: Sequence[FamilySelection]) -
             "transcript_id": selection.query_id,
             "sequence": selection.query.sequence,
             "secondary_structure": selection.query.structure,
+            "rfam": selection.family,
         }
         for selection in selections
     ]
-    write_structure_table(outdir / "queries.tsv", query_rows)
+    write_structure_table(outdir / "queries.tsv", query_rows, extra_columns=("rfam",))
     with (outdir / "queries_with_windows.tsv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(
             handle,
-            fieldnames=[*REQUIRED_COLUMNS, "start", "end"],
+            fieldnames=[*REQUIRED_COLUMNS, "rfam", "start", "end"],
             delimiter="\t",
             lineterminator="\n",
         )
@@ -656,11 +671,12 @@ def clean_backgrounds(
                 "transcript_id": row["transcript_id"],
                 "sequence": row["sequence"],
                 "secondary_structure": row["secondary_structure"],
+                "rfam": background_rfam(row["transcript_id"]),
             }
             for row in retained
         ] + targets
         output_path = outdir / f"{path.stem}.cleaned.tsv"
-        write_structure_table(output_path, output_rows)
+        write_structure_table(output_path, output_rows, extra_columns=("rfam",))
         summaries.append(
             {
                 "background": label,
