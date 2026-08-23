@@ -276,4 +276,12 @@ PQ/OPQ CAGRA (same `--index cagra`) needs a GPU to **build**; later `--search_de
 
 ## Outputs
 
-See [output.md](output.md).
+See [Output](output.md).
+
+## See also
+
+- [Getting started](getting-started.md)
+- [How it works](how-it-works.md)
+- [Window indexes](indexes.md)
+- [Parameters](parameters.md)
+- [FAQ](faq.md)

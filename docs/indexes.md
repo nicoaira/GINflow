@@ -230,3 +230,10 @@ Custom PQ-CAGRA code is published on Anaconda as:
 
 The conda profile already lists `nicolas.aira`. GPU CAGRA/IVF/FAISS still
 need `-profile gpu` so the NVIDIA runtime is attached.
+
+## See also
+
+- [How it works](how-it-works.md)
+- [Parameters](parameters.md)
+- [Profiles and hardware](profiles.md)
+- [FAQ](faq.md)

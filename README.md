@@ -29,6 +29,25 @@ The current steps are:
 
 One pipeline from embeddings to the HTML report. An existing database joins at Search. Open circles are optional. Quantize and the index backends are on a separate map in [docs/indexes.md](docs/indexes.md).
 
+## Documentation
+
+The full wiki lives in [`docs/`](docs/README.md):
+
+| Section | Contents |
+|---|---|
+| [Getting started](docs/getting-started.md) | Install Nextflow, smoke test, first search |
+| [How it works](docs/how-it-works.md) | Graphs, embeddings, windows, index, SW, E-values |
+| [Usage](docs/usage.md) | Structures table, [sliced graphs](docs/usage.md#sliced-graphs), run modes |
+| [Window indexes](docs/indexes.md) | FAISS, CAGRA, IVF, hnswlib, `--quantize` |
+| [Clustering and alignment](docs/clustering-and-alignment.md) | Seed clustering, GINFINITY-SW, pair collapse |
+| [E-values](docs/statistics.md) | Reverse-sequence null, λ, K |
+| [Output](docs/output.md) | Directory layout and file formats |
+| [Plotting and report](docs/plotting.md) | `report.html`, RNArtistCore, R4RNA, SW matrices |
+| [Parameters](docs/parameters.md) | Every CLI flag |
+| [Profiles and hardware](docs/profiles.md) | Docker / Singularity / conda / GPU |
+| [Development](docs/development.md) | Layout, tests, containers |
+| [FAQ](docs/faq.md) | Common errors |
+
 ---
 
 ## Usage

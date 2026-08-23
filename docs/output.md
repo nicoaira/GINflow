@@ -131,3 +131,10 @@ If `structures.tsv` included `start` / `end` columns, every published artifact u
 | `faiss/windows.tsv`, `seeds.tsv`, `alignments.tsv` | Coordinates are 0-based on the core: `0` is `sequence[start]`, not the 5′ end of the source RNA |
 
 Two overlapping windows on the same source row (`34,40` / `90,95`) appear as two ids, two embeddings, and two query groups in `report.html`. How to write the table: [usage.md — Sliced graphs](usage.md#sliced-graphs).
+
+## See also
+
+- [Clustering and alignment](clustering-and-alignment.md)
+- [E-values](statistics.md)
+- [Plotting and report](plotting.md)
+- [Parameters](parameters.md)
