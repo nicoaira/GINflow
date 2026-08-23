@@ -111,16 +111,20 @@ def main() -> int:
     if args.embeddings and args.graph_metadata:
         packed_embeddings, packed_records = pack_records(args.embeddings, args.graph_metadata)
         write_records(args.outdir, packed_embeddings, packed_records)
+    embedding_dim = int(quantizer.get("embedding_dim", 128))
+    window_dim = int(window_meta.get("window_dim") or int(window_meta["window_size"]) * embedding_dim)
     meta = {
         "backend": "cagra",
         "index_type": "PQ_CAGRA",
         "quantize": quantizer.get("mode"),
         "n_windows": int(codes.shape[0]),
+        "window_dim": window_dim,
         "window_size": int(window_meta["window_size"]),
         "window_stride": int(window_meta.get("stride", 1)),
+        "checkpoint_sha256": window_meta.get("checkpoint_sha256"),
         "pq_m": pq_m,
         "pq_nbits": nbits,
-        "embedding_dim": int(quantizer.get("embedding_dim", 128)),
+        "embedding_dim": embedding_dim,
         "graph_degree": args.graph_degree,
         "intermediate_graph_degree": args.intermediate_graph_degree,
         "nndescent_iterations": args.nndescent_iterations,

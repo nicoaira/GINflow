@@ -90,13 +90,15 @@ def main() -> int:
     if rotation_path.exists():
         rotation = np.load(rotation_path)
     index = pq.load_index(args.database / "cagra.index")
-    itopk = args.itopk_size or int(db_meta.get("itopk_size") or max(args.k, 64))
-    kwargs: dict = {}
+    # The ADC library requires itopk_size >= k on both search devices.  GPU
+    # search already clamps this below, but the CPU path forwards the value
+    # directly, so an index built with the common default itopk_size=64 would
+    # fail for the pipeline's default candidate_k=200.
+    itopk = max(args.k, args.itopk_size or int(db_meta.get("itopk_size") or 64))
+    kwargs: dict = {"itopk_size": itopk}
     if args.device == "cpu":
         if args.num_threads:
             kwargs["num_threads"] = args.num_threads
-    else:
-        kwargs["itopk_size"] = max(itopk, args.k)
     labels, distances = pq.search(
         index,
         queries,
