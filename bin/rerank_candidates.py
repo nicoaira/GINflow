@@ -18,6 +18,7 @@ from typing import Iterable
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from record_pack import load_residue_embeddings  # noqa: E402
 from rerank_core import rerank_label_matrix  # noqa: E402
 
 
@@ -149,11 +150,8 @@ def load_targets(path: Path) -> list[tuple[str, int, int]]:
 
 
 def load_embeddings(path: Path) -> dict[str, np.ndarray]:
-    result: dict[str, np.ndarray] = {}
-    with np.load(path) as archive:
-        for identifier in archive.files:
-            result[identifier] = np.asarray(archive[identifier])
-    return result
+    source = path.parent if path.name == "embeddings.npz" else path
+    return load_residue_embeddings(source)
 
 
 def build_label_matrix(

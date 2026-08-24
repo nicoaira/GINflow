@@ -13,10 +13,17 @@ import json
 import math
 import re
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
-from ginfinity_sw import Alignment, ScoringParameters, align, format_alignment
+from ginfinity_sw import Alignment, ScoringParameters, align, format_alignment, transform_scores
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from record_pack import load_embedding_files, load_residue_embeddings  # noqa: E402
+from sw_batch import align_score_matrices, pin_blas_threads  # noqa: E402
+
+pin_blas_threads()
 
 LN2 = math.log(2.0)
 SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
@@ -201,15 +208,13 @@ def load_clusters(path: Path) -> list[dict]:
         return list(reader)
 
 
-def load_npz_shards(paths: list[Path]) -> dict[str, np.ndarray]:
-    arrays: dict[str, np.ndarray] = {}
-    for path in paths:
-        with np.load(path) as archive:
-            for key in archive.files:
-                if key in arrays:
-                    raise ValueError(f"duplicate embedding id {key!r} in {path}")
-                arrays[key] = np.asarray(archive[key])
-    return arrays
+def normalize_residue_dict(arrays: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    normalized: dict[str, np.ndarray] = {}
+    for identifier, matrix in arrays.items():
+        values = np.ascontiguousarray(matrix, dtype=np.float64)
+        norms = np.linalg.norm(values, axis=1, keepdims=True)
+        normalized[identifier] = values / np.maximum(norms, 1e-12)
+    return normalized
 
 
 def load_graph_records(paths: list[Path]) -> dict[str, tuple[str, str]]:
@@ -303,22 +308,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--evd", type=Path, required=True, help="evd.json from estimate_evd.py")
     parser.add_argument("--pad", type=int, default=32)
     parser.add_argument("--max-cells", type=int, default=16_777_216)
+    parser.add_argument(
+        "--cpus",
+        type=int,
+        default=1,
+        help="independent-pair SW workers (Numba threads)",
+    )
     return parser.parse_args(argv)
 
 
-def resolve_targets(args: argparse.Namespace) -> tuple[dict[str, np.ndarray], dict[str, tuple[str, str]]]:
+def resolve_targets(
+    args: argparse.Namespace,
+    ids: set[str] | None = None,
+) -> tuple[dict[str, np.ndarray], dict[str, tuple[str, str]]]:
     if args.database:
-        embeddings = args.database / "embeddings.npz"
         records = args.database / "records.tsv"
-        if not embeddings.is_file() or not records.is_file():
+        packed_npy = args.database / "embeddings.vectors.npy"
+        packed_npz = args.database / "embeddings.npz"
+        if not records.is_file() or not (packed_npy.is_file() or packed_npz.is_file()):
             raise ValueError(
-                f"{args.database} is missing embeddings.npz/records.tsv; "
+                f"{args.database} is missing records.tsv or residue embeddings; "
                 "rebuild the database with this pipeline version"
             )
-        return load_npz_shards([embeddings]), load_records_tsv(records)
+        return load_residue_embeddings(args.database, ids=ids), load_records_tsv(records)
     if not args.target_embeddings or not args.target_metadata:
         raise ValueError("provide --database or both --target-embeddings and --target-metadata")
-    return load_npz_shards(args.target_embeddings), load_graph_records(args.target_metadata)
+    return load_embedding_files(args.target_embeddings, ids=ids), load_graph_records(args.target_metadata)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -326,12 +341,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.pad < 0:
         print("error: --pad must be >= 0", file=sys.stderr)
         return 2
+    if args.cpus < 1:
+        print("error: --cpus must be >= 1", file=sys.stderr)
+        return 2
+    load_started = time.perf_counter()
     try:
         clusters = load_clusters(args.clusters)
         params = load_parameters(args.parameters)
-        query_emb = load_npz_shards(args.query_embeddings)
+        query_ids = {cluster["query_id"] for cluster in clusters}
+        target_ids = {cluster["target_id"] for cluster in clusters}
+        query_emb = normalize_residue_dict(
+            load_embedding_files(args.query_embeddings, ids=query_ids or None)
+        )
         query_meta = load_graph_records(args.query_metadata)
-        target_emb, target_meta = resolve_targets(args)
+        target_emb, target_meta = resolve_targets(args, ids=target_ids or None)
+        target_emb = normalize_residue_dict(target_emb)
         evd = load_json(args.evd)
         lam = float(evd["lambda"])
         k_value = float(evd["K"])
@@ -341,9 +365,9 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    load_seconds = time.perf_counter() - load_started
 
-    rows = []
-    texts = []
+    jobs: list[tuple[dict, int, int, np.ndarray]] = []
     skipped = 0
     for cluster in clusters:
         query_id = cluster["query_id"]
@@ -354,22 +378,43 @@ def main(argv: list[str] | None = None) -> int:
         if target_id not in target_emb or target_id not in target_meta:
             print(f"error: target {target_id!r} missing from target embeddings/metadata", file=sys.stderr)
             return 1
-        try:
-            result = align_cluster(
-                cluster,
-                query_emb[query_id],
-                target_emb[target_id],
-                params,
-                args.pad,
-                args.max_cells,
+        query_matrix = query_emb[query_id]
+        target_matrix = target_emb[target_id]
+        q0, q1 = crop_bounds(int(cluster["query_start"]), int(cluster["query_end"]), query_matrix.shape[0], args.pad)
+        t0, t1 = crop_bounds(int(cluster["target_start"]), int(cluster["target_end"]), target_matrix.shape[0], args.pad)
+        cells = (q1 - q0) * (t1 - t0)
+        if cells > args.max_cells:
+            print(
+                f"warning: cluster {cluster['cluster_id']} crop {q1 - q0}x{t1 - t0} "
+                f"exceeds --max-cells {args.max_cells}",
+                file=sys.stderr,
             )
-        except ValueError as exc:
-            print(f"warning: {exc}", file=sys.stderr)
             skipped += 1
             continue
+        if cells == 0:
+            skipped += 1
+            continue
+        scores = transform_scores(query_matrix[q0:q1] @ target_matrix[t0:t1].T, params)
+        jobs.append((cluster, q0, t0, scores))
+
+    align_started = time.perf_counter()
+    alignments = align_score_matrices(
+        [scores for _, _, _, scores in jobs],
+        params,
+        traceback=True,
+        max_cells=args.max_cells,
+        workers=args.cpus,
+    ) if jobs else []
+    align_seconds = time.perf_counter() - align_started
+
+    rows = []
+    for (cluster, q0, t0, _scores), raw in zip(jobs, alignments):
+        result = shift_alignment(raw, q0, t0)
         if result.score <= 0 or not result.columns:
             skipped += 1
             continue
+        query_id = cluster["query_id"]
+        target_id = cluster["target_id"]
         query_length = int(query_emb[query_id].shape[0])
         target_length = int(target_emb[target_id].shape[0])
         bits = bit_score(result.score, lam, k_value)
@@ -487,6 +532,9 @@ def main(argv: list[str] | None = None) -> int:
         "lambda": lam,
         "K": k_value,
         "database_residues": db_residues,
+        "workers": args.cpus,
+        "load_seconds": round(load_seconds, 3),
+        "align_seconds": round(align_seconds, 3),
     }
     if args.stats_json:
         args.stats_json.write_text(json.dumps(stats, indent=2) + "\n")

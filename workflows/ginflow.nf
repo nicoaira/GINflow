@@ -237,11 +237,8 @@ workflow GINFLOW {
         ch_clusters        = CLUSTER_SEEDS.out.clusters
         ch_cluster_members = CLUSTER_SEEDS.out.members
 
-        SPLIT_CLUSTERS(CLUSTER_SEEDS.out.clusters)
-        ch_versions = ch_versions.mix(SPLIT_CLUSTERS.out.versions)
-
         ALIGN_CLUSTERS(
-            SPLIT_CLUSTERS.out.alignments.flatten(),
+            CLUSTER_SEEDS.out.clusters,
             ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
             ch_query_metadata.map { meta, tensors, sidecar -> sidecar }.collect(),
             ch_search_database.collect(),
@@ -261,19 +258,23 @@ workflow GINFLOW {
 
         def plot_rn = params.plot_backend in ['rnartistcore', 'both']
         def plot_r4 = params.plot_backend in ['r4rna', 'both']
+        if (plot_rn || plot_r4 || params.plot_sw) {
+            SPLIT_CLUSTERS(ALIGN_CLUSTERS.out.alignments)
+            ch_versions = ch_versions.mix(SPLIT_CLUSTERS.out.versions)
+        }
         if (plot_rn) {
-            DRAW_RNARTISTCORE(ALIGN_CLUSTERS.out.alignments)
+            DRAW_RNARTISTCORE(SPLIT_CLUSTERS.out.alignments.flatten())
             ch_versions       = ch_versions.mix(DRAW_RNARTISTCORE.out.versions)
             ch_plots_rnartist = DRAW_RNARTISTCORE.out.plots.collect()
         }
         if (plot_r4) {
-            DRAW_R4RNA(ALIGN_CLUSTERS.out.alignments)
+            DRAW_R4RNA(SPLIT_CLUSTERS.out.alignments.flatten())
             ch_versions    = ch_versions.mix(DRAW_R4RNA.out.versions)
             ch_plots_r4rna = DRAW_R4RNA.out.plots.collect()
         }
         if (params.plot_sw) {
             DRAW_SW(
-                ALIGN_CLUSTERS.out.alignments,
+                SPLIT_CLUSTERS.out.alignments.flatten(),
                 CLUSTER_SEEDS.out.clusters,
                 ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
                 ch_search_database.collect(),

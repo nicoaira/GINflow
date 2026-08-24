@@ -7,10 +7,14 @@ import hashlib
 import json
 import math
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
 from ginfinity_sw import ScoringParameters, align_multiple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from record_pack import load_residue_embeddings  # noqa: E402
 
 
 EULER_MASCHERONI = 0.5772156649015329
@@ -35,13 +39,11 @@ def load_parameters(path: Path) -> tuple[ScoringParameters, str]:
 
 
 def load_embeddings(path: Path) -> dict[str, np.ndarray]:
-    arrays: dict[str, np.ndarray] = {}
-    with np.load(path) as archive:
-        for key in archive.files:
-            value = np.asarray(archive[key])
-            if value.ndim != 2 or value.shape[0] < 2:
-                continue
-            arrays[key] = value
+    arrays = {
+        identifier: value
+        for identifier, value in load_residue_embeddings(path).items()
+        if value.ndim == 2 and value.shape[0] >= 2
+    }
     if len(arrays) < 2:
         raise ValueError(f"{path} needs at least two residue embeddings of length >= 2")
     return arrays
@@ -78,6 +80,7 @@ def sample_null_scores(
     min_score: float,
     min_match_count: int,
     rng: np.random.Generator,
+    workers: int = 1,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     identifiers = list(embeddings)
     n_ids = len(identifiers)
@@ -100,7 +103,8 @@ def sample_null_scores(
 
     attempts = 0
     limit = max(n_samples * 8, n_samples + 16)
-    while len(scores) < n_samples and attempts < limit:
+    pairs: list[tuple[np.ndarray, np.ndarray]] = []
+    while len(pairs) < n_samples and attempts < limit:
         attempts += 1
         i, j = rng.choice(n_ids, size=2, replace=False)
         query = random_crop(embeddings[identifiers[i]][::-1], max_length, rng)
@@ -108,6 +112,10 @@ def sample_null_scores(
         cells = int(query.shape[0]) * int(target.shape[0])
         if cells == 0 or cells > max_cells:
             continue
+        pairs.append((query, target))
+
+    def score_pair(pair: tuple[np.ndarray, np.ndarray]) -> tuple[float, int, int]:
+        query, target = pair
         score = float(align_multiple(
             query,
             target,
@@ -117,9 +125,18 @@ def sample_null_scores(
             min_match_count=min_match_count,
             max_cells=max_cells,
         ).total_score)
+        return score, int(query.shape[0]), int(target.shape[0])
+
+    workers = max(1, int(workers))
+    if workers == 1 or len(pairs) < 2:
+        scored = [score_pair(pair) for pair in pairs]
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            scored = list(pool.map(score_pair, pairs, chunksize=4))
+    for score, query_length, target_length in scored:
         scores.append(score)
-        query_lengths.append(int(query.shape[0]))
-        target_lengths.append(int(target.shape[0]))
+        query_lengths.append(query_length)
+        target_lengths.append(target_length)
     if len(scores) < max(20, n_samples // 5):
         raise ValueError(f"only collected {len(scores)} null alignments; need more sequences or a larger --samples")
     return (
@@ -288,6 +305,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-score", type=float, default=0.0)
     parser.add_argument("--min-match-count", type=int, default=1)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--workers", type=int, default=1)
     return parser.parse_args(argv)
 
 
@@ -306,7 +324,9 @@ def main(argv: list[str] | None = None) -> int:
         print("error: --min-match-count must be >= 1", file=sys.stderr)
         return 2
     try:
-        embeddings = load_embeddings(args.database / "embeddings.npz")
+        if args.workers < 1:
+            raise ValueError("--workers must be >= 1")
+        embeddings = load_embeddings(args.database)
         params, scoring_sha256 = load_parameters(args.parameters)
         rng = np.random.default_rng(args.seed)
         scores, q_len, t_len = sample_null_scores(
@@ -319,6 +339,7 @@ def main(argv: list[str] | None = None) -> int:
             args.min_score,
             args.min_match_count,
             rng,
+            workers=args.workers,
         )
         fit = fit_karlin_altschul(scores, q_len, t_len)
     except (OSError, ValueError, TypeError) as exc:

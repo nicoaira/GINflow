@@ -4,8 +4,8 @@ process DRAW_SW {
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e7/e74cfb57864deb17f17a966196bf9cde064bb56aa8df1fb6fe2d906008ba4148/data' :
-        'community.wave.seqera.io/library/python_ginfinity-sw:b934c840797fac86' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/c7/c7db9e2e04ab9a21b4e3bf856e5c3a9e3eb1909cf3e251b366dca6e10ae8684a/data' :
+        'community.wave.seqera.io/library/python_ginfinity-sw:151e772020737622' }"
 
     input:
     path alignments

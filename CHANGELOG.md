@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Added`
 
+- `--align_cpus` (default 8): CPU threads for `ALIGN_CLUSTERS` and `ESTIMATE_EVD`.
 - The HTML report has a keyboard-accessible floating Back to top control with smooth-scroll and reduced-motion support.
 - Pair-level BLAST-style alignment results: `MERGE_ALIGNMENTS` collapses all HSPs for a query-target pair, retaining `total_score`, `max_score`, HSP provenance, and recomputed E-values.
 - The HTML report table and hit cards now show total score, max score, HSP count, and pair E-value.
@@ -24,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Changed`
 
+- `ALIGN_CLUSTERS` is one task over all seed clusters (not one Nextflow job per query). It requests `--align_cpus` and 12 GB instead of the 6-CPU / 36 GB `process_medium` label. Independent crops run concurrently through GINFINITY-SW `align_many`. `--align_cpus` CLI values are coerced to integers so `--align_cpus 16` no longer fails with a String/Integer comparison.
+- Residue embeddings are packed as concatenated `embeddings.vectors.npy` + offsets (plus a compact `embeddings.npz`). Legacy per-id NPZ databases still load, and alignment only decompresses the IDs present in `clusters.tsv`.
+- `ESTIMATE_EVD` uses the same CPU/memory request and `--workers` for null-sample SW.
 - `--index` is `faiss|cagra|ivf|hnswlib`. cuVS IVF-Flat is `--index ivf` (the GPU IVF path).
 - FAISS public types are `flatip`, `flatl2`, `ivfflat`, and `hnsw`. `--faiss_gpu` is exact FlatIP/FlatL2 only. FAISS IVF and HNSW are CPU-only; GPU IVF is `--index ivf`, GPU graph is `--index cagra`.
 - Default `--exact_rerank true`, `--candidate_k 200`. Raise `--seed_k` and `--candidate_k` with database size (see [docs/indexes.md](docs/indexes.md)).
@@ -88,7 +92,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Graph and embed modules use `nicolas.aira::ginfinity=1.2.1` (sliced graphs; float16 embeddings).
 - FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`). GPU FAISS uses `pytorch::faiss-gpu=1.10.0` (CUDA 12.1 runtime) so it runs on host drivers that report CUDA 12.1/12.2 (e.g. 535.x). conda-forge `faiss-gpu` 1.10 is CUDA 12.9-only.
 - HNSWLIB modules use conda-forge `hnswlib=0.8.0` with Python 3.12 and NumPy 2.2.6; use `-profile conda` or `-profile wave` because the pinned FAISS/ScaNN Docker images do not include hnswlib.
-- Alignment uses `nicolas.aira::ginfinity-sw=1.1.0` and its disjoint multi-HSP collapse API.
+- Alignment uses `nicolas.aira::ginfinity-sw=1.2.0` (`align_many` / `align_scores_many`).
 - Plotting uses `nicolas.aira::rnartistcore=0.4.6` and `nicolas.aira::r-r4rna=2.0.9`.
 
 ### `Deprecated`

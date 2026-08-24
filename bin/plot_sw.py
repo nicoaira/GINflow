@@ -16,6 +16,9 @@ from pathlib import Path
 import numpy as np
 from ginfinity_sw import ScoringParameters, align, similarity_matrix, transform_scores
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from record_pack import load_embedding_files, load_residue_embeddings  # noqa: E402
+
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 MAX_HEATMAP = 480
 PANEL = 420
@@ -74,25 +77,14 @@ def load_clusters(path: Path) -> dict[str, dict]:
     return clusters
 
 
-def load_npz_shards(paths: list[Path]) -> dict[str, np.ndarray]:
-    arrays: dict[str, np.ndarray] = {}
-    for path in paths:
-        with np.load(path) as archive:
-            for key in archive.files:
-                if key in arrays:
-                    raise ValueError(f"duplicate embedding id {key!r} in {path}")
-                arrays[key] = np.asarray(archive[key])
-    return arrays
-
-
 def resolve_targets(database: Path) -> dict[str, np.ndarray]:
-    embeddings = database / "embeddings.npz"
-    if not embeddings.is_file():
+    try:
+        return load_residue_embeddings(database)
+    except ValueError as exc:
         raise ValueError(
-            f"{database} is missing embeddings.npz; "
+            f"{database} is missing residue embeddings; "
             "rebuild the database with this pipeline version"
-        )
-    return load_npz_shards([embeddings])
+        ) from exc
 
 
 def crop_bounds(start: int, end: int, length: int, pad: int) -> tuple[int, int]:
@@ -397,7 +389,7 @@ def main(argv: list[str] | None = None) -> int:
             rows = list(csv.DictReader(handle, delimiter="\t"))
         clusters = load_clusters(args.clusters)
         params = load_parameters(args.parameters)
-        query_emb = load_npz_shards(args.query_embeddings)
+        query_emb = load_embedding_files(args.query_embeddings)
         target_emb = resolve_targets(args.database)
     except (OSError, ValueError, TypeError, KeyError) as exc:
         print(f"error: {exc}", file=sys.stderr)

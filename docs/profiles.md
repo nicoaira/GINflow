@@ -135,7 +135,7 @@ the gpu profile / `--faiss_gpu` / CAGRA search requires it.
 | Component | Pin |
 |---|---|
 | GINFINITY | `nicolas.aira::ginfinity=1.2.1` |
-| GINFINITY-SW | `nicolas.aira::ginfinity-sw=1.1.0` |
+| GINFINITY-SW | `nicolas.aira::ginfinity-sw=1.2.0` |
 | FAISS CPU | conda-forge `faiss-cpu=1.10.0` (Python 3.12, NumPy 2.2.6, MKL) |
 | FAISS GPU | `pytorch::faiss-gpu=1.10.0` (CUDA 12.1) |
 | RNArtistCore | `nicolas.aira::rnartistcore=0.4.6` |

@@ -177,12 +177,14 @@ Each cluster is a candidate local alignment, not yet a gapped alignment.
 
 ## Stage 8 — Smith–Waterman
 
-`SPLIT_CLUSTERS` fans clusters out per query. `ALIGN_CLUSTERS` runs
+`ALIGN_CLUSTERS` loads residue embeddings once and runs
 [GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW) on a padded
 crop of each cluster (`--align_pad`, default 32 nt), not the full
-molecules. Scoring is embedding cosine with the parameters in
+molecules. Independent crops use `--align_cpus` threads (default 8).
+Scoring is embedding cosine with the parameters in
 `assets/alignment.json` (gap open / extend, score offset). The process
-emits **one row per cluster**.
+emits **one row per cluster**. Plot processes still split that table
+per query.
 
 `MERGE_ALIGNMENTS` is the pair-level boundary: every HSP for the same
 query and target becomes one BLAST-style result with `total_score`

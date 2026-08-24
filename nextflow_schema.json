@@ -468,6 +468,12 @@
                     "minimum": 1,
                     "description": "Minimum number of matched residue columns in an HSP retained for EVD calibration."
                 },
+                "align_cpus": {
+                    "type": "integer",
+                    "default": 8,
+                    "minimum": 1,
+                    "description": "CPU threads for ALIGN_CLUSTERS and ESTIMATE_EVD. Each task loads residue embeddings once and aligns independent cluster crops concurrently."
+                },
                 "evd_samples": {
                     "type": "integer",
                     "default": 1000,

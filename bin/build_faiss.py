@@ -26,6 +26,7 @@ from cuvs_index import (
     meta_from_details as cuvs_meta_from_details,
     serialize_index as serialize_cuvs_index,
 )
+from record_pack import write_records
 
 SLICE_ID_RE = re.compile(r"^(?P<base>.+):(?P<start>\d+)-(?P<end>\d+)$")
 
@@ -362,11 +363,7 @@ def write_database(
         writer.writerows(mapping)
     if packed is not None:
         embeddings, records = packed
-        np.savez_compressed(outdir / "embeddings.npz", **embeddings)
-        with (outdir / "records.tsv").open("w", newline="") as handle:
-            writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-            writer.writerow(["transcript_id", "sequence", "secondary_structure"])
-            writer.writerows(records)
+        write_records(outdir, embeddings, records)
         meta["has_residue_embeddings"] = True
         meta["n_packed_records"] = len(records)
     (outdir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")

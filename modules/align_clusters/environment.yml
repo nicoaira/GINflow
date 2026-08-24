@@ -5,4 +5,4 @@ channels:
   - nicolas.aira
 dependencies:
   - conda-forge::python=3.12
-  - nicolas.aira::ginfinity-sw=1.1.0
+  - nicolas.aira::ginfinity-sw=1.2.0

@@ -8,9 +8,9 @@ makes one BLAST-style result per query–target pair.
 ```text
 seeds.tsv
     → CLUSTER_SEEDS          (diagonal boxes)
-    → SPLIT_CLUSTERS         (one file per query)
-    → ALIGN_CLUSTERS         (one HSP row per cluster)
+    → ALIGN_CLUSTERS         (one HSP row per cluster; all queries, N CPU threads)
     → MERGE_ALIGNMENTS       (one row per query–target pair)
+    → SPLIT_CLUSTERS         (only when plotting; one file per query)
 ```
 
 ## Seeds
@@ -60,7 +60,9 @@ These boxes are the SW crops, not the final alignments.
 
 `ALIGN_CLUSTERS` (`bin/align_clusters.py`) loads original residue
 embeddings for the query (from the query shards) and the target (from
-`faiss/embeddings.npz`). It cuts a crop around the cluster:
+the packed `faiss/` residue store, or a legacy per-id `embeddings.npz`).
+Only identifiers present in the cluster table are loaded. It cuts a crop
+around the cluster:
 
 ```text
 query  [cluster.query_start - pad, cluster.query_end + pad)
@@ -74,7 +76,8 @@ rejected so a runaway cluster cannot explode DP memory.
 Scoring is **embedding-only cosine**, not a nucleotide matrix. Gap
 open, gap extend, and the cosine → substitution map live in
 `assets/alignment.json` and are passed to
-[GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW) 1.1.0.
+[GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW). Independent
+crops are aligned concurrently (`--align_cpus`).
 
 Each cluster may yield several disjoint local HSPs inside the crop
 (`align_multiple`). Filters for the SW call (and for EVD calibration):

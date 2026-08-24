@@ -1,11 +1,13 @@
 process ALIGN_CLUSTERS {
     tag "${clusters.baseName}"
-    label 'process_medium'
+    cpus { Math.max(1, params.align_cpus.toString().toInteger()) }
+    memory { 12.GB * task.attempt }
+    time { 8.h * task.attempt }
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container ?
-        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/e7/e74cfb57864deb17f17a966196bf9cde064bb56aa8df1fb6fe2d906008ba4148/data' :
-        'community.wave.seqera.io/library/python_ginfinity-sw:b934c840797fac86' }"
+        'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/c7/c7db9e2e04ab9a21b4e3bf856e5c3a9e3eb1909cf3e251b366dca6e10ae8684a/data' :
+        'community.wave.seqera.io/library/python_ginfinity-sw:151e772020737622' }"
 
     input:
     path clusters
@@ -28,6 +30,11 @@ process ALIGN_CLUSTERS {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: clusters.baseName
     """
+    export OMP_NUM_THREADS=1
+    export MKL_NUM_THREADS=1
+    export OPENBLAS_NUM_THREADS=1
+    export NUMEXPR_NUM_THREADS=1
+    export NUMBA_NUM_THREADS=${task.cpus}
     align_clusters.py \\
         --clusters ${clusters} \\
         --parameters ${parameters} \\
@@ -37,6 +44,7 @@ process ALIGN_CLUSTERS {
         --evd ${evd} \\
         --pad ${params.align_pad} \\
         --max-cells ${params.align_max_cells} \\
+        --cpus ${task.cpus} \\
         --output ${prefix}.alignments.tsv \\
         --alignment-text ${prefix}.alignments.txt \\
         --stats-json ${prefix}.alignment_stats.json \\
