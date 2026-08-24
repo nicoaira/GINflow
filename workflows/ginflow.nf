@@ -62,7 +62,7 @@ workflow GINFLOW {
     def sq_vectors      = quantize_mode == 'sq'
     def need_quantize   = quantize_mode != 'none'
     def exact_index     = index_library == 'faiss' && params.faiss_index in ['flatip', 'flatl2']
-    def run_rerank      = (params.exact_rerank || params.hnswlib_rerank) && !exact_index
+    def run_rerank      = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank) && !exact_index
 
     if (structures) {
         PREPARE_DB(
@@ -227,6 +227,9 @@ workflow GINFLOW {
             ch_versions       = ch_versions.mix(RERANK_CANDIDATES.out.versions)
             ch_rerank_metrics = RERANK_CANDIDATES.out.metrics
             ch_seed_shards    = RERANK_CANDIDATES.out.seeds
+        }
+        else if (!exact_index) {
+            log.info "Skipping RERANK_CANDIDATES (--exact_rerank false)."
         }
         ch_seeds = ch_seed_shards
             .map { meta, tsv -> tsv }

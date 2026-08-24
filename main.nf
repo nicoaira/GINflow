@@ -91,24 +91,13 @@ def normalize_lowercase_choice(name, default_value, choices, aliases = [:]) {
 }
 
 def normalize_boolean_param(name, default_value = false) {
-    def raw = params[name]
-    if (raw == null) {
-        params[name] = default_value
-        return default_value
+    // Do not write back to params: Nextflow 26 ignores those assignments.
+    try {
+        return BooleanParam.parse(params[name], default_value)
     }
-    if (raw instanceof Boolean) {
-        return raw
+    catch (IllegalArgumentException ignored) {
+        error "--${name} must be true or false, got '${params[name]}'."
     }
-    def value = (raw as String).trim().toLowerCase()
-    if (value in ['true', '1', 'yes', 'y', 'on']) {
-        params[name] = true
-        return true
-    }
-    if (value in ['false', '0', 'no', 'n', 'off']) {
-        params[name] = false
-        return false
-    }
-    error "--${name} must be true or false, got '${raw}'."
 }
 
 def normalize_parameter_values() {
@@ -134,9 +123,6 @@ def normalize_parameter_values() {
     normalize_boolean_param('exact_rerank', true)
     normalize_boolean_param('cagra_to_hnsw', false)
     normalize_lowercase_choice('exact_rerank_device', 'cpu', ['cpu', 'cuda'])
-    if (params.hnswlib_rerank) {
-        params.exact_rerank = true
-    }
 }
 
 def detect_database_library() {
@@ -269,7 +255,7 @@ def validate_search_params() {
     if ((params.cagra_graph_degree as Integer) > (params.cagra_intermediate_graph_degree as Integer)) {
         error "--cagra_graph_degree must be <= --cagra_intermediate_graph_degree."
     }
-    if (params.exact_rerank_device == 'cuda') {
+    if (BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank) && params.exact_rerank_device == 'cuda') {
         def profiles = workflow.profile.tokenize(',').collect { it.trim() }
         if (!profiles.contains('gpu')) {
             error "--exact_rerank_device cuda requires -profile gpu so RERANK_CANDIDATES gets a CUDA runtime."

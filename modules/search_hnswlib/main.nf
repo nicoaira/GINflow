@@ -24,7 +24,7 @@ process SEARCH_HNSWLIB {
     def prefix = task.ext.prefix ?: "${meta.id}"
     def ef_search = params.hnswlib_ef_search != null ? "--ef-search ${params.hnswlib_ef_search}" : ''
     def threads = params.hnswlib_num_threads != null ? "--num-threads ${params.hnswlib_num_threads}" : ''
-    def separate_rerank = params.exact_rerank || params.hnswlib_rerank
+    def separate_rerank = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank)
     def search_k = separate_rerank ? params.candidate_k : params.seed_k
     def min_sim = separate_rerank ? '-inf' : params.seed_min_similarity
     """

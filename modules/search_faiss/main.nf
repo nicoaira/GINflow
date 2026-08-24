@@ -24,14 +24,18 @@ process SEARCH_FAISS {
     def gpu_flag  = task.accelerator ? '--gpu' : ''
     def nprobe    = params.faiss_nprobe != null ? "--nprobe ${params.faiss_nprobe}" : ''
     def ef_search = params.faiss_hnsw_ef_search != null ? "--hnsw-ef-search ${params.faiss_hnsw_ef_search}" : ''
+    def separate_rerank = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank)
+    def exact_index = params.faiss_index in ['flatip', 'flatl2']
+    def search_k = (separate_rerank && !exact_index) ? params.candidate_k : params.seed_k
+    def min_sim = (separate_rerank && !exact_index) ? '-inf' : params.seed_min_similarity
     """
     search_faiss.py \\
         --windows ${windows} \\
         --manifest ${manifest} \\
         --database ${database} \\
         --output ${prefix}.seeds.tsv \\
-        --k ${params.exact_rerank && params.faiss_index != 'flatip' && params.faiss_index != 'flatl2' ? params.candidate_k : params.seed_k} \\
-        --min-similarity=${params.exact_rerank && params.faiss_index != 'flatip' && params.faiss_index != 'flatl2' ? '-inf' : params.seed_min_similarity} \\
+        --k ${search_k} \\
+        --min-similarity=${min_sim} \\
         ${nprobe} \\
         ${ef_search} \\
         ${gpu_flag} \\

@@ -60,7 +60,7 @@ Mode rules: [Run modes](usage.md#run-modes).
 | `--quantize` | `none` | `none`, `sq`, `pq`, `opq`. Node-level, before index windows. |
 | `--search_device` | `auto` | CAGRA search: `auto`, `gpu`, `cpu`. |
 | `--cagra_to_hnsw` | `false` | GPU CAGRA build, persist a CPU-searchable graph. |
-| `--exact_rerank` | `true` | Original-window rerank. Skipped for FlatIP/FlatL2. |
+| `--exact_rerank` | `true` | Original-window rerank. Skipped for FlatIP/FlatL2. Use `--exact_rerank false` to skip. |
 | `--exact_rerank_device` | `cpu` | `cpu` or `cuda` (`cuda` needs `-profile gpu`). |
 | `--exact_rerank_batch_size` | `32` | Query windows per rerank batch. |
 | `--exact_rerank_candidate_batch_size` | `2048` | Candidate windows per sub-batch. |

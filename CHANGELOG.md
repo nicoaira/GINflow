@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Optional exact original-window rerank (`--exact_rerank`, default `true`; skipped for exact FlatIP/FlatL2).
 - Conda packages `nicolas.aira::pq-cagra-adc` (GPU build/search) and `nicolas.aira::pq-cagra-adc-cpu` (CPU ADC search) so `-profile conda` and `-profile docker` need no extra local installs.
 
+### `Fixed`
+
+- `--exact_rerank false` now skips `RERANK_CANDIDATES` on Nextflow 26. The CLI value was a Groovy-truthy string, and writing `params.exact_rerank = false` is ignored.
+
 ### `Changed`
 
 - `ALIGN_CLUSTERS` is one task over all seed clusters (not one Nextflow job per query). It requests `--align_cpus` and 12 GB instead of the 6-CPU / 36 GB `process_medium` label. Independent crops run concurrently through GINFINITY-SW `align_many`. `--align_cpus` CLI values are coerced to integers so `--align_cpus 16` no longer fails with a String/Integer comparison.

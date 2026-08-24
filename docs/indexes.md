@@ -195,7 +195,8 @@ normalized windows and writes `--seed_k` seeds. Quantized codes are never the
 SW input.
 
 It is skipped when the index is already exact (`flatip` / `flatl2`). Set
-`--exact_rerank false` to emit ANN scores only (not recommended for PQ/OPQ).
+`--exact_rerank false` (or `--exact_rerank=false`) to emit ANN scores only
+(not recommended for PQ/OPQ).
 
 ## Published database
 
