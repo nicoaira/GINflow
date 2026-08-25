@@ -25,7 +25,7 @@ process SEARCH_PQ_CAGRA {
     def device = (params.search_device == 'cpu' || params.cagra_to_hnsw) ? 'cpu' : 'cuda'
     def separate_rerank = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank)
     def search_k = separate_rerank ? params.candidate_k : params.seed_k
-    def min_sim = separate_rerank ? '-inf' : params.seed_min_similarity
+    def min_sim = BooleanParam.annMinSimilarity(params.exact_rerank, params.hnswlib_rerank, params.quantize, params.seed_min_similarity)
     """
     mkdir -p query_windows
     cp ${windows} query_windows/

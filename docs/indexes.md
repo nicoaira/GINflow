@@ -127,7 +127,7 @@ around 1M windows and `--candidate_k 5000` around 4M+.
 |---|---:|---|
 | `--seed_k` | `50` | Seeds kept per query window after rerank/threshold. Increase with DB size. |
 | `--candidate_k` | `200` | ANN candidates before rerank. Must be ≥ `--seed_k`. Increase with DB size. |
-| `--seed_min_similarity` | `0.8` | Cosine-like threshold on **original-window** scores after rerank. |
+| `--seed_min_similarity` | `0.8` | Cosine threshold on **original-window** scores after rerank. Not applied to PQ/OPQ ADC when rerank is off. |
 | `--search_device` | `auto` | `gpu`, `cpu`, or `auto` for CAGRA. |
 | `--search_shard_size` | `--shard_size` | Query records per search task. |
 | `--exact_rerank` | `true` | Exact original-window rerank. Skipped for exact FlatIP/FlatL2. |
@@ -195,8 +195,9 @@ normalized windows and writes `--seed_k` seeds. Quantized codes are never the
 SW input.
 
 It is skipped when the index is already exact (`flatip` / `flatl2`). Set
-`--exact_rerank false` (or `--exact_rerank=false`) to emit ANN scores only
-(not recommended for PQ/OPQ).
+`--exact_rerank false` (or `--exact_rerank=false`) to emit ANN scores only.
+PQ/OPQ ADC is not cosine, so that mode keeps the top `--seed_k` neighbours
+and does not apply `--seed_min_similarity`.
 
 ## Published database
 

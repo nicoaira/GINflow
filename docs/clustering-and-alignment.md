@@ -22,9 +22,9 @@ Coordinates are **0-based half-open** on the independent subject (the
 full molecule, or the core of a slice). Self-hits are kept.
 
 `--seed_min_similarity` (default 0.8) is a cosine threshold on the
-**original** window after rerank. Without exact rerank, the HNSWLIB PQ
-path writes a position-wise centroid-score sum and scales the threshold
-by `--window_size`.
+**original** window after rerank. Without exact rerank, PQ/OPQ search
+emits the top `--seed_k` ADC neighbours and does not apply this cutoff
+(ADC is not cosine).
 
 `--cluster_max_seed_rank` (default 10) drops worse-ranked seeds before
 clustering. `0` keeps every seed.

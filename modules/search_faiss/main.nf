@@ -27,7 +27,7 @@ process SEARCH_FAISS {
     def separate_rerank = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank)
     def exact_index = params.faiss_index in ['flatip', 'flatl2']
     def search_k = (separate_rerank && !exact_index) ? params.candidate_k : params.seed_k
-    def min_sim = (separate_rerank && !exact_index) ? '-inf' : params.seed_min_similarity
+    def min_sim = (separate_rerank && !exact_index) ? '-inf' : BooleanParam.annMinSimilarity(false, false, params.quantize, params.seed_min_similarity)
     """
     search_faiss.py \\
         --windows ${windows} \\

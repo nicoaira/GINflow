@@ -26,7 +26,7 @@ process SEARCH_HNSWLIB {
     def threads = params.hnswlib_num_threads != null ? "--num-threads ${params.hnswlib_num_threads}" : ''
     def separate_rerank = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank)
     def search_k = separate_rerank ? params.candidate_k : params.seed_k
-    def min_sim = separate_rerank ? '-inf' : params.seed_min_similarity
+    def min_sim = BooleanParam.annMinSimilarity(params.exact_rerank, params.hnswlib_rerank, params.quantize, params.seed_min_similarity)
     """
     g++ -O3 -std=c++11 -fopenmp \\
         -I hnsw_bundle \\

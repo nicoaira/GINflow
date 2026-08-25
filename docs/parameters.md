@@ -54,7 +54,7 @@ Mode rules: [Run modes](usage.md#run-modes).
 | `--window_stride` | `1` | Step between window starts. |
 | `--seed_k` | `50` | Neighbours kept per query window after rerank. Increase with DB size. |
 | `--candidate_k` | `200` | ANN pool before rerank. Must be ≥ `--seed_k`. |
-| `--seed_min_similarity` | `0.8` | Minimum original-window cosine after rerank. |
+| `--seed_min_similarity` | `0.8` | Minimum original-window cosine after rerank. Not applied to PQ/OPQ ADC scores when `--exact_rerank false`. |
 | `--search_shard_size` | `--shard_size` | Query records per search task. Ignored when `--input` and `--query` are the same file. |
 | `--index` | `faiss` | `faiss`, `cagra`, `ivf`, or `hnswlib`. |
 | `--quantize` | `none` | `none`, `sq`, `pq`, `opq`. Node-level, before index windows. |

@@ -229,7 +229,12 @@ workflow GINFLOW {
             ch_seed_shards    = RERANK_CANDIDATES.out.seeds
         }
         else if (!exact_index) {
-            log.info "Skipping RERANK_CANDIDATES (--exact_rerank false)."
+            if (BooleanParam.codeQuantized(quantize_mode)) {
+                log.info "Skipping RERANK_CANDIDATES (--exact_rerank false). PQ/OPQ ADC scores are not cosine, so --seed_min_similarity is not applied at search; keeping top --seed_k neighbours."
+            }
+            else {
+                log.info "Skipping RERANK_CANDIDATES (--exact_rerank false)."
+            }
         }
         ch_seeds = ch_seed_shards
             .map { meta, tsv -> tsv }

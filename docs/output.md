@@ -95,7 +95,7 @@ SW, alignment, and plots.
 
 ## seeds.tsv
 
-Query-mode hits above `--seed_min_similarity`. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept. Without exact reranking, HNSWLIB writes the raw position-wise centroid-score sum and applies the equivalent threshold multiplied by `--window_size`; with `--exact_rerank true`, it writes the normal full-window cosine score from the original float16 embeddings. The same run publishes `rerank_metrics.json` with batch/device/worker settings and elapsed time.
+Query-mode hits. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept. With `--exact_rerank true`, scores are original-window cosine and `--seed_min_similarity` is applied after rerank. Without rerank, PQ/OPQ writes ADC scores for the top `--seed_k` neighbours (no cosine cutoff). The same run publishes `rerank_metrics.json` when rerank ran.
 
 ## clusters.tsv
 
