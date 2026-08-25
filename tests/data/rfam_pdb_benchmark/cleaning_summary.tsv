@@ -1,3 +1,4 @@
 background	source	input_rows	cmscan_hit_rows	removed_rows	retained_background_rows	appended_target_rows	output_rows	output
-rouskin_6k	tests/data/rouskin_sample_6k.tsv	5840	1626	1626	4214	240	4454	tests/data/rfam_pdb_benchmark/rouskin_sample_6k.cleaned.tsv
-rouskin_30k	tests/data/rouskin_sample_30k.tsv	29196	8250	8250	20946	240	21186	tests/data/rfam_pdb_benchmark/rouskin_sample_30k.cleaned.tsv
+rouskin_6k	tests/data/rouskin_sample_6k.tsv	5840	2420	2420	3420	480	3900	tests/data/rfam_pdb_benchmark/rouskin_sample_6k.cleaned.tsv
+rouskin_30k	tests/data/rouskin_sample_30k.tsv	29196	12461	12461	16735	480	17215	tests/data/rfam_pdb_benchmark/rouskin_sample_30k.cleaned.tsv
+rouskin_150k	tests/data/rouskin_sample_150k.tsv	150000	76097	76097	73903	480	74383	tests/data/rfam_pdb_benchmark/rouskin_sample_150k.cleaned.tsv
