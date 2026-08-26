@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -51,6 +52,31 @@ constexpr std::uint32_t kBruteForceLimit = 16384;
 void check_launch() {
     PQ_CAGRA_CHECK(cudaGetLastError());
     PQ_CAGRA_CHECK(cudaDeviceSynchronize());
+}
+
+void report_progress(const char* phase, std::uint32_t percent, const char* detail = nullptr) {
+    if (detail && detail[0] != '\0') {
+        std::fprintf(stdout,
+                     "PQ_CAGRA_PROGRESS scope=graph_build phase=%s percent=%u %s\n",
+                     phase,
+                     percent,
+                     detail);
+    } else {
+        std::fprintf(stdout,
+                     "PQ_CAGRA_PROGRESS scope=graph_build phase=%s percent=%u\n",
+                     phase,
+                     percent);
+    }
+    std::fflush(stdout);
+}
+
+void report_iteration_progress(const char* phase,
+                               std::uint32_t percent,
+                               std::uint32_t iteration,
+                               std::uint32_t total) {
+    char detail[48];
+    std::snprintf(detail, sizeof(detail), "iteration=%u/%u", iteration, total);
+    report_progress(phase, percent, detail);
 }
 
 std::uint32_t round_up_pow2(std::uint32_t value) {
@@ -746,6 +772,7 @@ void Index::build(const std::uint8_t* codes,
                   std::uint32_t nbits,
                   std::uint32_t dsub,
                   const BuildParams& params) {
+    report_progress("start", 0);
     validate_dims(n, window_size, pq_m, nbits, dsub);
     if (params.graph_degree < 1 || params.intermediate_graph_degree < params.graph_degree) {
         throw std::runtime_error("graph degrees are invalid");
@@ -773,6 +800,7 @@ void Index::build(const std::uint8_t* codes,
 
     std::vector<float> similarity(static_cast<std::size_t>(pq_m) * ksub * ksub);
     build_similarity_table(codebook, pq_m, ksub, dsub, similarity.data());
+    report_progress("host_data_ready", 10);
 
     std::uint8_t* d_codes = nullptr;
     float* d_sim = nullptr;
@@ -798,6 +826,7 @@ void Index::build(const std::uint8_t* codes,
             d_sim, similarity.data(), similarity.size() * sizeof(float), cudaMemcpyHostToDevice));
         PQ_CAGRA_CHECK(cudaMemset(d_rev, 0xff, static_cast<std::size_t>(n) * k_int * sizeof(std::uint32_t)));
         PQ_CAGRA_CHECK(cudaMemset(d_rev_count, 0, static_cast<std::size_t>(n) * sizeof(std::uint32_t)));
+        report_progress("device_data_ready", 15);
 
         constexpr std::uint32_t threads = 256;
         const std::uint32_t nwarps = threads / 32u;
@@ -806,6 +835,7 @@ void Index::build(const std::uint8_t* codes,
                 cudaMalloc(&d_knn_alt, static_cast<std::size_t>(n) * k_int * sizeof(std::uint32_t)));
             random_graph_kernel<<<(n + threads - 1) / threads, threads>>>(d_knn, n, k_int, 1u);
             check_launch();
+            report_progress("random_graph_ready", 20, "method=nndescent");
             const std::size_t nd_smem =
                 k_int * sizeof(std::uint32_t) +
                 nwarps * k_int * (sizeof(float) + sizeof(std::uint32_t)) + nwarps * sizeof(int);
@@ -815,6 +845,10 @@ void Index::build(const std::uint8_t* codes,
                 nndescent_step_kernel<<<n, threads, nd_smem>>>(
                     d_codes, d_sim, src, dst, n, code_dim, pq_m, ksub, k_int);
                 check_launch();
+                const auto percent =
+                    20u + static_cast<std::uint32_t>(
+                               (50ull * static_cast<std::uint64_t>(iter + 1)) / nd_iters);
+                report_iteration_progress("nndescent", percent, iter + 1, nd_iters);
                 std::uint32_t* tmp = src;
                 src = dst;
                 dst = tmp;
@@ -825,6 +859,7 @@ void Index::build(const std::uint8_t* codes,
                                           static_cast<std::size_t>(n) * k_int * sizeof(std::uint32_t),
                                           cudaMemcpyDeviceToDevice));
             }
+            report_progress("knn_ready", 70, "method=nndescent");
         } else {
             PQ_CAGRA_CHECK(
                 cudaMalloc(&d_knn_sim, static_cast<std::size_t>(n) * k_int * sizeof(float)));
@@ -833,6 +868,7 @@ void Index::build(const std::uint8_t* codes,
             knn_sdc_kernel<<<n, threads, knn_smem>>>(
                 d_codes, d_sim, d_knn, d_knn_sim, n, code_dim, pq_m, ksub, k_int);
             check_launch();
+            report_progress("knn_ready", 70, "method=brute_force");
         }
 
         const std::uint32_t reverse_threads = 256;
@@ -841,15 +877,18 @@ void Index::build(const std::uint8_t* codes,
                                        reverse_threads);
         reverse_edges_kernel<<<reverse_blocks, reverse_threads>>>(d_knn, d_rev, d_rev_count, n, k_int);
         check_launch();
+        report_progress("reverse_edges", 80);
 
         prune_graph_kernel<<<n, 32>>>(
             d_codes, d_sim, d_knn, d_rev, d_graph, n, code_dim, pq_m, ksub, k_int, degree);
         check_launch();
+        report_progress("prune_graph", 90);
 
         PQ_CAGRA_CHECK(cudaMemcpy(host_graph_.data(),
                                   d_graph,
                                   static_cast<std::size_t>(n) * degree * sizeof(std::uint32_t),
                                   cudaMemcpyDeviceToHost));
+        report_progress("graph_copied_to_host", 95);
     } catch (...) {
         cudaFree(d_codes);
         cudaFree(d_sim);
@@ -870,6 +909,7 @@ void Index::build(const std::uint8_t* codes,
     cudaFree(d_rev_count);
     cudaFree(d_graph);
     upload_from_host();
+    report_progress("complete", 100);
 }
 
 void Index::search(const float* queries,

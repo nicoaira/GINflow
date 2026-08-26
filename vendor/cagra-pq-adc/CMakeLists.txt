@@ -16,7 +16,7 @@ if(NOT PQ_CAGRA_CPU_ONLY)
   set(CMAKE_CUDA_STANDARD 17)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
-    set(CMAKE_CUDA_ARCHITECTURES 70-real 75-real 80-real 86-real)
+    set(CMAKE_CUDA_ARCHITECTURES 70-real 75-real 80-real 86-real 89-real 89-virtual)
   endif()
 endif()
 

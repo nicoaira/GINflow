@@ -5,8 +5,8 @@ process SEARCH_PQ_CAGRA {
 
     conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
-        (task.accelerator ? 'oras://community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:d24945e894e22c05' : 'oras://community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:230079361cb63119') :
-        (task.accelerator ? 'community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:51e2d56cbda45e24' : 'community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:2ea6d576a29716e1') }"
+        (task.accelerator ? 'oras://community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:e0102895f642d35a' : 'oras://community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:230079361cb63119') :
+        (task.accelerator ? 'community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:ed61007abe908991' : 'community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:2ea6d576a29716e1') }"
 
     input:
     tuple val(meta), path(windows), path(manifest)

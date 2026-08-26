@@ -19,8 +19,9 @@ conda build packaging/conda/pq-cagra-adc
 anaconda upload -u nicolas.aira --force "$(conda build packaging/conda/pq-cagra-adc --output)"
 ```
 
-The GPU recipe needs `nvcc` 11.8 (`nvidia::cuda-nvcc=11.8.89`). After a new
-upload, freeze Wave images from the module `environment*.yml` files:
+The GPU recipe uses CUDA 11.8 (`nvidia::cuda-nvcc=11.8.89` plus the matching
+development headers and GCC 11.4 host compiler). After a new upload, freeze
+Wave images from the module `environment*.yml` files:
 
 ```bash
 wave --conda-file modules/build_pq_cagra_index/environment.yml \
@@ -40,7 +41,7 @@ Current pins:
 
 | Image | Tag |
 |---|---|
-| GPU Docker | `community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:51e2d56cbda45e24` |
-| GPU Singularity | `oras://community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:d24945e894e22c05` |
+| GPU Docker | `community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:ed61007abe908991` |
+| GPU Singularity | `oras://community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:e0102895f642d35a` |
 | CPU Docker | `community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:2ea6d576a29716e1` |
 | CPU Singularity | `oras://community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:230079361cb63119` |

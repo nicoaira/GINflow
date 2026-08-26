@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ -z "${CUDA_HOME:-}" ]]; then
-  if [[ -x "${PREFIX}/bin/nvcc" ]]; then
-    export CUDA_HOME="${PREFIX}"
-  elif [[ -x /usr/local/cuda-11.8/bin/nvcc ]]; then
-    export CUDA_HOME=/usr/local/cuda-11.8
-  elif [[ -x /usr/local/cuda/bin/nvcc ]]; then
-    export CUDA_HOME=/usr/local/cuda
-  fi
+if [[ -n "${BUILD_PREFIX:-}" && -x "${BUILD_PREFIX}/bin/nvcc" ]]; then
+  export CUDA_HOME="${BUILD_PREFIX}"
+elif [[ -n "${CUDA_HOME:-}" && -x "${CUDA_HOME}/bin/nvcc" ]]; then
+  export CUDA_HOME
+else
+  echo "CUDA 11.8 nvcc was not found in the conda build environment" >&2
+  exit 1
 fi
-if [[ -n "${CUDA_HOME:-}" ]]; then
-  export PATH="${CUDA_HOME}/bin:${PATH}"
-fi
+export CUDACXX="${CUDA_HOME}/bin/nvcc"
+export PATH="${CUDA_HOME}/bin:${PATH}"
 
-cmake -S . -B build \
+cmake --fresh -S . -B build \
   -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DPQ_CAGRA_CPU_ONLY=OFF \
   -DPython_EXECUTABLE="$PYTHON" \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-  ${CUDA_HOME:+-DCMAKE_CUDA_COMPILER="${CUDA_HOME}/bin/nvcc"} \
-  -DCMAKE_CUDA_ARCHITECTURES="70-real;75-real;80-real;86-real"
+  -DCMAKE_CUDA_COMPILER="${CUDACXX}" \
+  -DCMAKE_CUDA_HOST_COMPILER="${CXX}" \
+  -DCUDAToolkit_ROOT="$BUILD_PREFIX" \
+  -DCMAKE_CUDA_ARCHITECTURES="70-real;75-real;80-real;86-real;89-real;89-virtual"
 cmake --build build --parallel "${CPU_COUNT:-2}"
 cmake --install build

@@ -1,4 +1,4 @@
-{% set version = "0.1.0" %}
+{% set version = "0.1.1" %}
 
 package:
   name: pq-cagra-adc
@@ -18,7 +18,10 @@ requirements:
     - cmake
     - ninja
     - make
+    - nvidia::cuda-cccl=11.8.89
+    - nvidia::cuda-cudart=11.8.89
     - nvidia::cuda-nvcc=11.8.89
+    - nvidia::cuda-cudart-dev=11.8.89
     - conda-forge::cuda-version=11.8
   host:
     - python
