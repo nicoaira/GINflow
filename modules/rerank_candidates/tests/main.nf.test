@@ -21,6 +21,8 @@ nextflow_process {
                 input[1] = file("${projectDir}/modules/build_hnswlib_index", checkIfExists: true)
                 input[2] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
                 input[3] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
+                input[4] = [n_windows: 100L, max_record_windows: 100L]
+                input[5] = [n_windows: 1000L, n_nodes: 1200L, window_dim: 1408L, embedding_dim: 128L]
                 """
             }
         }

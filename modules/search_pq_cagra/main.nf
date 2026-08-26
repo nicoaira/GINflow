@@ -9,8 +9,9 @@ process SEARCH_PQ_CAGRA {
         (task.accelerator ? 'community.wave.seqera.io/library/python_numpy_cudatoolkit_pq-cagra-adc:ed61007abe908991' : 'community.wave.seqera.io/library/python_numpy_pq-cagra-adc-cpu:2ea6d576a29716e1') }"
 
     input:
-    tuple val(meta), path(windows), path(manifest)
+    tuple val(meta), path(windows), path(manifest), val(n_query_windows)
     path database
+    val database_meta
 
     output:
     tuple val(meta), path("*.seeds.tsv"), emit: seeds
@@ -39,6 +40,7 @@ process SEARCH_PQ_CAGRA {
         --min-similarity=${min_sim} \\
         --device ${device} \\
         --itopk-size ${params.cagra_itopk_size} \\
+        --num-threads ${task.cpus} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

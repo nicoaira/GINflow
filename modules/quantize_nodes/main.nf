@@ -10,6 +10,7 @@ process FIT_NODE_QUANTIZER {
     input:
     path embeddings, stageAs: 'embeddings/*'
     path manifests, stageAs: 'manifests/*'
+    val n_nodes
 
     output:
     path "quantization", emit: quantization

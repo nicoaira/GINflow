@@ -12,6 +12,7 @@ process BUILD_FAISS_INDEX {
     path manifests, stageAs: 'manifests/*'
     path embeddings, stageAs: 'embeddings/*'
     path metadata, stageAs: 'metadata/*'
+    val n_windows
 
     output:
     path "faiss", emit: database

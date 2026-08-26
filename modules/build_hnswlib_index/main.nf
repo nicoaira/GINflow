@@ -12,6 +12,7 @@ process BUILD_HNSWLIB_INDEX {
     path quantization, stageAs: 'quantization'
     path embeddings, stageAs: 'embeddings/*'
     path metadata, stageAs: 'metadata/*'
+    val n_windows
     path hnsw_bundle, stageAs: 'hnsw_bundle'
 
     output:

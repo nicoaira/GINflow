@@ -45,6 +45,7 @@ nextflow_process {
                     input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
                     input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
                     input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
+                    input[4] = 1000L
                     """
                 }
             }
@@ -63,6 +64,7 @@ nextflow_process {
             process {
                 """
                 input[0] = SEARCH_FAISS.out.seeds.map { meta, tsv -> tsv }.collectFile(name: 'seeds.tsv', keepHeader: true, skip: 1)
+                input[1] = 1000L
                 """
             }
         }

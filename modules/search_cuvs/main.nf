@@ -9,8 +9,9 @@ process SEARCH_CUVS {
         'community.wave.seqera.io/library/python_numpy_cupy_cudatoolkit_pruned:93cd6db656f6b1e4' }"
 
     input:
-    tuple val(meta), path(windows), path(manifest)
+    tuple val(meta), path(windows), path(manifest), val(query_stats)
     path database
+    val database_meta
 
     output:
     tuple val(meta), path("*.seeds.tsv"), emit: seeds

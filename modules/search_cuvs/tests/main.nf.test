@@ -21,9 +21,11 @@ nextflow_process {
                 input[0] = [
                     [ id: 'query' ],
                     file("${projectDir}/modules/generate_windows/main.nf", checkIfExists: true),
-                    file("${projectDir}/modules/generate_windows/environment.yml", checkIfExists: true)
+                    file("${projectDir}/modules/generate_windows/environment.yml", checkIfExists: true),
+                    [n_windows: 100L, max_record_windows: 100L]
                 ]
                 input[1] = file("${projectDir}/modules/build_cuvs_index", checkIfExists: true)
+                input[2] = [n_windows: 1000L, window_dim: 1408L, index_type: 'CAGRA', graph_degree: 64L]
                 """
             }
         }

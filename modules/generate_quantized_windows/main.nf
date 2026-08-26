@@ -9,11 +9,13 @@ process GENERATE_QUANTIZED_WINDOWS {
 
     input:
     path quantization, stageAs: 'quantization'
+    val quantized_window_stats
 
     output:
     path "quantized_windows", emit: windows
     path "quantized_windows/*.windows.npz", emit: npz
     path "quantized_windows/*.windows.manifest.json", emit: manifests
+    path "windows.json", emit: summary
     path "versions.yml", emit: versions
 
     when:
@@ -28,6 +30,8 @@ process GENERATE_QUANTIZED_WINDOWS {
         --window-size ${params.window_size} \\
         --stride ${params.window_stride} \\
         ${args}
+
+    cp quantized_windows/windows.json windows.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":
@@ -45,6 +49,7 @@ Path('quantized_windows').mkdir(exist_ok=True)
 np.savez_compressed('quantized_windows/stub.windows.npz', stub=np.zeros((1, 8), dtype=np.uint8))
 Path('quantized_windows/stub.windows.manifest.json').write_text('{"records":[],"window_size":11,"stride":1}')
 Path('quantized_windows/windows.json').write_text('{}')
+Path('windows.json').write_text('{"n_windows":0,"records":0,"window_size":11,"stride":1}')
 PY
 
     cat <<-END_VERSIONS > versions.yml

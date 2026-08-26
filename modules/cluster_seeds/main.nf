@@ -9,6 +9,7 @@ process CLUSTER_SEEDS {
 
     input:
     path seeds
+    val n_seed_rows
 
     output:
     path "clusters.tsv",        emit: clusters

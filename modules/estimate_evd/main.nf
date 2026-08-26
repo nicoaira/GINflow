@@ -1,7 +1,6 @@
 process ESTIMATE_EVD {
     tag "evd"
     cpus { Math.max(1, params.align_cpus.toString().toInteger()) }
-    memory { 12.GB * task.attempt }
     time { 8.h * task.attempt }
 
     conda "${moduleDir}/environment.yml"

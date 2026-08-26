@@ -49,6 +49,8 @@ nextflow_process {
                     input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
                     input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
                     input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
+                    input[4] = 1000L
+                    input[5] = 1200L
                     """
                 }
             }
@@ -63,8 +65,11 @@ nextflow_process {
             }
             process {
                 """
-                input[0] = GENERATE_WINDOWS.out.windows
+                input[0] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest ->
+                    tuple(meta, npz, manifest, [n_windows: 1000L, max_record_windows: 1000L])
+                }
                 input[1] = BUILD_CUVS_INDEX.out.database.collect()
+                input[2] = [n_windows: 1000L, window_dim: 1408L, index_type: 'CAGRA', graph_degree: 16L]
                 """
             }
         }

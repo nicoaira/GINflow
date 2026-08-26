@@ -50,6 +50,8 @@ workflow GINFLOW {
     ch_quantization     = channel.empty()
     ch_quantization_source = channel.empty()
     ch_quantized_windows = channel.empty()
+    ch_db_window_count = channel.empty()
+    ch_db_node_count   = channel.empty()
     ch_evd              = channel.empty()
     ch_published_evd    = channel.empty()
     ch_plots_rnartist   = channel.empty()
@@ -78,6 +80,8 @@ workflow GINFLOW {
         ch_windows    = ch_windows.mix(PREPARE_DB.out.windows)
         ch_quantization = ch_quantization.mix(PREPARE_DB.out.quantization)
         ch_quantized_windows = ch_quantized_windows.mix(PREPARE_DB.out.quantized_windows)
+        ch_db_window_count = ch_db_window_count.mix(PREPARE_DB.out.window_counts)
+        ch_db_node_count = ch_db_node_count.mix(PREPARE_DB.out.node_counts)
 
         PREPARE_DB.out.windows
             .multiMap { meta, npz, manifest ->
@@ -94,7 +98,7 @@ workflow GINFLOW {
         if (index_library == 'faiss') {
             def faiss_windows = sq_vectors ? PREPARE_DB.out.quantized_npz.collect() : ch_db_windows
             def faiss_manifests = sq_vectors ? PREPARE_DB.out.quantized_manifests.collect() : ch_db_manifests
-            BUILD_FAISS_INDEX(faiss_windows, faiss_manifests, ch_db_embeddings, ch_db_metadata)
+            BUILD_FAISS_INDEX(faiss_windows, faiss_manifests, ch_db_embeddings, ch_db_metadata, ch_db_window_count)
             ch_versions       = ch_versions.mix(BUILD_FAISS_INDEX.out.versions)
             ch_built_database = BUILD_FAISS_INDEX.out.database
         }
@@ -103,7 +107,9 @@ workflow GINFLOW {
                 PREPARE_DB.out.quantized_windows.map { meta, directory -> directory },
                 PREPARE_DB.out.quantization,
                 ch_db_embeddings,
-                ch_db_metadata
+                ch_db_metadata,
+                ch_db_window_count,
+                ch_db_node_count
             )
             ch_versions       = ch_versions.mix(BUILD_PQ_CAGRA_INDEX.out.versions)
             ch_built_database = BUILD_PQ_CAGRA_INDEX.out.database
@@ -111,7 +117,14 @@ workflow GINFLOW {
         else if (index_library in ['cagra', 'ivf']) {
             def cuvs_windows = sq_vectors ? PREPARE_DB.out.quantized_npz.collect() : ch_db_windows
             def cuvs_manifests = sq_vectors ? PREPARE_DB.out.quantized_manifests.collect() : ch_db_manifests
-            BUILD_CUVS_INDEX(cuvs_windows, cuvs_manifests, ch_db_embeddings, ch_db_metadata)
+            BUILD_CUVS_INDEX(
+                cuvs_windows,
+                cuvs_manifests,
+                ch_db_embeddings,
+                ch_db_metadata,
+                ch_db_window_count,
+                ch_db_node_count
+            )
             ch_versions       = ch_versions.mix(BUILD_CUVS_INDEX.out.versions)
             ch_built_database = BUILD_CUVS_INDEX.out.database
         }
@@ -121,6 +134,7 @@ workflow GINFLOW {
                 PREPARE_DB.out.quantization,
                 ch_db_embeddings,
                 ch_db_metadata,
+                ch_db_window_count,
                 hnsw_bundle
             )
             ch_versions       = ch_versions.mix(BUILD_HNSWLIB_INDEX.out.versions)
@@ -194,18 +208,89 @@ workflow GINFLOW {
                 .map { npz, manifest -> tuple([id: npz.baseName], npz, manifest) }
         }
 
+        def ch_query_window_stats = ch_query_windows
+            .map { meta, npz, manifest ->
+                def stats = [n_windows: 0L, max_record_windows: 0L]
+                def manifest_text = manifest.text
+                def payload = workflow.stubRun && !manifest_text.trim()
+                    ? [records: []]
+                    : new groovy.json.JsonSlurperClassic().parseText(manifest_text)
+                (payload.records ?: []).each { record ->
+                    def count = Math.max(0L, (record.n_windows ?: 0L) as long)
+                    stats.n_windows += count
+                    stats.max_record_windows = Math.max(stats.max_record_windows as long, count)
+                }
+                stats
+            }
+            .collect()
+            .map { shards ->
+                [
+                    n_windows: (shards.sum { shard_stats -> shard_stats.n_windows as long } ?: 0L) as long,
+                    max_record_windows: (shards.collect { shard_stats -> shard_stats.max_record_windows as long }.max() ?: 0L) as long,
+                ]
+            }
+
+        def ch_database_meta = ch_search_database
+            .map { db ->
+                def meta_path = db.resolve('meta.json')
+                def meta_text = meta_path.exists() ? meta_path.text : ''
+                def payload = !meta_text.trim()
+                    ? [:]
+                    : new groovy.json.JsonSlurperClassic().parseText(meta_text)
+                def node_count = (payload.n_nodes ?: 0L) as long
+                def records_path = db.resolve('records.tsv')
+                if (records_path.exists()) {
+                    node_count = 0L
+                    def reader = java.nio.file.Files.newBufferedReader(records_path)
+                    reader.readLine()
+                    reader.eachLine { line ->
+                        def columns = line.split('\t', 3)
+                        if (columns.size() > 1) {
+                            node_count += columns[1].size() as long
+                        }
+                    }
+                    reader.close()
+                }
+                payload + [n_nodes: node_count]
+            }
+            .collect()
+            .map { values -> values[0] }
+
         if (index_library == 'faiss') {
             SEARCH_FAISS(search_windows, ch_search_database.collect())
             ch_versions    = ch_versions.mix(SEARCH_FAISS.out.versions)
             ch_seed_shards = SEARCH_FAISS.out.seeds
         }
         else if (index_library == 'cagra' && pq_codes) {
-            SEARCH_PQ_CAGRA(ch_query_windows, ch_search_database.collect())
+            def pq_search_windows = ch_query_windows.map { meta, npz, manifest ->
+                def manifest_text = manifest.text
+                def payload = workflow.stubRun && !manifest_text.trim()
+                    ? [records: []]
+                    : new groovy.json.JsonSlurperClassic().parseText(manifest_text)
+                def count = (payload.records ?: []).sum { record ->
+                    (record.n_windows ?: 0L) as long
+                } ?: 0L
+                tuple(meta, npz, manifest, count)
+            }
+            SEARCH_PQ_CAGRA(pq_search_windows, ch_search_database.collect(), ch_database_meta)
             ch_versions    = ch_versions.mix(SEARCH_PQ_CAGRA.out.versions)
             ch_seed_shards = SEARCH_PQ_CAGRA.out.seeds
         }
         else if (index_library in ['cagra', 'ivf']) {
-            SEARCH_CUVS(search_windows, ch_search_database.collect())
+            def cuvs_search_windows = search_windows.map { meta, npz, manifest ->
+                def stats = [n_windows: 0L, max_record_windows: 0L]
+                def manifest_text = manifest.text
+                def payload = workflow.stubRun && !manifest_text.trim()
+                    ? [records: []]
+                    : new groovy.json.JsonSlurperClassic().parseText(manifest_text)
+                (payload.records ?: []).each { record ->
+                    def count = Math.max(0L, (record.n_windows ?: 0L) as long)
+                    stats.n_windows += count
+                    stats.max_record_windows = Math.max(stats.max_record_windows as long, count)
+                }
+                tuple(meta, npz, manifest, stats)
+            }
+            SEARCH_CUVS(cuvs_search_windows, ch_search_database.collect(), ch_database_meta)
             ch_versions    = ch_versions.mix(SEARCH_CUVS.out.versions)
             ch_seed_shards = SEARCH_CUVS.out.seeds
         }
@@ -222,7 +307,9 @@ workflow GINFLOW {
                 ch_seed_shards,
                 ch_search_database.collect(),
                 ch_query_windows.map { meta, npz, manifest -> npz }.collect(),
-                ch_query_windows.map { meta, npz, manifest -> manifest }.collect()
+                ch_query_windows.map { meta, npz, manifest -> manifest }.collect(),
+                ch_query_window_stats,
+                ch_database_meta
             )
             ch_versions       = ch_versions.mix(RERANK_CANDIDATES.out.versions)
             ch_rerank_metrics = RERANK_CANDIDATES.out.metrics
@@ -240,7 +327,18 @@ workflow GINFLOW {
             .map { meta, tsv -> tsv }
             .collectFile(name: 'seeds.tsv', keepHeader: true, skip: 1, sort: true)
 
-        CLUSTER_SEEDS(ch_seeds)
+        ch_seed_row_count = ch_seeds.map { seeds ->
+            def count = 0L
+            def reader = java.nio.file.Files.newBufferedReader(seeds)
+            reader.readLine()
+            reader.eachLine { _line ->
+                count += 1L
+            }
+            reader.close()
+            count
+        }
+
+        CLUSTER_SEEDS(ch_seeds, ch_seed_row_count)
         ch_versions        = ch_versions.mix(CLUSTER_SEEDS.out.versions)
         ch_clusters        = CLUSTER_SEEDS.out.clusters
         ch_cluster_members = CLUSTER_SEEDS.out.members

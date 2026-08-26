@@ -25,6 +25,15 @@ from node_quantization import load_json, node_code_bytes, unpack_pq_codes
 from record_pack import pack_records, write_records
 
 
+def log_progress(phase: str, percent: int, **fields: object) -> None:
+    """Emit a machine-readable progress event for task logs."""
+    details = " ".join(f"{key}={value}" for key, value in fields.items())
+    line = f"PQ_CAGRA_PROGRESS scope=task phase={phase} percent={percent}"
+    if details:
+        line += f" {details}"
+    print(line, file=sys.stdout, flush=True)
+
+
 def pair_window_shards(windows_dir: Path) -> list[tuple[Path, Path]]:
     window_paths = sorted(windows_dir.glob("*.windows.npz"))
     manifest_paths = sorted(windows_dir.glob("*.windows.manifest.json"))
@@ -85,6 +94,8 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
+    args.outdir.mkdir(parents=True, exist_ok=True)
+    log_progress("start", 0)
     quantizer = load_json(args.quantization / "quantizer.json")
     if quantizer.get("mode") not in {"pq", "opq"}:
         raise SystemExit("PQ-CAGRA requires --quantize pq or opq")
@@ -92,7 +103,11 @@ def main() -> int:
     nbits = int(quantizer["pq_nbits"])
     codebook = np.load(args.quantization / "codebook.npy")
     rotation_path = args.quantization / "rotation.npy"
+    shards = pair_window_shards(args.windows_dir)
+    log_progress("load_windows", 5, shards=len(shards))
     codes, mapping, window_meta = load_unpacked_windows(args.windows_dir, pq_m, nbits)
+    log_progress("windows_loaded", 10, shards=len(shards), windows=int(codes.shape[0]))
+    log_progress("graph_build_start", 12, windows=int(codes.shape[0]))
     index = pq.build_index(
         codes,
         codebook,
@@ -100,15 +115,20 @@ def main() -> int:
         intermediate_graph_degree=args.intermediate_graph_degree,
         nndescent_iterations=args.nndescent_iterations,
     )
-    args.outdir.mkdir(parents=True, exist_ok=True)
+    log_progress("graph_build_complete", 90, windows=int(codes.shape[0]))
+    log_progress("save_index", 92)
     pq.save_index(index, args.outdir / "cagra.index")
+    log_progress("copy_quantization", 94)
     shutil.copytree(args.quantization, args.outdir / "quantization", dirs_exist_ok=True)
+    log_progress("write_window_map", 95, windows=len(mapping))
     with (args.outdir / "windows.tsv").open("w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["faiss_id", "transcript_id", "start", "end"])
         for faiss_id, (transcript_id, start, end) in enumerate(mapping):
             writer.writerow([faiss_id, transcript_id, start, end])
+    log_progress("write_window_map_complete", 96)
     if args.embeddings and args.graph_metadata:
+        log_progress("pack_records", 97)
         packed_embeddings, packed_records = pack_records(args.embeddings, args.graph_metadata)
         write_records(args.outdir, packed_embeddings, packed_records)
     embedding_dim = int(quantizer.get("embedding_dim", 128))
@@ -134,6 +154,7 @@ def main() -> int:
         "cpu_search": True,
     }
     (args.outdir / "meta.json").write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+    log_progress("complete", 100, windows=meta["n_windows"])
     print(json.dumps({"n_windows": meta["n_windows"], "index_type": "PQ_CAGRA"}))
     return 0
 

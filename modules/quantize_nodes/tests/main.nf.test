@@ -21,6 +21,7 @@ nextflow_process {
                 """
                 input[0] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
                 input[1] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
+                input[2] = 1000
                 """
             }
         }

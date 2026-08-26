@@ -13,6 +13,8 @@ process RERANK_CANDIDATES {
     path database
     path query_windows, stageAs: 'query_windows/*'
     path query_manifests, stageAs: 'query_manifests/*'
+    val query_stats
+    val database_meta
 
     output:
     tuple val(meta), path("*.seeds.tsv"), emit: seeds

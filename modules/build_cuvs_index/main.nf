@@ -1,6 +1,7 @@
 process BUILD_CUVS_INDEX {
     tag "cuvs"
     label 'process_medium'
+    label 'process_gpu'
     accelerator 1
 
     conda "${moduleDir}/environment.yml"
@@ -13,6 +14,8 @@ process BUILD_CUVS_INDEX {
     path manifests, stageAs: 'manifests/*'
     path embeddings, stageAs: 'embeddings/*'
     path metadata, stageAs: 'metadata/*'
+    val n_windows
+    val n_nodes
 
     output:
     path "faiss", emit: database

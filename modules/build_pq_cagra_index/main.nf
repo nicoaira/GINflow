@@ -15,6 +15,7 @@ process BUILD_PQ_CAGRA_INDEX {
     path embeddings, stageAs: 'embeddings/*'
     path metadata, stageAs: 'metadata/*'
     val n_windows
+    val n_nodes
 
     output:
     path "faiss", emit: database

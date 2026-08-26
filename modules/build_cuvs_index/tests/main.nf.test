@@ -22,6 +22,8 @@ nextflow_process {
                 input[1] = file("${projectDir}/modules/generate_windows", checkIfExists: true)
                 input[2] = file("${projectDir}/tests/data/smoke_test_structures.tsv", checkIfExists: true)
                 input[3] = file("${projectDir}/modules/build_rna_graphs", checkIfExists: true)
+                input[4] = 1000
+                input[5] = 1200
                 """
             }
         }
