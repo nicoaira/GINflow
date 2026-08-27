@@ -36,7 +36,7 @@ still a real RNA embedding) but destroys homology.
 
 `bin/estimate_evd.py`, process `ESTIMATE_EVD`:
 
-1. Load `faiss/embeddings.npz` (original residue vectors).
+1. Load `index/embeddings.npz` (original residue vectors).
 2. Draw `--evd_samples` (default 1000) random pairs of distinct
    database molecules.
 3. Reverse the query embedding along the sequence axis; leave the
@@ -72,10 +72,10 @@ The fitter (`fit_karlin_altschul`):
 4. A Kolmogorov–Smirnov statistic against the standard Gumbel CDF
    $F(z)=\exp(-e^{-z})$, stored as `ks_statistic`.
 
-`faiss/evd.json` records `lambda`, `K`, `database_residues`, the
+`index/evd.json` records `lambda`, `K`, `database_residues`, the
 Gumbel loc/scale, sample counts, and that KS value.
 
-On a query-only run, GINflow reuses `faiss/evd.json` from `--database`
+On a query-only run, GINflow reuses `index/evd.json` from `--database`
 when present. Otherwise it fits EVD from the bundled embeddings before
 alignment.
 

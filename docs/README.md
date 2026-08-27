@@ -63,7 +63,7 @@ nextflow run nicoaira/ginflow \
 nextflow run nicoaira/ginflow \
     -profile docker \
     --query queries.tsv \
-    --database results/faiss \
+    --database results/index \
     --outdir search_results
 ```
 

@@ -17,8 +17,12 @@ at launch and are ignored.
 |---|---|---|
 | `--input` | — | Structures table used to **build** the database. Omit when searching an existing `--database`. |
 | `--query` | — | Structures table to **search**. Omit for a build-only run. |
-| `--database` | — | Existing window database directory (`faiss/`). Requires `--query`. Do not combine with `--input`. |
+| `--database` | — | Existing window database directory (`index/`). Requires `--query`. Do not combine with `--input`. |
 | `--outdir` | — | **Required.** Output directory. |
+| `--save_graphs` | `false` | Publish graph safetensors and metadata under `graphs_shards/`. |
+| `--save_embeddings` | `false` | Publish per-shard embeddings and manifests under `embeddings_shards/`. The packed `index/embeddings.npz` is unaffected. |
+| `--save_windows` | `false` | Publish raw per-shard sliding-window vectors and manifests under `windows_shards/`. |
+| `--save_quantized_windows` | `false` | Publish intermediate quantized window shards under `windows_quantized/`. |
 
 Mode rules: [Run modes](usage.md#run-modes).
 

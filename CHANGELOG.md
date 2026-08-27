@@ -37,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - FAISS public types are `flatip`, `flatl2`, `ivfflat`, and `hnsw`. `--faiss_gpu` is exact FlatIP/FlatL2 only. FAISS IVF and HNSW are CPU-only; GPU IVF is `--index ivf`, GPU graph is `--index cagra`.
 - Default `--exact_rerank true`, `--candidate_k 200`. Raise `--seed_k` and `--candidate_k` with database size (see [docs/indexes.md](docs/indexes.md)).
 - Index guide rewritten without benchmark tables.
+- Published layout now uses `index/` for every reusable index, `seeds/` for
+  seed and clustering tables, and optional `graphs_shards/`,
+  `embeddings_shards/`, `windows_shards/`, and `windows_quantized/`
+  publication flags; the old `samples.csv` and top-level `quantization/`
+  are removed.
 
 ### `Added` (historical)
 

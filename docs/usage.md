@@ -152,10 +152,18 @@ The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--da
 | Flags | Mode |
 |---|---|
 | `--input` | Build a window database from the structures table |
-| `--query` + `--database` | Embed the query table and search an existing `faiss/` directory |
+| `--query` + `--database` | Embed the query table and search an existing `index/` directory |
 | `--input` + `--query` | Build the database, search it, and publish it for later runs |
 
-`--database` must be a previous run's `faiss/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `cuvs/`, `cagra.index`, or `index.bin`). CAGRA/IVF GPU search needs `-profile gpu` unless the database was converted with `--cagra_to_hnsw`. If `--input` and `--query` are the same file, embeddings are computed once.
+`--database` must be a previous run's `index/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `cuvs/`, `cagra.index`, or `index.bin`). CAGRA/IVF GPU search needs `-profile gpu` unless the database was converted with `--cagra_to_hnsw`. If `--input` and `--query` are the same file, embeddings are computed once.
+
+The intermediate graph and embedding shard directories are not published by
+default. Use `--save_graphs true` to publish `graphs_shards/`,
+`--save_embeddings true` to publish `embeddings_shards/`, and
+`--save_windows true` to publish `windows_shards/`. Quantized window shards
+are also internal by default; use `--save_quantized_windows true` to publish
+`windows_quantized/`. Query seed and cluster tables are published under
+`seeds/`.
 
 Window search parameters:
 
@@ -220,7 +228,7 @@ nextflow run nicoaira/ginflow \
 nextflow run nicoaira/ginflow \
     -profile docker \
     --query queries.tsv \
-    --database results/faiss \
+    --database results/index \
     --outdir search_results
 ```
 

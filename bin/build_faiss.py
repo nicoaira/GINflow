@@ -6,6 +6,7 @@ import argparse
 import csv
 import json
 import re
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -345,6 +346,7 @@ def write_database(
     mapping: list[tuple[int, str, int, int]],
     meta: dict,
     packed: tuple[dict[str, np.ndarray], list[tuple[str, str, str]]] | None = None,
+    quantization: Path | None = None,
 ) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     if str(meta.get("backend") or "").lower() == "cuvs":
@@ -357,6 +359,8 @@ def write_database(
         import faiss
 
         faiss.write_index(index, str(outdir / "index.faiss"))
+    if quantization is not None:
+        shutil.copytree(quantization, outdir / "quantization", dirs_exist_ok=True)
     with (outdir / "windows.tsv").open("w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
         writer.writerow(["faiss_id", "transcript_id", "start", "end"])
@@ -375,6 +379,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--manifests", type=Path, nargs="+", required=True)
     parser.add_argument("--embeddings", type=Path, nargs="*")
     parser.add_argument("--graph-metadata", type=Path, nargs="*")
+    parser.add_argument("--quantization", type=Path)
     parser.add_argument("--outdir", type=Path, required=True)
     parser.add_argument("--backend", choices=("faiss", "cuvs"), default="faiss")
     parser.add_argument("--index-type", default="flatip")
@@ -456,7 +461,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, KeyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    write_database(args.outdir, index, mapping, meta, packed)
+    write_database(args.outdir, index, mapping, meta, packed, args.quantization)
     keys = ("n_windows", "n_records", "window_dim", "index_type", "metric")
     print(json.dumps({"outdir": str(args.outdir), **{k: meta[k] for k in keys if k in meta}}))
     return 0

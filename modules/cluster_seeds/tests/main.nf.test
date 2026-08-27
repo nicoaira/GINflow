@@ -45,7 +45,8 @@ nextflow_process {
                     input[1] = GENERATE_WINDOWS.out.windows.map { meta, npz, manifest -> manifest }.collect()
                     input[2] = EMBED_RNA_GRAPHS.out.embeddings.map { meta, npz, manifest -> npz }.collect()
                     input[3] = BUILD_RNA_GRAPHS.out.graphs.map { meta, tensors, sidecar -> sidecar }.collect()
-                    input[4] = 1000L
+                    input[4] = channel.of([])
+                    input[5] = 1000L
                     """
                 }
             }

@@ -18,7 +18,7 @@ process BUILD_PQ_CAGRA_INDEX {
     val n_nodes
 
     output:
-    path "faiss", emit: database
+    path "index", emit: database
     path "versions.yml", emit: versions
 
     when:
@@ -28,11 +28,11 @@ process BUILD_PQ_CAGRA_INDEX {
     def args = task.ext.args ?: ''
     """
     set -o pipefail
-    mkdir -p faiss
+    mkdir -p index
     build_pq_cagra.py \\
         --windows-dir quantized_windows \\
         --quantization quantization \\
-        --outdir faiss \\
+        --outdir index \\
         --graph-degree ${params.cagra_graph_degree} \\
         --intermediate-graph-degree ${params.cagra_intermediate_graph_degree} \\
         --nndescent-iterations ${params.cagra_nndescent_iterations} \\
@@ -49,10 +49,10 @@ process BUILD_PQ_CAGRA_INDEX {
 
     stub:
     """
-    mkdir -p faiss/quantization
-    touch faiss/cagra.index
+    mkdir -p index/quantization
+    touch index/cagra.index
     echo 'PQ_CAGRA_PROGRESS scope=task phase=complete percent=100'
-    echo '{"backend":"cagra","index_type":"PQ_CAGRA"}' > faiss/meta.json
+    echo '{"backend":"cagra","index_type":"PQ_CAGRA"}' > index/meta.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

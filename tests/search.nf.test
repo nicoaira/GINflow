@@ -18,9 +18,10 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            assert path("${params.outdir}/faiss/index.faiss").exists()
-            assert path("${params.outdir}/seeds.tsv").exists()
-            def seeds = path("${params.outdir}/seeds.tsv").readLines()
+            assert path("${params.outdir}/index/index.faiss").exists()
+            assert path("${params.outdir}/seeds/seeds.tsv").exists()
+            assert !path("${params.outdir}/windows_shards").exists()
+            def seeds = path("${params.outdir}/seeds/seeds.tsv").readLines()
             assert seeds[0] == 'query_id\tquery_start\tquery_end\ttarget_id\ttarget_start\ttarget_end\tscore\trank'
             def rows = seeds.drop(1).findAll { it }
             assert rows.size() > 0
@@ -29,11 +30,12 @@ nextflow_pipeline {
                 cols[0] == cols[3] && cols[1] == cols[4] && cols[7] == '1'
             }
             assert selfHits.size() > 0
-            assert path("${params.outdir}/clusters.tsv").exists()
+            assert path("${params.outdir}/seeds/clusters.tsv").exists()
+            assert path("${params.outdir}/seeds/cluster_members.tsv").exists()
             assert path("${params.outdir}/alignments.tsv").exists()
             assert path("${params.outdir}/report.html").exists()
             assert path("${params.outdir}/report.html").text.contains('Search report')
-            def clusters = path("${params.outdir}/clusters.tsv").readLines()
+            def clusters = path("${params.outdir}/seeds/clusters.tsv").readLines()
             assert clusters.drop(1).findAll { it }.size() > 0
             def alignments = path("${params.outdir}/alignments.tsv").readLines()
             assert alignments[0].contains('evalue')
@@ -65,13 +67,13 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            def meta = path("${params.outdir}/faiss/meta.json").json
+            def meta = path("${params.outdir}/index/meta.json").json
             assert meta.index_type == 'IVFFlat'
             assert meta.index_class == 'IndexIVFFlat'
             assert meta.nlist == 4
             assert meta.nprobe == 4
-            assert path("${params.outdir}/seeds.tsv").exists()
-            def rows = path("${params.outdir}/seeds.tsv").readLines().drop(1).findAll { it }
+            assert path("${params.outdir}/seeds/seeds.tsv").exists()
+            def rows = path("${params.outdir}/seeds/seeds.tsv").readLines().drop(1).findAll { it }
             assert rows.size() > 0
             assert path("${params.outdir}/alignments.tsv").exists()
             assert path("${params.outdir}/report.html").exists()
@@ -91,8 +93,8 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            assert path("${params.outdir}/seeds.tsv").exists()
-            def seeds = path("${params.outdir}/seeds.tsv").readLines().drop(1).findAll { it }
+            assert path("${params.outdir}/seeds/seeds.tsv").exists()
+            def seeds = path("${params.outdir}/seeds/seeds.tsv").readLines().drop(1).findAll { it }
             def queryIds = seeds.collect { it.split('\t')[0] } as Set
             assert queryIds.contains('X75790.1/378-471:150-244')
             assert queryIds.contains('X58874.1/548-664:34-90')
@@ -132,17 +134,18 @@ nextflow_pipeline {
                 hnswlib_m = 8
                 hnswlib_ef_construction = 40
                 hnswlib_ef_search = 20
+                save_quantized_windows = true
             }
         }
 
         then {
             assert workflow.success
-            def meta = path("${params.outdir}/faiss/meta.json").json
+            def meta = path("${params.outdir}/index/meta.json").json
             assert meta.backend == 'hnswlib'
             assert meta.index_type == 'HNSWLIB_PQ'
-            assert path("${params.outdir}/faiss/index.bin").exists()
+            assert path("${params.outdir}/index/index.bin").exists()
             assert path("${params.outdir}/windows_quantized").exists()
-            assert path("${params.outdir}/seeds.tsv").exists()
+            assert path("${params.outdir}/seeds/seeds.tsv").exists()
             assert path("${params.outdir}/report.html").exists()
         }
     }
@@ -176,9 +179,9 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            assert path("${params.outdir}/seeds.tsv").exists()
-            assert path("${params.outdir}/rerank_metrics.json").exists()
-            assert path("${params.outdir}/rerank_metrics.json").json.backend == 'exact_original_window_rerank'
+            assert path("${params.outdir}/seeds/seeds.tsv").exists()
+            assert path("${params.outdir}/seeds/rerank_metrics.json").exists()
+            assert path("${params.outdir}/seeds/rerank_metrics.json").json.backend == 'exact_original_window_rerank'
             assert path("${params.outdir}/report.html").exists()
         }
     }
@@ -200,8 +203,8 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            assert path("${params.outdir}/seeds.tsv").exists()
-            assert !path("${params.outdir}/faiss/index.faiss").exists()
+            assert path("${params.outdir}/seeds/seeds.tsv").exists()
+            assert !path("${params.outdir}/index/index.faiss").exists()
         }
     }
 }

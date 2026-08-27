@@ -4,19 +4,19 @@ Published under `--outdir` (or `-output-dir`) by the entry-workflow `output` blo
 
 ```
 outdir/
-├── graphs/
+├── graphs_shards/           # only with --save_graphs
 │   └── <shard>/
 │       ├── <shard>.safetensors
 │       └── <shard>.json
-├── embeddings/
+├── embeddings_shards/       # only with --save_embeddings
 │   └── <shard>/
 │       ├── <shard>.npz
 │       └── <shard>.manifest.json
-├── windows/
+├── windows_shards/          # only with --save_windows
 │   └── <shard>/
 │       ├── <shard>.windows.npz
 │       └── <shard>.windows.manifest.json
-├── faiss/
+├── index/
 │   ├── index.faiss   # FAISS types
 │   ├── cuvs/         # stock CAGRA or IVF-Flat
 │   ├── hnsw/         # CPU HNSW converted from CAGRA when --cagra_to_hnsw
@@ -25,9 +25,12 @@ outdir/
 │   ├── quantization/ # node SQ/PQ/OPQ artifacts
 │   ├── windows.tsv
 │   └── meta.json
-├── seeds.tsv
-├── clusters.tsv
-├── cluster_members.tsv
+├── windows_quantized/       # only with --save_quantized_windows
+├── seeds/
+│   ├── seeds.tsv
+│   ├── rerank_metrics.json  # when exact reranking ran
+│   ├── clusters.tsv
+│   └── cluster_members.tsv
 ├── alignments.tsv
 ├── alignments.txt
 ├── report.html
@@ -35,71 +38,88 @@ outdir/
 │   ├── rnartistcore/
 │   ├── r4rna/
 │   └── sw/
-├── samples.csv
 └── pipeline_info/
 ```
 
-`faiss/` is published on build runs and now also contains residue `embeddings.npz` plus `records.tsv` so a later `--query --database` run can align. `seeds.tsv`, `clusters.tsv`, and `alignments.tsv` are published on query runs.
+`index/` is published on build runs and contains the selected FAISS, cuVS,
+CAGRA, or hnswlib index, plus residue `embeddings.npz` and `records.tsv` so
+a later `--query --database` run can align. `seeds/` is published on query
+runs. Raw graph, embedding, and window shards are intermediate artifacts and
+are published only with their corresponding `--save_*` flag. Raw quantized
+window shards are published only with `--save_quantized_windows`.
 
 When the input table has `start` / `end` windows, each window is stored under `{transcript_id}:{start}-{end}` and treated as its own molecule from embeddings onward. See [Sliced graphs](#sliced-graphs).
 
-## samples.csv
+## graphs_shards/
 
-Index of every published shard. Columns: `id`, `graphs`, `metadata`, `embeddings`, `manifest`, `windows`, `windows_manifest`.
-
-## graphs/
-
-One GINFINITY graph shard per input chunk (`--shard_size` records), in a subdirectory named after the shard id.
+Published only with `--save_graphs`. Contains one GINFINITY graph shard per
+input chunk (`--shard_size` records), in a subdirectory named after the shard
+id.
 
 - `*.safetensors` — node/edge tensors (sliced shards also store `residue_index` and `node_roles`)
 - `*.json` — identifiers, full source sequences/structures, graph spec, and a content checksum. A sliced row is stored under `{transcript_id}:{start}-{end}`.
 
-## embeddings/
+## embeddings_shards/
 
-Per-nucleotide embeddings from `ginfinity embed-graphs`, one subdirectory per shard.
+Published only with `--save_embeddings`. Contains per-nucleotide
+embeddings from `ginfinity embed-graphs`, one subdirectory per shard.
 
 - `*.npz` — one array per identifier, shape `(L, 128)`, stored as float16 by default. `--ginfinity_full_precision` changes GINFINITY's model inference to float32; it does not change the default embedding storage dtype. For a slice, `L` is the core window (`end - start`), not the source molecule.
 - `*.manifest.json` — package/model versions, device, and record shapes (`core_length`, and `start`/`end` when sliced)
 
-## windows/
+## windows_shards/
 
-Sliding windows of the node embeddings (`--window_size`, default 11, stride 1).
+Published only with `--save_windows`. Contains sliding windows of the node
+embeddings (`--window_size`, default 11, stride 1).
 
 - `*.windows.npz` — one `(n_windows, 1408)` array per `transcript_id` (concatenated, L2-normalized)
 - `*.windows.manifest.json` — window size, shapes, and sequences shorter than `w`
 
-## faiss/
+## index/
 
-Reusable window index of every database window. Default is exact inner product (`IndexFlatIP` / `--faiss_index flatip`). `meta.json` records `backend`, `index_type`, `--quantize`, and graph/IVF parameters. See [indexes.md](indexes.md).
+Reusable window index of every database window. Default is exact inner product
+(`IndexFlatIP` / `--faiss_index flatip`). `meta.json` records `backend`,
+`index_type`, `--quantize`, and graph/IVF parameters. See [indexes.md](indexes.md).
 
 - `index.faiss` — FAISS index (always stored as a CPU index, even after a GPU build)
 - `cuvs/` — serialized GPU cuVS CAGRA or IVF-Flat
 - `hnsw/` — CPU HNSW converted from uncompressed/SQ CAGRA (`--cagra_to_hnsw`)
 - `cagra.index` — custom PQ-CAGRA graph (`--index cagra` with `--quantize pq|opq`)
 - `index.bin` — hnswlib custom-distance PQ graph
-- `quantization/` — node codebook, SDC table, OPQ rotation, SQ scales; not a substitute for `embeddings.npz`
+- `quantization/` — node codebook, SDC table, OPQ rotation, SQ scales, and node codes; for every quantized index this is inside `index/`, not a top-level output
 - `windows.tsv` — `faiss_id`, `transcript_id`, `start`, `end`
 - `meta.json` — window geometry, model fingerprint, counts, and index settings
 - `embeddings.npz` — per-nucleotide embeddings, one array per identifier
 - `records.tsv` — `transcript_id`, `sequence`, `secondary_structure`. For a slice the identifier is `{id}:{start}-{end}` and the sequence/structure are the core window (pairs that cross the cut are written as unpaired), so later search/alignment treat that window as its own molecule.
 - `evd.json` — Karlin–Altschul λ, K, database residue count, and the reverse-sequence null fit
 
-When `--index hnswlib` is selected, the workflow also publishes `quantization/`
-and `windows_quantized/` at the output root. These contain the CPU centroid-code
-candidate representation and are not used by SW. GPU HNSWLIB additionally
+When node quantization is selected, `index/quantization/` is part of the
+reusable database, while the intermediate `windows_quantized/` is published
+only with `--save_quantized_windows`. For `--index hnswlib`, these quantized
+windows are the CPU centroid-code candidate representation and are not used
+by SW. GPU HNSWLIB additionally
 stores its int8-scaled original-window CAGRA data inside the serialized index;
 the original float16 embeddings above remain authoritative for exact scoring,
 SW, alignment, and plots.
 
 `--database` for a later search run should point at this directory.
 
-## seeds.tsv
+## seeds/
 
-Query-mode hits. Columns: `query_id`, `query_start`, `query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`. Self-hits are kept. With `--exact_rerank true`, scores are original-window cosine and `--seed_min_similarity` is applied after rerank. Without rerank, PQ/OPQ writes ADC scores for the top `--seed_k` neighbours (no cosine cutoff). The same run publishes `rerank_metrics.json` when rerank ran.
+`seeds/seeds.tsv` contains query-mode hits. Columns: `query_id`, `query_start`,
+`query_end`, `target_id`, `target_start`, `target_end`, `score`, `rank`.
+Self-hits are kept. With `--exact_rerank true`, scores are original-window
+cosine and `--seed_min_similarity` is applied after rerank. Without rerank,
+PQ/OPQ writes ADC scores for the top `--seed_k` neighbours (no cosine cutoff).
+`seeds/rerank_metrics.json` is published when reranking ran.
 
-## clusters.tsv
+`seeds/clusters.tsv` contains diagonal HSP clusters. A cluster starts at the
+highest-scoring unused seed and grows by the best remaining seed whose
+query/target box is within `--cluster_span` and whose diagonal stays inside
+`--cluster_diagonal_tolerance` / `--cluster_max_diagonal_span`. Singletons are
+dropped.
 
-Diagonal HSP clusters. A cluster starts at the highest-scoring unused seed and grows by the best remaining seed whose query/target box is within `--cluster_span` and whose diagonal stays inside `--cluster_diagonal_tolerance` / `--cluster_max_diagonal_span`. Singletons are dropped.
+`seeds/cluster_members.tsv` lists every seed that went into a cluster.
 
 ## alignments.tsv / alignments.txt
 
@@ -124,11 +144,11 @@ If `structures.tsv` included `start` / `end` columns, every published artifact u
 | Artifact | What you see for a window `[start, end)` |
 |---|---|
 | Identifier | `{transcript_id}:{start}-{end}` (full molecules keep the original id) |
-| `graphs/*.json` | Full source sequence/structure; the graph node set is core + optional pairing context |
-| `embeddings/*.npz` | One `(end - start, 128)` array — core nucleotides only |
-| `windows/*` | Sliding 11-nt seeds over that core embedding |
-| `faiss/records.tsv` | Core sequence and a pair-closed core structure (crossing pairs become `.`) |
-| `faiss/windows.tsv`, `seeds.tsv`, `alignments.tsv` | Coordinates are 0-based on the core: `0` is `sequence[start]`, not the 5′ end of the source RNA |
+| `graphs_shards/*.json` | Full source sequence/structure; the graph node set is core + optional pairing context (only with `--save_graphs`) |
+| `embeddings_shards/*.npz` | One `(end - start, 128)` array — core nucleotides only (only with `--save_embeddings`) |
+| `windows_shards/*` | Sliding 11-nt seeds over that core embedding (only with `--save_windows`) |
+| `index/records.tsv` | Core sequence and a pair-closed core structure (crossing pairs become `.`) |
+| `index/windows.tsv`, `seeds/seeds.tsv`, `alignments.tsv` | Coordinates are 0-based on the core: `0` is `sequence[start]`, not the 5′ end of the source RNA |
 
 Two overlapping windows on the same source row (`34,40` / `90,95`) appear as two ids, two embeddings, and two query groups in `report.html`. How to write the table: [usage.md — Sliced graphs](usage.md#sliced-graphs).
 

@@ -35,7 +35,27 @@
                 "outdir": {
                     "type": "string",
                     "format": "directory-path",
-                    "description": "Output directory for graphs, embeddings, windows, the FAISS database, and seeds."
+                    "description": "Output directory for the reusable index, seeds, and optional graph, embedding, window, and quantized-window shards."
+                },
+                "save_graphs": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Publish per-shard graph tensors and metadata under graphs_shards/. Graphs are still created internally when needed by downstream stages."
+                },
+                "save_embeddings": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Publish per-shard residue embeddings and manifests under embeddings_shards/. Embeddings are still created internally when needed by downstream stages."
+                },
+                "save_windows": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Publish raw per-shard sliding-window vectors and manifests under windows_shards/. Windows are still created internally when needed by downstream stages."
+                },
+                "save_quantized_windows": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Publish intermediate quantized window shards under windows_quantized/. These shards are still created internally when required by a quantized index."
                 }
             }
         },

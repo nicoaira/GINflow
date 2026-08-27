@@ -304,7 +304,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--query-metadata", type=Path, nargs="+", required=True)
     parser.add_argument("--target-embeddings", type=Path, nargs="*")
     parser.add_argument("--target-metadata", type=Path, nargs="*")
-    parser.add_argument("--database", type=Path, help="Packed faiss/ directory with embeddings.npz and records.tsv")
+    parser.add_argument("--database", type=Path, help="Packed index/ directory with embeddings.npz and records.tsv")
     parser.add_argument("--evd", type=Path, required=True, help="evd.json from estimate_evd.py")
     parser.add_argument("--pad", type=int, default=32)
     parser.add_argument("--max-cells", type=int, default=16_777_216)

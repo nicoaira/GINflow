@@ -295,7 +295,7 @@ def evalue_from_log(log_e: float) -> float:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--database", type=Path, required=True, help="Packed faiss/ directory")
+    parser.add_argument("--database", type=Path, required=True, help="Packed index/ directory")
     parser.add_argument("--parameters", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=1000)

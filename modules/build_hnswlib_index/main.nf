@@ -16,7 +16,7 @@ process BUILD_HNSWLIB_INDEX {
     path hnsw_bundle, stageAs: 'hnsw_bundle'
 
     output:
-    path "faiss", emit: database
+    path "index", emit: database
     path "versions.yml", emit: versions
 
     when:
@@ -30,7 +30,7 @@ process BUILD_HNSWLIB_INDEX {
         --windows-dir quantized_windows \\
         --quantization quantization \\
         --hnsw-bundle hnsw_bundle \\
-        --outdir faiss \\
+        --outdir index \\
         --m ${params.hnswlib_m} \\
         --ef-construction ${params.hnswlib_ef_construction} \\
         --ef-search ${params.hnswlib_ef_search} \\
@@ -50,9 +50,9 @@ process BUILD_HNSWLIB_INDEX {
 
     stub:
     """
-    mkdir -p faiss/quantization
-    touch faiss/index.bin
-    echo '{"backend":"hnswlib","index_type":"HNSWLIB_PQ"}' > faiss/meta.json
+    mkdir -p index/quantization
+    touch index/index.bin
+    echo '{"backend":"hnswlib","index_type":"HNSWLIB_PQ"}' > index/meta.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

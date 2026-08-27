@@ -32,7 +32,7 @@ and `--database` together.
 | Flags | What runs |
 |---|---|
 | `--input` | Embed structures, build a reusable window database, fit EVD |
-| `--query` + `--database` | Embed queries, search an existing `faiss/` directory |
+| `--query` + `--database` | Embed queries, search an existing `index/` directory |
 | `--input` + `--query` | Build, search, and publish the database in one run |
 
 If `--input` and `--query` are the same file, embeddings are computed
@@ -57,7 +57,9 @@ crossing-pair partners outside the core stay in the graph so message
 passing can use them (`--keep_paired_neighbours`, `--context_hops 4`).
 See [Sliced graphs](usage.md#sliced-graphs).
 
-Artifacts: `graphs/<shard>/*.safetensors` and `*.json`.
+Artifacts: `graphs_shards/<shard>/*.safetensors` and `*.json` when
+`--save_graphs` is enabled. Graphs are still produced internally when
+downstream stages need them.
 
 ## Stage 2 — Embeddings
 
@@ -70,7 +72,9 @@ For a sliced subject the embedding has shape `(end - start, 128)` —
 core nucleotides only. Context nodes are used during message passing
 and then dropped.
 
-Artifacts: `embeddings/<shard>/*.npz` and `*.manifest.json`.
+Artifacts: `embeddings_shards/<shard>/*.npz` and `*.manifest.json` when
+`--save_embeddings` is enabled. Embeddings are still produced
+internally when downstream stages need them.
 
 ## Stage 3 — Windows
 
@@ -87,7 +91,9 @@ These windows are **not** the optional `start`/`end` columns. Slices
 change the graph GINFINITY builds; windows are a search seed over an
 already-embedded subject.
 
-Artifacts: `windows/<shard>/*.windows.npz`.
+Artifacts: `windows_shards/<shard>/*.windows.npz` and
+`*.windows.manifest.json` when `--save_windows` is enabled. Windows are
+still produced internally when downstream stages need them.
 
 ## Stage 4 — Optional node compression
 
@@ -110,10 +116,13 @@ queries stay in original node space and score database codes with ADC.
 
 Recommended compact layout: `--quantize opq --pq_m 16 --pq_nbits 4`.
 
+Quantized window shards are an internal handoff to the index builder and are
+not published by default. Use `--save_quantized_windows` when you need that
+intermediate representation for inspection or debugging.
+
 ## Stage 5 — Index
 
-One of four libraries builds a reusable window database under `faiss/`
-(the directory name is historical):
+One of four libraries builds a reusable window database under `index/`:
 
 | `--index` | Quantize | Role |
 |---|---|---|
@@ -133,7 +142,7 @@ The database always also packs:
 - `meta.json` — window geometry, model fingerprint, index settings
 - `evd.json` — Karlin–Altschul λ, K, database residue count
 
-Later `--query --database <outdir>/faiss` reads that directory.
+Later `--query --database <outdir>/index` reads that directory.
 `--index` must match `meta.json` if you set it explicitly.
 
 Full matrix: [Window indexes](indexes.md).
@@ -150,7 +159,7 @@ The index returns up to `--candidate_k` neighbours per query window
 50) above `--seed_min_similarity` (default 0.8). Exact rerank is on by
 default and is skipped for already-exact FlatIP / FlatL2.
 
-Seeds are concatenated into `seeds.tsv`:
+Seeds are concatenated into `seeds/seeds.tsv`:
 
 `query_id`, `query_start`, `query_end`, `target_id`, `target_start`,
 `target_end`, `score`, `rank`.

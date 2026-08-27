@@ -14,11 +14,12 @@ process BUILD_CUVS_INDEX {
     path manifests, stageAs: 'manifests/*'
     path embeddings, stageAs: 'embeddings/*'
     path metadata, stageAs: 'metadata/*'
+    path quantization, stageAs: 'quantization'
     val n_windows
     val n_nodes
 
     output:
-    path "faiss", emit: database
+    path "index", emit: database
     path "versions.yml", emit: versions
 
     when:
@@ -28,13 +29,14 @@ process BUILD_CUVS_INDEX {
     def args     = task.ext.args ?: ''
     def n_lists  = params.cuvs_n_lists != null ? "--cuvs-n-lists ${params.cuvs_n_lists}" : ''
     def n_probes = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
+    def quantization_arg = params.quantize == 'sq' ? '--quantization quantization' : ''
     """
     build_faiss.py \\
         --windows windows/*.windows.npz \\
         --manifests manifests/*.windows.manifest.json \\
         --embeddings embeddings/*.npz \\
         --graph-metadata metadata/*.json \\
-        --outdir faiss \\
+        --outdir index \\
         --backend cuvs \\
         --cuvs-index-type ${params.index == 'ivf' ? 'ivf' : 'cagra'} \\
         --cuvs-intermediate-graph-degree ${params.cagra_intermediate_graph_degree} \\
@@ -44,6 +46,7 @@ process BUILD_CUVS_INDEX {
         ${params.cagra_to_hnsw ? '--cagra-to-hnsw' : ''} \\
         ${n_lists} \\
         ${n_probes} \\
+        ${quantization_arg} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml
@@ -56,12 +59,16 @@ process BUILD_CUVS_INDEX {
 
     stub:
     """
-    mkdir -p faiss/cuvs
-    touch faiss/cuvs/index.bin
-    touch faiss/windows.tsv
-    touch faiss/embeddings.npz
-    touch faiss/records.tsv
-    echo '{"backend":"cuvs","index_type":"CAGRA"}' > faiss/meta.json
+    mkdir -p index/cuvs
+    touch index/cuvs/index.bin
+    touch index/windows.tsv
+    touch index/embeddings.npz
+    touch index/records.tsv
+    if [ "${params.quantize}" = "sq" ]; then
+        mkdir -p index/quantization
+        cp -a quantization/. index/quantization/
+    fi
+    echo '{"backend":"cuvs","index_type":"CAGRA"}' > index/meta.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

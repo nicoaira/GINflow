@@ -12,10 +12,11 @@ process BUILD_FAISS_INDEX {
     path manifests, stageAs: 'manifests/*'
     path embeddings, stageAs: 'embeddings/*'
     path metadata, stageAs: 'metadata/*'
+    path quantization, stageAs: 'quantization'
     val n_windows
 
     output:
-    path "faiss", emit: database
+    path "index", emit: database
     path "versions.yml", emit: versions
 
     when:
@@ -26,13 +27,14 @@ process BUILD_FAISS_INDEX {
     def gpu_flag  = task.accelerator ? '--gpu' : ''
     def nlist     = params.faiss_nlist     != null ? "--nlist ${params.faiss_nlist}" : ''
     def nprobe    = params.faiss_nprobe    != null ? "--nprobe ${params.faiss_nprobe}" : ''
+    def quantization_arg = params.quantize == 'sq' ? '--quantization quantization' : ''
     """
     build_faiss.py \\
         --windows windows/*.windows.npz \\
         --manifests manifests/*.windows.manifest.json \\
         --embeddings embeddings/*.npz \\
         --graph-metadata metadata/*.json \\
-        --outdir faiss \\
+        --outdir index \\
         --backend faiss \\
         --index-type ${params.faiss_index} \\
         --hnsw-m ${params.faiss_hnsw_m} \\
@@ -40,6 +42,7 @@ process BUILD_FAISS_INDEX {
         --hnsw-ef-search ${params.faiss_hnsw_ef_search} \\
         ${nlist} \\
         ${nprobe} \\
+        ${quantization_arg} \\
         ${gpu_flag} \\
         ${args}
 
@@ -52,12 +55,16 @@ process BUILD_FAISS_INDEX {
 
     stub:
     """
-    mkdir -p faiss
-    touch faiss/index.faiss
-    touch faiss/windows.tsv
-    touch faiss/embeddings.npz
-    touch faiss/records.tsv
-    echo '{}' > faiss/meta.json
+    mkdir -p index
+    touch index/index.faiss
+    touch index/windows.tsv
+    touch index/embeddings.npz
+    touch index/records.tsv
+    if [ "${params.quantize}" = "sq" ]; then
+        mkdir -p index/quantization
+        cp -a quantization/. index/quantization/
+    fi
+    echo '{}' > index/meta.json
 
     cat <<-END_VERSIONS > versions.yml
     "${task.process}":

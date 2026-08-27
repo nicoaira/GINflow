@@ -98,7 +98,15 @@ workflow GINFLOW {
         if (index_library == 'faiss') {
             def faiss_windows = sq_vectors ? PREPARE_DB.out.quantized_npz.collect() : ch_db_windows
             def faiss_manifests = sq_vectors ? PREPARE_DB.out.quantized_manifests.collect() : ch_db_manifests
-            BUILD_FAISS_INDEX(faiss_windows, faiss_manifests, ch_db_embeddings, ch_db_metadata, ch_db_window_count)
+            def faiss_quantization = sq_vectors ? PREPARE_DB.out.quantization : channel.of([])
+            BUILD_FAISS_INDEX(
+                faiss_windows,
+                faiss_manifests,
+                ch_db_embeddings,
+                ch_db_metadata,
+                faiss_quantization,
+                ch_db_window_count
+            )
             ch_versions       = ch_versions.mix(BUILD_FAISS_INDEX.out.versions)
             ch_built_database = BUILD_FAISS_INDEX.out.database
         }
@@ -117,11 +125,13 @@ workflow GINFLOW {
         else if (index_library in ['cagra', 'ivf']) {
             def cuvs_windows = sq_vectors ? PREPARE_DB.out.quantized_npz.collect() : ch_db_windows
             def cuvs_manifests = sq_vectors ? PREPARE_DB.out.quantized_manifests.collect() : ch_db_manifests
+            def cuvs_quantization = sq_vectors ? PREPARE_DB.out.quantization : channel.of([])
             BUILD_CUVS_INDEX(
                 cuvs_windows,
                 cuvs_manifests,
                 ch_db_embeddings,
                 ch_db_metadata,
+                cuvs_quantization,
                 ch_db_window_count,
                 ch_db_node_count
             )

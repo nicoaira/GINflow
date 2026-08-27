@@ -201,7 +201,10 @@ and does not apply `--seed_min_similarity`.
 
 ## Published database
 
-Under `results/faiss/` (the directory name is historical):
+The reusable database is under `results/index/`; optional intermediate
+quantized windows are published alongside it at `results/windows_quantized/`.
+The uncompressed per-shard windows are published at `results/windows_shards/`
+only when `--save_windows true` is set.
 
 | Artifact | When |
 |---|---|
@@ -211,8 +214,14 @@ Under `results/faiss/` (the directory name is historical):
 | `cagra.index` | PQ-CAGRA graph |
 | `index.bin` | hnswlib PQ graph |
 | `quantization/` | codebook, SDC table, OPQ rotation, SQ scales, node codes |
+| `windows_quantized/` | raw quantized window shards, only with `--save_quantized_windows` |
 | `windows.tsv`, `meta.json` | window map and resolved parameters |
 | `embeddings.npz`, `records.tsv` | original residues for SW / rerank / alignment |
+
+For `--quantize sq`, the fitted quantizer is published as
+`index/quantization/` alongside the standard FAISS or cuVS index. PQ/OPQ
+indexes likewise keep their codebooks and lookup tables under
+`index/quantization/`; no top-level `quantization/` directory is produced.
 
 `--database` is that directory. On query-only runs GINflow reads `meta.json`.
 An explicit `--index` that disagrees with the database is an error.

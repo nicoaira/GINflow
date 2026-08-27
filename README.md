@@ -81,7 +81,7 @@ nextflow run nicoaira/ginflow \
 nextflow run nicoaira/ginflow \
    -profile docker \
    --query queries.tsv \
-   --database <OUTDIR>/faiss \
+   --database <OUTDIR>/index \
    --outdir <SEARCH_OUTDIR>
 
 # Build and search in one run
@@ -91,6 +91,13 @@ nextflow run nicoaira/ginflow \
    --query queries.tsv \
    --outdir <OUTDIR>
 ```
+
+Builds publish the reusable database under `<OUTDIR>/index/`. Raw graph,
+embedding, and window shards are not published by default. Add
+`--save_graphs true`, `--save_embeddings true`, or `--save_windows true` when
+you need those per-shard artifacts; add `--save_quantized_windows true` when
+you need the intermediate quantized window shards. Query results are grouped
+under `<OUTDIR>/seeds/`.
 
 ### Test database + short queries
 
@@ -106,7 +113,7 @@ nextflow run . \
 nextflow run . \
     -profile docker \
     --query tests/data/example_queries.tsv \
-    --database testdb/faiss \
+    --database testdb/index \
     --outdir test_search
 ```
 

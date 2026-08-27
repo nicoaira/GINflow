@@ -122,6 +122,10 @@ def normalize_parameter_values() {
     normalize_boolean_param('hnswlib_rerank', false)
     normalize_boolean_param('exact_rerank', true)
     normalize_boolean_param('cagra_to_hnsw', false)
+    normalize_boolean_param('save_graphs', false)
+    normalize_boolean_param('save_embeddings', false)
+    normalize_boolean_param('save_windows', false)
+    normalize_boolean_param('save_quantized_windows', false)
     normalize_lowercase_choice('exact_rerank_device', 'cpu', ['cpu', 'cuda'])
 }
 
@@ -353,26 +357,47 @@ workflow {
         params.quantize
     )
 
-    samples_ch = result.graphs
-        .join(result.embeddings)
-        .join(result.windows)
-        .map { meta, tensors, sidecar, npz, manifest, windows, windows_manifest ->
+    graph_shards_ch = result.graphs
+        .map { meta, tensors, sidecar ->
             [
                 id               : meta.id,
                 graphs           : tensors,
                 metadata         : sidecar,
+            ]
+        }
+
+    embedding_shards_ch = result.embeddings
+        .map { meta, npz, manifest ->
+            [
+                id               : meta.id,
                 embeddings       : npz,
                 manifest         : manifest,
+            ]
+        }
+
+    window_shards_ch = result.windows
+        .map { meta, windows, windows_manifest ->
+            [
+                id               : meta.id,
                 windows          : windows,
                 windows_manifest : windows_manifest,
             ]
         }
 
     publish:
-    samples          = samples_ch
+    graphs_shards    = BooleanParam.parse(params.save_graphs, false)
+        ? graph_shards_ch
+        : channel.empty()
+    embeddings_shards = BooleanParam.parse(params.save_embeddings, false)
+        ? embedding_shards_ch
+        : channel.empty()
+    windows_shards   = BooleanParam.parse(params.save_windows, false)
+        ? window_shards_ch
+        : channel.empty()
     database         = result.database
-    quantization     = result.quantization
-    quantized_windows = result.quantized_windows
+    quantized_windows = BooleanParam.parse(params.save_quantized_windows, false)
+        ? result.quantized_windows
+        : channel.empty()
     rerank_metrics   = result.rerank_metrics
     seeds            = result.seeds
     clusters         = result.clusters
@@ -387,40 +412,41 @@ workflow {
 }
 
 output {
-    samples {
+    graphs_shards {
         path { sample ->
-            sample.graphs >> "graphs/${sample.id}/"
-            sample.metadata >> "graphs/${sample.id}/"
-            sample.embeddings >> "embeddings/${sample.id}/"
-            sample.manifest >> "embeddings/${sample.id}/"
-            sample.windows >> "windows/${sample.id}/"
-            sample.windows_manifest >> "windows/${sample.id}/"
+            sample.graphs >> 'graphs_shards/' + sample.id + '/'
+            sample.metadata >> 'graphs_shards/' + sample.id + '/'
         }
-        index {
-            path 'samples.csv'
-            header true
+    }
+    embeddings_shards {
+        path { sample ->
+            sample.embeddings >> 'embeddings_shards/' + sample.id + '/'
+            sample.manifest >> 'embeddings_shards/' + sample.id + '/'
+        }
+    }
+    windows_shards {
+        path { sample ->
+            sample.windows >> 'windows_shards/' + sample.id + '/'
+            sample.windows_manifest >> 'windows_shards/' + sample.id + '/'
         }
     }
     database {
-        path '.'
-    }
-    quantization {
-        path { directory -> directory >> 'quantization' }
+        path { directory -> directory >> 'index' }
     }
     quantized_windows {
         path { directory -> directory >> 'windows_quantized' }
     }
     rerank_metrics {
-        path { metrics -> metrics >> 'rerank_metrics.json' }
+        path { metrics -> metrics >> 'seeds/rerank_metrics.json' }
     }
     seeds {
-        path '.'
+        path { seed_file -> seed_file >> 'seeds/seeds.tsv' }
     }
     clusters {
-        path '.'
+        path { cluster_file -> cluster_file >> 'seeds/clusters.tsv' }
     }
     cluster_members {
-        path '.'
+        path { member_file -> member_file >> 'seeds/cluster_members.tsv' }
     }
     alignments {
         path '.'
@@ -430,7 +456,7 @@ output {
     }
     evd {
         path { evd_file ->
-            evd_file >> 'faiss/evd.json'
+            evd_file >> 'index/evd.json'
         }
     }
     plots_rnartist {

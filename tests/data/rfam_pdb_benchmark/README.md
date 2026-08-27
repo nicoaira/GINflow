@@ -133,7 +133,7 @@ Search it with the mandatory query sheet:
 ```bash
 nextflow run . -profile docker \
   --query tests/data/rfam_pdb_benchmark/queries.tsv \
-  --database results/rfam-pdb-30k/faiss \
+  --database results/rfam-pdb-30k/index \
   --outdir results/rfam-pdb-30k-search
 ```
 

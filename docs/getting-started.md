@@ -42,7 +42,7 @@ nextflow run . \
 ```
 
 That **builds** a tiny database. It does not search. Open
-`smoke_out/faiss/` when it finishes: you should see `index.faiss`,
+`smoke_out/index/` when it finishes: you should see `index.faiss`,
 `windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and
 `evd.json`.
 
@@ -63,7 +63,7 @@ nextflow run . \
 nextflow run . \
     -profile docker \
     --query tests/data/example_queries.tsv \
-    --database testdb/faiss \
+    --database testdb/index \
     --outdir test_search
 ```
 
@@ -114,7 +114,7 @@ nextflow run nicoaira/ginflow \
 nextflow run nicoaira/ginflow \
     -profile docker \
     --query queries.tsv \
-    --database results/faiss \
+    --database results/index \
     --outdir search_results
 ```
 
@@ -151,8 +151,8 @@ More: [Profiles and hardware](profiles.md).
 
 | You passed | You should see |
 |---|---|
-| `--input` only | `graphs/`, `embeddings/`, `windows/`, `faiss/`, `samples.csv` |
-| `--query` | plus `seeds.tsv`, `clusters.tsv`, `alignments.tsv`, `report.html` |
+| `--input` only | `index/`; add `--save_graphs`, `--save_embeddings`, `--save_windows`, or `--save_quantized_windows` for intermediate shards |
+| `--query` | plus `seeds/seeds.tsv`, `seeds/clusters.tsv`, `alignments.tsv`, `report.html` |
 | `--plot_backend` / `--plot_sw` | `plots/` SVGs, inlined in the report |
 
 [Output](output.md) describes every file.

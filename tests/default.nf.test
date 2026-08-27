@@ -16,26 +16,25 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            assert path("${params.outdir}/samples.csv").exists()
-            def graphs = getAllFilesFromDir("${params.outdir}/graphs", includeDir: false)
-            def embeddings = getAllFilesFromDir("${params.outdir}/embeddings", includeDir: false)
-            def windows = getAllFilesFromDir("${params.outdir}/windows", includeDir: false)
-            assert graphs.findAll { it.name.endsWith('.safetensors') }.size() >= 1
-            assert embeddings.findAll { it.name.endsWith('.npz') }.size() >= 1
-            assert windows.findAll { it.name.endsWith('.windows.npz') }.size() >= 1
-            assert path("${params.outdir}/faiss/index.faiss").exists()
-            assert path("${params.outdir}/faiss/windows.tsv").exists()
-            assert path("${params.outdir}/faiss/embeddings.npz").exists()
-            assert path("${params.outdir}/faiss/records.tsv").exists()
-            assert path("${params.outdir}/faiss/evd.json").exists()
-            def evd = path("${params.outdir}/faiss/evd.json").json
+            assert !path("${params.outdir}/samples.csv").exists()
+            assert !path("${params.outdir}/quantization").exists()
+            assert !path("${params.outdir}/graphs_shards").exists()
+            assert !path("${params.outdir}/embeddings_shards").exists()
+            assert !path("${params.outdir}/windows_shards").exists()
+            assert !path("${params.outdir}/windows_quantized").exists()
+            assert path("${params.outdir}/index/index.faiss").exists()
+            assert path("${params.outdir}/index/windows.tsv").exists()
+            assert path("${params.outdir}/index/embeddings.npz").exists()
+            assert path("${params.outdir}/index/records.tsv").exists()
+            assert path("${params.outdir}/index/evd.json").exists()
+            def evd = path("${params.outdir}/index/evd.json").json
             assert (evd.lambda as double) > 0
             assert (evd.K as double) > 0
-            def meta = path("${params.outdir}/faiss/meta.json").json
+            def meta = path("${params.outdir}/index/meta.json").json
             assert meta.window_size == 11
             assert meta.n_windows > 0
             assert meta.index_type == 'FlatIP'
-            assert !path("${params.outdir}/seeds.tsv").exists()
+            assert !path("${params.outdir}/seeds/seeds.tsv").exists()
         }
     }
 
@@ -51,8 +50,8 @@ nextflow_pipeline {
 
         then {
             assert workflow.success
-            assert path("${params.outdir}/faiss/index.faiss").exists()
-            def records = path("${params.outdir}/faiss/records.tsv").readLines()
+            assert path("${params.outdir}/index/index.faiss").exists()
+            def records = path("${params.outdir}/index/records.tsv").readLines()
             assert records[0] == 'transcript_id\tsequence\tsecondary_structure'
             def rows = records.drop(1).findAll { it }
             assert rows.size() == 5
@@ -84,14 +83,86 @@ nextflow_pipeline {
                 }
                 assert depth == 0
             }
-            def meta = path("${params.outdir}/faiss/meta.json").json
+            def meta = path("${params.outdir}/index/meta.json").json
             assert meta.n_records == 5
             assert meta.n_windows > 0
-            def windows = path("${params.outdir}/faiss/windows.tsv").readLines().drop(1).findAll { it }
+            def windows = path("${params.outdir}/index/windows.tsv").readLines().drop(1).findAll { it }
             assert windows.every { line ->
                 def cols = line.split('\t')
                 byId.containsKey(cols[1])
             }
+        }
+    }
+
+    test("publishes optional graph, embedding, and window shards") {
+
+        options "-stub"
+
+        when {
+            params {
+                outdir                = "$outputDir"
+                input                 = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size            = 2
+                save_graphs           = true
+                save_embeddings       = true
+                save_windows          = true
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert getAllFilesFromDir("${params.outdir}/graphs_shards", includeDir: false)
+                .findAll { it.name.endsWith('.safetensors') }.size() >= 1
+            assert getAllFilesFromDir("${params.outdir}/embeddings_shards", includeDir: false)
+                .findAll { it.name.endsWith('.npz') }.size() >= 1
+            assert getAllFilesFromDir("${params.outdir}/windows_shards", includeDir: false)
+                .findAll { it.name.endsWith('.windows.npz') }.size() >= 1
+            assert !path("${params.outdir}/samples.csv").exists()
+        }
+    }
+
+    test("publishes the SQ quantizer inside the index") {
+
+        options "-stub"
+
+        when {
+            params {
+                outdir     = "$outputDir"
+                input      = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size = 2
+                quantize   = 'sq'
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/index/index.faiss").exists()
+            assert path("${params.outdir}/index/quantization/quantizer.json").exists()
+            assert !path("${params.outdir}/quantization").exists()
+            assert !path("${params.outdir}/windows_shards").exists()
+            assert !path("${params.outdir}/windows_quantized").exists()
+        }
+    }
+
+    test("publishes optional quantized window shards") {
+
+        options "-stub"
+
+        when {
+            params {
+                outdir                  = "$outputDir"
+                input                   = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size              = 2
+                quantize                = 'sq'
+                save_quantized_windows = true
+            }
+        }
+
+        then {
+            assert workflow.success
+            assert path("${params.outdir}/windows_quantized").exists()
+            assert getAllFilesFromDir("${params.outdir}/windows_quantized", includeDir: false)
+                .findAll { it.name.endsWith('.windows.npz') }.size() >= 1
         }
     }
 }

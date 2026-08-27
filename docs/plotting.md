@@ -78,7 +78,7 @@ accession do not overwrite each other.
 nextflow run nicoaira/ginflow \
     -profile docker \
     --query queries.tsv \
-    --database results/faiss \
+    --database results/index \
     --plot_backend both \
     --plot_sw \
     --plot_max_pairs 25 \

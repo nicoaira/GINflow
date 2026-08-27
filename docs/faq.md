@@ -9,12 +9,12 @@ build-and-search. You cannot pass `--database` together with `--input`.
 
 ### `--query requires --database … or --input`
 
-A search needs something to search against. Pass `--database path/to/faiss`
+A search needs something to search against. Pass `--database path/to/index`
 or also pass `--input` so this run builds the index first.
 
 ### `--database must be a directory …`
 
-Point `--database` at a previous run’s `faiss/` directory, not the
+Point `--database` at a previous run’s `index/` directory, not the
 parent `--outdir` and not `index.faiss` itself. That directory must
 contain `windows.tsv`, `meta.json`, residue `embeddings.npz` /
 `records.tsv`, and a vector index (`index.faiss`, `cuvs/`,
@@ -132,10 +132,11 @@ descriptive statistic, not the alignment objective.
 
 Full guide: [Sliced graphs](usage.md#sliced-graphs).
 
-### Why is the database directory called `faiss/`?
+### What is the `index/` directory?
 
-Historical. It holds whatever `--index` you chose (FAISS, cuVS, PQ-CAGRA,
-or hnswlib) plus residue embeddings and EVD.
+It holds whatever `--index` you chose (FAISS, cuVS, PQ-CAGRA, or hnswlib)
+plus residue embeddings and EVD. The generic name reflects that the pipeline
+now supports several index libraries.
 
 ### Can I add sequences to an existing index?
 

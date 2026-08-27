@@ -6,7 +6,7 @@ local alignments on a padded crop of each box. Pair-level collapse
 makes one BLAST-style result per query–target pair.
 
 ```text
-seeds.tsv
+seeds/seeds.tsv
     → CLUSTER_SEEDS          (diagonal boxes)
     → ALIGN_CLUSTERS         (one HSP row per cluster; all queries, N CPU threads)
     → MERGE_ALIGNMENTS       (one row per query–target pair)
@@ -15,7 +15,7 @@ seeds.tsv
 
 ## Seeds
 
-`seeds.tsv` columns: `query_id`, `query_start`, `query_end`,
+`seeds/seeds.tsv` columns: `query_id`, `query_start`, `query_end`,
 `target_id`, `target_start`, `target_end`, `score`, `rank`.
 
 Coordinates are **0-based half-open** on the independent subject (the
@@ -50,9 +50,9 @@ indels and embedding jitter without merging unrelated hits.
 
 Published:
 
-- `clusters.tsv` — one row per cluster (`cluster_id`, span, seed count,
+- `seeds/clusters.tsv` — one row per cluster (`cluster_id`, span, seed count,
   max score, diagonal stats)
-- `cluster_members.tsv` — every seed that went into a cluster
+- `seeds/cluster_members.tsv` — every seed that went into a cluster
 
 These boxes are the SW crops, not the final alignments.
 
@@ -60,7 +60,7 @@ These boxes are the SW crops, not the final alignments.
 
 `ALIGN_CLUSTERS` (`bin/align_clusters.py`) loads original residue
 embeddings for the query (from the query shards) and the target (from
-the packed `faiss/` residue store, or a legacy per-id `embeddings.npz`).
+the packed `index/` residue store, or a legacy per-id `embeddings.npz`).
 Only identifiers present in the cluster table are loaded. It cuts a crop
 around the cluster:
 
