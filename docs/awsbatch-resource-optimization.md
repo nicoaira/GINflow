@@ -135,7 +135,7 @@ nextflow run main.nf \
   -profile docker,gpu -resume \
   -c conf/pq_cagra_48gb.config \
   -w /mnt/ssd_samsung/ginflow-pq-cagra-wt/6k \
-  --input tests/data/rfam_pdb_benchmark/rouskin_sample_6k.cleaned.tsv \
+  --input tests/data/rfam_pdb_benchmark/rouskin_sample_6k.cleaned.4k.tsv \
   --query tests/data/rfam_pdb_benchmark/queries.tsv \
   --outdir /mnt/ssd_samsung/ginflow-benchmarks/pq-cagra-r4rna-6k \
   --index cagra --quantize pq --pq_m 16 --pq_nbits 4 \
@@ -236,7 +236,7 @@ before retry scaling.
 
 The target directory already contains a completed local reference run:
 `/mnt/ssd_samsung/ginflow-benchmarks/pq-cagra-r4rna-30k`. It used
-`rouskin_sample_30k.cleaned.tsv` (not the requested uncleaned
+`rouskin_sample_30k.cleaned.17k.tsv` (not the requested uncleaned
 `tests/data/rouskin_sample_30k.tsv`), the old `conf/pq_cagra_48gb.config`,
 and the local executor. It is useful empirical evidence, but it is not an
 AWS Batch result and is not an exact reproduction of the requested input.
