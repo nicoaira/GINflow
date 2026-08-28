@@ -23,7 +23,7 @@ process SEARCH_PQ_CAGRA {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def device = task.accelerator ? 'cuda' : 'cpu'
-    def separate_rerank = params._parse_boolean.call(params.exact_rerank, true) || params._parse_boolean.call(params.hnswlib_rerank, false)
+    def separate_rerank = params.exact_rerank || params.hnswlib_rerank
     def search_k = separate_rerank ? params.candidate_k : params.seed_k
     def min_sim = (separate_rerank || params.quantize.toString().toLowerCase() in ['pq', 'opq']) ? '-inf' : String.valueOf(params.seed_min_similarity)
     """

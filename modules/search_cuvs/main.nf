@@ -24,7 +24,7 @@ process SEARCH_CUVS {
     def prefix   = task.ext.prefix ?: "${meta.id}"
     def gpu_flag = task.accelerator ? '--gpu' : ''
     def n_probes = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
-    def separate_rerank = params._parse_boolean.call(params.exact_rerank, true) || params._parse_boolean.call(params.hnswlib_rerank, false)
+    def separate_rerank = params.exact_rerank || params.hnswlib_rerank
     def search_k = separate_rerank ? params.candidate_k : params.seed_k
     def min_sim = (separate_rerank || params.quantize.toString().toLowerCase() in ['pq', 'opq']) ? '-inf' : String.valueOf(params.seed_min_similarity)
     def search_device = task.accelerator ? 'gpu' : 'cpu'

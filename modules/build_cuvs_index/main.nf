@@ -29,7 +29,7 @@ process BUILD_CUVS_INDEX {
     def n_lists  = params.cuvs_n_lists != null ? "--cuvs-n-lists ${params.cuvs_n_lists}" : ''
     def n_probes = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
     def quantization_arg = params.quantize == 'sq' ? '--quantization quantization' : ''
-    def cagra_to_hnsw = params._parse_boolean.call(params.cagra_to_hnsw, false)
+    def cagra_to_hnsw = params.cagra_to_hnsw
     """
     build_faiss.py \\
         --windows windows/*.windows.npz \\

@@ -24,7 +24,7 @@ process SEARCH_FAISS {
     def gpu_flag  = task.accelerator ? '--gpu' : ''
     def nprobe    = params.faiss_nprobe != null ? "--nprobe ${params.faiss_nprobe}" : ''
     def ef_search = params.faiss_hnsw_ef_search != null ? "--hnsw-ef-search ${params.faiss_hnsw_ef_search}" : ''
-    def separate_rerank = params._parse_boolean.call(params.exact_rerank, true) || params._parse_boolean.call(params.hnswlib_rerank, false)
+    def separate_rerank = params.exact_rerank || params.hnswlib_rerank
     def exact_index = params.faiss_index in ['flatip', 'flatl2']
     def search_k = (separate_rerank && !exact_index) ? params.candidate_k : params.seed_k
     def min_sim = (separate_rerank && !exact_index) || params.quantize.toString().toLowerCase() in ['pq', 'opq']
