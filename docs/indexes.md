@@ -28,16 +28,16 @@ implementation yourself.
 
 | Index | Quantize | Build | Search | Notes |
 |---|---|---|---|---|
-| FAISS `flatip` / `flatl2` | none, sq | CPU or GPU (`--faiss_gpu`) | CPU or GPU | Exact. Default. GPU needs `-profile gpu`. |
+| FAISS `flatip` / `flatl2` | none, sq | CPU or GPU (`--faiss_device gpu`) | CPU or GPU | Exact. Default. |
 | FAISS `ivfflat` | none, sq | **CPU only** | **CPU only** | Approximate IVF. GPU IVF is `--index ivf`. |
 | FAISS `hnsw` | none, sq | **CPU only** | **CPU only** | FAISS 1.10 has no GPU HNSW. For a GPU graph use `--index cagra`. |
-| cuVS IVF-Flat (`--index ivf`) | none, sq | **GPU only** | **GPU only** | `-profile gpu`. |
+| cuVS IVF-Flat (`--index ivf`) | none, sq | **GPU only** | **GPU only** | Requires a GPU-capable execution environment. |
 | CAGRA (`--index cagra`) | none, sq | **GPU only** | GPU, or CPU after `--cagra_to_hnsw` | Stock cuVS graph. |
 | CAGRA (`--index cagra`) | pq, opq | **GPU only** | GPU ADC, or CPU ADC of the **same** graph (`--search_device cpu` or `--cagra_to_hnsw`) | Custom distance. Not stock `IndexIVFPQ`. |
-| hnswlib (`--index hnswlib`) | pq, opq | **CPU only** | **CPU only** | Custom SDC build, ADC search. Use when **no GPU is available at build time**. |
+| hnswlib (`--index hnswlib`) | pq, opq | **CPU only** | **CPU only** | Custom SDC build, ADC search. Use when no GPU is available at build time. |
 
 **GPU CAGRA → CPU HNSW.** Pass `--index cagra --cagra_to_hnsw true` (and
-`-profile gpu` for the build). GINflow builds the graph on GPU, writes a
+for the build). GINflow builds the graph on GPU, writes a
 CPU-searchable form, and later searches with `--search_device cpu` even
 without a GPU. For uncompressed/SQ this is cuVS CAGRA converted to HNSW. For
 PQ/OPQ the serialized custom graph is walked on CPU (not a FAISS HNSW file).
@@ -92,7 +92,7 @@ Add graph links: CAGRA degree 32 ≈ 128 B/window; degree 64 or HNSW `M=32` ≈
 
 1. **Fits in RAM as FAISS FlatIP** (a few million windows on a 32 GB box) →
    `--quantize none --index faiss --faiss_index flatip`. Exact, simplest.
-2. **Same data, GPU, faster queries** → `--index cagra`, or `--faiss_gpu true`
+2. **Same data, GPU, faster queries** → `--index cagra`, or `--faiss_device gpu`
    with `flatip` / `flatl2`. GPU IVF is `--index ivf`.
 3. **Larger than Flat, still want stock libraries** → `--faiss_index ivfflat`
    (CPU) or `hnsw`, or `--index ivf` (GPU). Add `--quantize sq` if you want a cheaper
@@ -119,7 +119,7 @@ around 1M windows and `--candidate_k 5000` around 4M+.
 | `--window_size` | `11` | Residues per window. |
 | `--window_stride` | `1` | Step between window starts. |
 | `--cagra_to_hnsw` | `false` | GPU CAGRA build, then persist a CPU-searchable graph. |
-| `-profile gpu` | unset | Required to **build** CAGRA/IVF and to use `--faiss_gpu`. |
+| `--faiss_device` | `cpu` | FAISS build and search device: `cpu` or `gpu` (GPU FlatIP/FlatL2 only). The legacy value `cuda` is deprecated and normalized to `gpu`; `--faiss_gpu` is a deprecated alias for `--faiss_device gpu`. |
 
 ### Search
 
@@ -128,15 +128,17 @@ around 1M windows and `--candidate_k 5000` around 4M+.
 | `--seed_k` | `50` | Seeds kept per query window after rerank/threshold. Increase with DB size. |
 | `--candidate_k` | `200` | ANN candidates before rerank. Must be ≥ `--seed_k`. Increase with DB size. |
 | `--seed_min_similarity` | `0.8` | Cosine threshold on **original-window** scores after rerank. Not applied to PQ/OPQ ADC when rerank is off. |
-| `--search_device` | `auto` | `gpu`, `cpu`, or `auto` for CAGRA. |
+| `--search_device` | `gpu` | `gpu` or `cpu` for CAGRA. CPU requires the supported CPU-search representation. Legacy values `auto` and `cuda` are deprecated and normalized to `gpu`. |
 | `--search_shard_size` | `--shard_size` | Query records per search task. |
 | `--exact_rerank` | `true` | Exact original-window rerank. Skipped for exact FlatIP/FlatL2. |
-| `--exact_rerank_device` | `cpu` | `cpu` or `cuda` (`cuda` needs `-profile gpu`). |
+| `--exact_rerank_device` | `cpu` | `cpu` or `gpu`. GPU uses CuPy batches and requires a GPU-capable execution environment. The legacy value `cuda` is deprecated and normalized to `gpu`. |
 
 ## FAISS: `--index faiss`
 
 Pinned FAISS 1.10. The on-disk `index.faiss` is always a CPU index;
-`--faiss_gpu` uses the GPU only inside the task, and only for exact Flat.
+`--faiss_device gpu` uses the GPU only inside the task, and only for exact Flat.
+The deprecated `--faiss_gpu` flag is a compatibility alias for
+`--faiss_device gpu`.
 
 | `--faiss_index` | Exact? | GPU | Typical use |
 |---|---:|---:|---|
@@ -239,8 +241,9 @@ Custom PQ-CAGRA code is published on Anaconda as:
 | `pq-cagra-adc` | `nicolas.aira` | GPU build (`BUILD_PQ_CAGRA_INDEX`) and GPU ADC search |
 | `pq-cagra-adc-cpu` | `nicolas.aira` | CPU ADC search (`--search_device cpu` / `--cagra_to_hnsw`) |
 
-The conda profile already lists `nicolas.aira`. GPU CAGRA/IVF/FAISS still
-need `-profile gpu` so the NVIDIA runtime is attached.
+The conda profile already lists `nicolas.aira`. GPU CAGRA/IVF/FAISS require
+an NVIDIA-capable execution environment; the individual GPU tasks select
+their CUDA-backed environment and runtime options.
 
 ## See also
 

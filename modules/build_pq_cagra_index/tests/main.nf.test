@@ -7,7 +7,7 @@ nextflow_process {
     tag "modules"
     tag "pq_cagra"
 
-    test("Should emit a PQ-CAGRA database layout") {
+    test("Should emit a GPU-only PQ-CAGRA database layout") {
 
         options "-stub"
 

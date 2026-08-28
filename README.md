@@ -16,7 +16,7 @@ The current steps are:
 2. Build GINFINITY graph shards (`*.safetensors` + `*.json`)
 3. Embed each shard (`*.npz` + manifest)
 4. Slice sliding windows (default `w=11`, stride 1)
-5. Build a reusable window database and/or search it for seeds. Default is `--index faiss --faiss_index flatip` (exact cosine). Optional `--quantize sq|pq|opq` compresses **nodes** before index windows are formed. GPU graphs use `--index cagra` (stock cuVS CAGRA for none/SQ, custom PQ-CAGRA for PQ/OPQ). `--cagra_to_hnsw true` builds that graph on GPU and searches on CPU. See [docs/indexes.md](docs/indexes.md). `--faiss_gpu` and CAGRA/IVF builds need `-profile gpu`. Exact original-window rerank is on by default (`--exact_rerank true`).
+5. Build a reusable window database and/or search it for seeds. Default is `--index faiss --faiss_index flatip` (exact cosine). Optional `--quantize sq|pq|opq` compresses **nodes** before index windows are formed. GPU graphs use `--index cagra` (stock cuVS CAGRA for none/SQ, custom PQ-CAGRA for PQ/OPQ). `--cagra_to_hnsw true` builds that graph on GPU and searches on CPU. See [docs/indexes.md](docs/indexes.md). GPU selection is per process (`--embed_device gpu`, `--search_device gpu`, `--exact_rerank_device gpu`, or `--faiss_device gpu`) and uses an ordinary execution profile such as `docker`; CAGRA/IVF builds still require a GPU. Exact original-window rerank is on by default (`--exact_rerank true`).
 6. Cluster nearby seeds into HSPs, align each crop with GINFINITY-SW, collapse HSPs by query-target pair, and rank by aggregate database E-value
 7. Optionally plot structures (`--plot_backend`: RNArtistCore 2Ds and/or a unified R4RNA alignment arc plot) and/or SW matrices (`--plot_sw`)
 8. Write a standalone HTML search report (`report.html`)

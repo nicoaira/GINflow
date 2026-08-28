@@ -1,7 +1,6 @@
 process RERANK_CANDIDATES {
     tag "${meta.id}"
     label 'process_medium'
-    accelerator { params.exact_rerank_device == 'cuda' ? 1 : null }
 
     conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
@@ -28,6 +27,7 @@ process RERANK_CANDIDATES {
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
     def workers = params.exact_rerank_workers > 0 ? params.exact_rerank_workers : task.cpus
+    def device = task.accelerator ? 'cuda' : 'cpu'
     """
     rerank_candidates.py \\
         --candidates ${candidates} \\
@@ -41,7 +41,7 @@ process RERANK_CANDIDATES {
         --batch-size ${params.exact_rerank_batch_size} \\
         --candidate-batch-size ${params.exact_rerank_candidate_batch_size} \\
         --workers ${workers} \\
-        --device ${params.exact_rerank_device} \\
+        --device ${device} \\
         ${args}
 
     cat <<-END_VERSIONS > versions.yml

@@ -8,7 +8,7 @@ nextflow_process {
     tag "modules"
     tag "build_cuvs_index"
 
-    test("Should emit a CAGRA database layout") {
+    test("Should emit a GPU-only CAGRA database layout") {
 
         options "-stub"
 

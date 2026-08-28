@@ -2,7 +2,6 @@ process BUILD_CUVS_INDEX {
     tag "cuvs"
     label 'process_medium'
     label 'process_gpu'
-    accelerator 1
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
@@ -30,6 +29,7 @@ process BUILD_CUVS_INDEX {
     def n_lists  = params.cuvs_n_lists != null ? "--cuvs-n-lists ${params.cuvs_n_lists}" : ''
     def n_probes = params.cuvs_n_probes != null ? "--cuvs-n-probes ${params.cuvs_n_probes}" : ''
     def quantization_arg = params.quantize == 'sq' ? '--quantization quantization' : ''
+    def cagra_to_hnsw = params._parse_boolean.call(params.cagra_to_hnsw, false)
     """
     build_faiss.py \\
         --windows windows/*.windows.npz \\
@@ -43,7 +43,7 @@ process BUILD_CUVS_INDEX {
         --cuvs-graph-degree ${params.cagra_graph_degree} \\
         --cuvs-build-algo ${params.cagra_build_algo} \\
         --cuvs-itopk-size ${params.cagra_itopk_size} \\
-        ${params.cagra_to_hnsw ? '--cagra-to-hnsw' : ''} \\
+        ${cagra_to_hnsw ? '--cagra-to-hnsw' : ''} \\
         ${n_lists} \\
         ${n_probes} \\
         ${quantization_arg} \\

@@ -14,8 +14,10 @@ containers.
   - **Singularity / Apptainer** — typical on HPC
   - **Conda / Mamba** — no containers; uses the `nicolas.aira` channel
     plus conda-forge / bioconda / rapidsai / nvidia
-- Optional: an NVIDIA GPU and `-profile gpu` for CUDA embeddings,
-  FAISS Flat on GPU, CAGRA, and cuVS IVF
+- Optional: an NVIDIA GPU for GPU-selected processes such as GPU
+  embeddings, FAISS Flat on GPU, CAGRA, and cuVS IVF. GPU selection is
+  per process; use an ordinary execution profile such as `docker`,
+  `singularity`, `apptainer`, or `conda`.
 
 If you are new to Nextflow, start with the
 [nf-core environment setup](https://nf-co.re/docs/get_started/environment_setup/overview).
@@ -129,21 +131,26 @@ put pipeline parameters in a `-c` config file; see the
 | `docker` | Pull Wave-frozen images |
 | `singularity` / `apptainer` | Same images as SIFs; `autoMounts` on |
 | `conda` / `mamba` | Conda envs from each module’s `environment.yml` |
-| `gpu` | CUDA embeddings; required for CAGRA/IVF build and `--faiss_gpu` |
 | `smoke_test` | 10-sequence input, small resources |
 | `test` | 1200-sequence input |
 | `wave` | Build/pull via Seqera Wave |
 
-Combine with a comma: `-profile docker,gpu` or `-profile singularity,test`.
+Combine profiles with a comma, for example `-profile singularity,test`.
 
 CPU embeddings are the default. GPU:
 
 ```bash
 nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
+    -profile docker \
+    --embed_device gpu \
     --input structures.tsv \
     --outdir results
 ```
+
+GPU-capable stages can be selected independently. For example, use
+`--embed_device cpu --search_device gpu --exact_rerank_device gpu` when
+only search and exact reranking should use a GPU. CAGRA and cuVS IVF builds
+select GPU resources automatically because those algorithms require a GPU.
 
 More: [Profiles and hardware](profiles.md).
 

@@ -90,6 +90,23 @@ def normalize_lowercase_choice(name, default_value, choices, aliases = [:]) {
     return value
 }
 
+def normalize_device_choice(name, default_value, aliases = [:]) {
+    def raw = params[name]
+    def value = raw == null ? default_value : (raw as String).trim().toLowerCase()
+    if (!value) {
+        value = default_value
+    }
+    if (aliases.containsKey(value)) {
+        def canonical = aliases[value]
+        log.warn "--${name} value '${value}' is deprecated; use '${canonical}'."
+        value = canonical
+    }
+    if (!(value in ['cpu', 'gpu'])) {
+        error "--${name} must be one of: cpu, gpu (lowercase), got '${raw}'."
+    }
+    return value
+}
+
 def normalize_boolean_param(name, default_value = false) {
     // Do not write back to params: Nextflow 26 ignores those assignments.
     try {
@@ -100,14 +117,45 @@ def normalize_boolean_param(name, default_value = false) {
     }
 }
 
-def normalize_parameter_values() {
-    normalize_lowercase_choice('embed_device', 'cpu', ['cpu', 'cuda'])
-    if (cli_has_bare_flag('ginfinity-full-precision')) {
-        params.ginfinity_full_precision = true
+def normalize_faiss_device() {
+    def selected = normalize_device_choice('faiss_device', 'cpu', [cuda: 'gpu'])
+    def legacy_gpu = normalize_boolean_param('faiss_gpu', false)
+    def legacy_explicit = parameter_on_cli('faiss_gpu') || params.faiss_gpu != false
+    if (!legacy_explicit) {
+        return selected
     }
-    normalize_boolean_param('ginfinity_full_precision', true)
+
+    def legacy_selected = legacy_gpu ? 'gpu' : 'cpu'
+    def new_explicit = parameter_on_cli('faiss_device') || selected != 'cpu'
+    if (new_explicit && selected != legacy_selected) {
+        error "--faiss_device ${selected} conflicts with deprecated --faiss_gpu ${legacy_gpu}. Use only --faiss_device cpu|gpu."
+    }
+    if (!new_explicit) {
+        selected = legacy_selected
+    }
+    log.warn "--faiss_gpu is deprecated; use --faiss_device ${legacy_selected}."
+    return selected
+}
+
+def faiss_device_is_gpu() {
+    def raw = params.faiss_device
+    def selected = raw == null ? 'cpu' : (raw as String).trim().toLowerCase()
+    selected = selected == 'cuda' ? 'gpu' : selected
+    def legacy_gpu = normalize_boolean_param('faiss_gpu', false)
+    def legacy_explicit = parameter_on_cli('faiss_gpu') || params.faiss_gpu != false
+    (selected == 'gpu') || (legacy_explicit && legacy_gpu)
+}
+
+def search_device_is_gpu() {
+    def raw = params.search_device
+    def selected = raw == null ? 'gpu' : (raw as String).trim().toLowerCase()
+    !(selected == 'cpu')
+}
+
+def normalize_parameter_values() {
+    normalize_device_choice('embed_device', 'cpu', [cuda: 'gpu'])
     normalize_lowercase_choice('quantize', 'none', ['none', 'sq', 'pq', 'opq'])
-    normalize_lowercase_choice('search_device', 'auto', ['auto', 'gpu', 'cpu'])
+    normalize_device_choice('search_device', 'gpu', [auto: 'gpu', cuda: 'gpu'])
     normalize_lowercase_choice('cagra_build_algo', 'nn_descent', ['ivf_pq', 'nn_descent', 'iterative_cagra_search', 'ace'])
     normalize_lowercase_choice('faiss_index', 'flatip', ['flatip', 'flatl2', 'hnsw', 'ivfflat'], [
         flat: 'flatip',
@@ -126,7 +174,8 @@ def normalize_parameter_values() {
     normalize_boolean_param('save_embeddings', false)
     normalize_boolean_param('save_windows', false)
     normalize_boolean_param('save_quantized_windows', false)
-    normalize_lowercase_choice('exact_rerank_device', 'cpu', ['cpu', 'cuda'])
+    normalize_device_choice('exact_rerank_device', 'cpu', [cuda: 'gpu'])
+    normalize_faiss_device()
 }
 
 def detect_database_library() {
@@ -197,44 +246,41 @@ def resolve_index_library() {
 def faiss_index_kind() {
     def kind = (params.faiss_index as String)?.trim()?.toLowerCase()
     def aliases = [
+        flat: 'FlatIP',
         flatip: 'FlatIP',
         flatl2: 'FlatL2',
+        indexflatip: 'FlatIP',
+        indexflatl2: 'FlatL2',
         hnsw: 'HNSW',
+        hnswflat: 'HNSW',
+        indexhnswflat: 'HNSW',
         ivfflat: 'IVFFlat',
+        indexivfflat: 'IVFFlat',
     ]
     return aliases[kind] ?: 'FlatIP'
 }
 
-def validate_faiss_gpu(library, kind) {
-    if (!params.faiss_gpu) {
+def validate_faiss_device(library, kind) {
+    if (!faiss_device_is_gpu()) {
         return
     }
     if (library != 'faiss') {
-        error "--faiss_gpu applies only to --index faiss, not --index ${library}."
+        error "--faiss_device gpu applies only to --index faiss, not --index ${library}."
     }
     def gpu_types = ['FlatIP', 'FlatL2'] as Set
     if (params.input && !gpu_types.contains(kind)) {
         def hint = kind == 'IVFFlat' \
             ? ' FAISS IVF is CPU-only; use --index ivf for GPU IVF-Flat, or --index cagra for a GPU graph.' \
             : ' FAISS HNSW is CPU-only; use --index cagra for a GPU graph.'
-        error "--faiss_gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: flatip, flatl2.${hint}"
-    }
-    def profiles = workflow.profile.tokenize(',').collect { it.trim() }
-    if (!profiles.contains('gpu')) {
-        error "--faiss_gpu requires -profile gpu so BUILD_FAISS_INDEX and SEARCH_FAISS get the faiss-gpu image and NVIDIA runtime."
+        error "--faiss_device gpu is not supported for --faiss_index ${kind.toLowerCase()}. GPU FAISS indexes: flatip, flatl2.${hint}"
     }
 }
 
-def validate_cagra_gpu(library) {
-    def needs_gpu_build = library in ['cagra', 'ivf'] && params.input
-    def cpu_search = params.search_device == 'cpu' || params.cagra_to_hnsw
-    def needs_gpu_search = library in ['cagra', 'ivf'] && params.query && !cpu_search
-    if (!needs_gpu_build && !needs_gpu_search) {
-        return
-    }
-    def profiles = workflow.profile.tokenize(',').collect { it.trim() }
-    if (!profiles.contains('gpu')) {
-        error "--index ${library} GPU build/search requires -profile gpu. To search a CAGRA graph on CPU, build with --cagra_to_hnsw true (or --search_device cpu after conversion). See docs/indexes.md."
+def validate_cagra_device(library) {
+    def converted = BooleanParam.parse(params.cagra_to_hnsw, false)
+    def cpu_search = !search_device_is_gpu() || converted
+    if (library == 'ivf' && params.query && cpu_search) {
+        error "--index ivf search requires --search_device gpu; cuVS IVF has no CPU search path."
     }
 }
 
@@ -259,12 +305,6 @@ def validate_search_params() {
     if ((params.cagra_graph_degree as Integer) > (params.cagra_intermediate_graph_degree as Integer)) {
         error "--cagra_graph_degree must be <= --cagra_intermediate_graph_degree."
     }
-    if (BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank) && params.exact_rerank_device == 'cuda') {
-        def profiles = workflow.profile.tokenize(',').collect { it.trim() }
-        if (!profiles.contains('gpu')) {
-            error "--exact_rerank_device cuda requires -profile gpu so RERANK_CANDIDATES gets a CUDA runtime."
-        }
-    }
 }
 
 def collect_if_unused(unused, name, default_value, applies) {
@@ -280,6 +320,7 @@ def warn_unused_index_params(library, kind) {
     def ivf = library == 'ivf'
     def hnswlib = library == 'hnswlib'
     collect_if_unused(unused, 'faiss_index', 'flatip', faiss)
+    collect_if_unused(unused, 'faiss_device', 'cpu', faiss)
     collect_if_unused(unused, 'faiss_gpu', false, faiss)
     collect_if_unused(unused, 'faiss_nlist', null, faiss && kind == 'IVFFlat')
     collect_if_unused(unused, 'faiss_nprobe', null, faiss && kind == 'IVFFlat')
@@ -316,8 +357,8 @@ workflow {
     def library = resolve_index_library()
     def kind    = faiss_index_kind()
     params.index = library
-    validate_faiss_gpu(library, kind)
-    validate_cagra_gpu(library)
+    validate_faiss_device(library, kind)
+    validate_cagra_device(library)
     validate_quantize_index(library, params.quantize)
     validate_search_params()
     warn_unused_index_params(library, kind)

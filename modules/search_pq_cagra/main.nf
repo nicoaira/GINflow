@@ -1,7 +1,6 @@
 process SEARCH_PQ_CAGRA {
     tag "${meta.id}"
     label 'process_medium'
-    accelerator { (params.search_device == 'cpu' || params.cagra_to_hnsw) ? null : 1 }
 
     conda "${ task.accelerator ? "${moduleDir}/environment.gpu.yml" : "${moduleDir}/environment.yml" }"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?
@@ -23,10 +22,10 @@ process SEARCH_PQ_CAGRA {
     script:
     def args = task.ext.args ?: ''
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def device = (params.search_device == 'cpu' || params.cagra_to_hnsw) ? 'cpu' : 'cuda'
-    def separate_rerank = BooleanParam.rerankEnabled(params.exact_rerank, params.hnswlib_rerank)
+    def device = task.accelerator ? 'cuda' : 'cpu'
+    def separate_rerank = params._parse_boolean.call(params.exact_rerank, true) || params._parse_boolean.call(params.hnswlib_rerank, false)
     def search_k = separate_rerank ? params.candidate_k : params.seed_k
-    def min_sim = BooleanParam.annMinSimilarity(params.exact_rerank, params.hnswlib_rerank, params.quantize, params.seed_min_similarity)
+    def min_sim = (separate_rerank || params.quantize.toString().toLowerCase() in ['pq', 'opq']) ? '-inf' : String.valueOf(params.seed_min_similarity)
     """
     mkdir -p query_windows
     cp ${windows} query_windows/

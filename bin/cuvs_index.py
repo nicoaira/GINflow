@@ -65,7 +65,7 @@ def require_gpu() -> None:
         ) from exc
     if not gpu_available():
         raise ValueError(
-            "cuVS requires a visible NVIDIA GPU. Use -profile gpu on a host with CUDA."
+            "cuVS requires a visible NVIDIA GPU. Run the GPU-configured process on a host with CUDA."
         )
 
 

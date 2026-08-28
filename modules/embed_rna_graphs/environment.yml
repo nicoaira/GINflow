@@ -4,4 +4,4 @@ channels:
   - conda-forge
   - nicolas.aira
 dependencies:
-  - nicolas.aira::ginfinity=1.2.1
+  - nicolas.aira::ginfinity=1.2.2

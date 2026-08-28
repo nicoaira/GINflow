@@ -5,6 +5,68 @@ nextflow_pipeline {
     tag "pipeline"
     tag "search"
 
+    test("uses CPU for all optional device stages by default") {
+
+        options "-stub"
+
+        when {
+            params {
+                outdir       = "$outputDir"
+                input        = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query        = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size   = 2
+                index        = 'hnswlib'
+                quantize     = 'pq'
+                candidate_k  = 8
+                seed_k       = 8
+                exact_rerank = true
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert path("${params.outdir}/seeds/seeds.tsv").exists() },
+                { assert path("${params.outdir}/report.html").exists() }
+            )
+        }
+    }
+
+    test("supports mixed CPU and GPU device selection") {
+
+        options "-stub"
+
+        when {
+            params {
+                outdir                    = "$outputDir"
+                input                     = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                query                     = "${projectDir}/tests/data/smoke_test_structures.tsv"
+                shard_size                = 2
+                index                     = 'cagra'
+                quantize                  = 'pq'
+                cagra_to_hnsw             = 'yes'
+                embed_device              = 'cpu'
+                search_device             = 'cpu'
+                exact_rerank              = 'on'
+                exact_rerank_device       = 'gpu'
+                exact_rerank_workers      = 2
+                exact_rerank_batch_size   = 2
+                exact_rerank_candidate_batch_size = 4
+                candidate_k               = 8
+                seed_k                    = 8
+                faiss_device              = 'cpu'
+            }
+        }
+
+        then {
+            assertAll(
+                { assert workflow.success },
+                { assert path("${params.outdir}/seeds/seeds.tsv").exists() },
+                { assert path("${params.outdir}/seeds/rerank_metrics.json").exists() }
+            )
+        }
+    }
+
     test("build and query the same smoke TSV") {
 
         when {

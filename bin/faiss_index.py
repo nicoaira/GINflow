@@ -132,19 +132,18 @@ def require_gpu(index_type: str) -> None:
         if kind == "IVFFlat":
             extra = " GPU IVF-Flat is --index ivf; a GPU graph is --index cagra."
         raise ValueError(
-            f"--faiss_gpu is not supported for index type {kind.lower()}. "
+            f"--faiss_device gpu is not supported for index type {kind.lower()}. "
             f"GPU FAISS indexes: {supported}.{extra}"
         )
     if not gpu_runtime_available():
         raise ValueError(
             "FAISS GPU was requested but this environment is faiss-cpu. "
-            "Re-run with -profile gpu so BUILD_FAISS_INDEX and SEARCH_FAISS "
-            "use the faiss-gpu image."
+            "Run BUILD_FAISS_INDEX or SEARCH_FAISS with the faiss-gpu image."
         )
     if gpu_device_count() < 1:
         raise ValueError(
             "FAISS GPU was requested but no CUDA device is visible. "
-            "Use -profile gpu on a machine with an NVIDIA GPU."
+            "Run on a machine with an NVIDIA GPU."
         )
 
 
@@ -338,7 +337,7 @@ def build_populated_index(vectors: np.ndarray, options: IndexOptions) -> tuple[f
             raise ValueError(
                 f"failed to train/add on GPU for index type {kind}. "
                 "This combination may not be implemented in GPU FAISS; "
-                "retry without --faiss_gpu."
+                "retry with --faiss_device cpu."
             ) from None
         raise
     if options.gpu:

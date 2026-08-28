@@ -5,8 +5,7 @@ by `nextflow_schema.json` (`nf-schema@2.7.2`). Pass them on the CLI or
 in a Nextflow `-params-file`. Do not put them in a `-c` config file.
 
 String choices are lowercase (`flatip`, not `FlatIP`). Booleans accept
-`true`/`false`, `1`/`0`, `yes`/`no`. `--ginfinity-full-precision` is
-accepted as a bare dashed flag.
+`true`/`false`, `1`/`0`, `yes`/`no`.
 
 Flags that do not apply to the chosen `--index` / `--faiss_index` warn
 at launch and are ignored.
@@ -45,8 +44,7 @@ Mode rules: [Run modes](usage.md#run-modes).
 
 | Parameter | Default | Description |
 |---|---|---|
-| `--embed_device` | `cpu` | `cpu` or `cuda`. CUDA requires `-profile gpu`. |
-| `--ginfinity_full_precision` | `true` | Full-precision GINFINITY inference. GPU profile sets this `false`. |
+| `--embed_device` | `cpu` | `cpu` or `gpu`. GPU uses the CUDA-backed  |
 | `--max_batch_nodes` | `60000` | Max nodes per embedding microbatch. |
 | `--max_batch_edges` | `300000` | Max edges per embedding microbatch. |
 
@@ -62,10 +60,10 @@ Mode rules: [Run modes](usage.md#run-modes).
 | `--search_shard_size` | `--shard_size` | Query records per search task. Ignored when `--input` and `--query` are the same file. |
 | `--index` | `faiss` | `faiss`, `cagra`, `ivf`, or `hnswlib`. |
 | `--quantize` | `none` | `none`, `sq`, `pq`, `opq`. Node-level, before index windows. |
-| `--search_device` | `auto` | CAGRA search: `auto`, `gpu`, `cpu`. |
+| `--search_device` | `gpu` | CAGRA search: `gpu` or `cpu`. CPU requires the supported CPU-search representation (`--cagra_to_hnsw` for uncompressed/SQ CAGRA, or the CPU ADC walker for PQ-CAGRA).|
 | `--cagra_to_hnsw` | `false` | GPU CAGRA build, persist a CPU-searchable graph. |
 | `--exact_rerank` | `true` | Original-window rerank. Skipped for FlatIP/FlatL2. Use `--exact_rerank false` to skip. |
-| `--exact_rerank_device` | `cpu` | `cpu` or `cuda` (`cuda` needs `-profile gpu`). |
+| `--exact_rerank_device` | `cpu` | `cpu` or `gpu`. GPU uses CuPy batches and requires a GPU-capable execution environment. |
 | `--exact_rerank_batch_size` | `32` | Query windows per rerank batch. |
 | `--exact_rerank_candidate_batch_size` | `2048` | Candidate windows per sub-batch. |
 | `--exact_rerank_workers` | `0` | CPU rerank workers; `0` = process CPU count. |
@@ -89,7 +87,7 @@ Apply when `--quantize` is not `none`.
 | Parameter | Default | Description |
 |---|---|---|
 | `--faiss_index` | `flatip` | `flatip`, `flatl2`, `ivfflat`, `hnsw`. |
-| `--faiss_gpu` | `false` | GPU FlatIP/FlatL2 only. Requires `-profile gpu`. |
+| `--faiss_device` | `cpu` | FAISS build and search device: `cpu` or `gpu`. GPU is supported for FlatIP and FlatL2 only and requires a GPU-capable execution environment. |
 | `--faiss_nlist` | auto | IVF coarse centroids (`ivfflat`). |
 | `--faiss_nprobe` | auto | IVF lists visited (`ivfflat`). |
 | `--faiss_hnsw_m` | `32` | FAISS HNSW `M`. CPU only. |

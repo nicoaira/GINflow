@@ -126,14 +126,10 @@
                     "default": "cpu",
                     "enum": [
                         "cpu",
+                        "gpu",
                         "cuda"
                     ],
-                    "description": "Documented embed device. CUDA requires -profile gpu, which sets accelerator=1 on EMBED_RNA_GRAPHS and selects the GPU Wave image."
-                },
-                "ginfinity_full_precision": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Pass --full-precision to ginfinity embed-graphs. CPU runs use full-precision model inference by default; the GPU profile disables this so GPU runs use float16 unless explicitly enabled. The dashed CLI spelling --ginfinity-full-precision is also accepted."
+                    "description": "Embedding device: cpu or gpu. GPU tasks use the CUDA-backed GINFINITY environment and container; select an ordinary execution profile such as docker, singularity, apptainer, or conda. The legacy value cuda is deprecated and normalized to gpu."
                 },
                 "max_batch_nodes": {
                     "type": "integer",
@@ -280,9 +276,10 @@
                     "default": "cpu",
                     "enum": [
                         "cpu",
+                        "gpu",
                         "cuda"
                     ],
-                    "description": "Exact reranking device. CPU uses multiple workers; cuda uses CuPy batches and requires -profile gpu."
+                    "description": "Exact reranking device: cpu or gpu. CPU uses multiple workers; GPU uses CuPy batches and requires a GPU-capable execution environment. The legacy value cuda is deprecated and normalized to gpu."
                 },
                 "exact_rerank_batch_size": {
                     "type": "integer",
@@ -300,7 +297,7 @@
                     "type": "integer",
                     "default": 0,
                     "minimum": 0,
-                    "description": "CPU exact-reranking workers. Zero uses the process CPU allocation; ignored on CUDA."
+                    "description": "CPU exact-reranking workers. Zero uses the process CPU allocation; ignored on GPU."
                 },
                 "index": {
                     "type": "string",
@@ -315,13 +312,14 @@
                 },
                 "search_device": {
                     "type": "string",
-                    "default": "auto",
+                    "default": "gpu",
                     "enum": [
-                        "auto",
+                        "cpu",
                         "gpu",
-                        "cpu"
+                        "auto",
+                        "cuda"
                     ],
-                    "description": "Where CAGRA search runs. gpu needs -profile gpu. cpu uses a converted HNSW graph for uncompressed/SQ CAGRA (--cagra_to_hnsw) or the CPU ADC walker for PQ-CAGRA."
+                    "description": "CAGRA search device: gpu or cpu. CPU uses a converted HNSW graph for uncompressed/SQ CAGRA (--cagra_to_hnsw) or the CPU ADC walker for PQ-CAGRA. GPU selection requires a GPU-capable execution environment. The legacy values auto and cuda are deprecated and normalized to gpu."
                 },
                 "cagra_to_hnsw": {
                     "type": "boolean",
@@ -382,12 +380,22 @@
                         "hnsw",
                         "ivfflat"
                     ],
-                    "description": "FAISS type for --index faiss. GPU (--faiss_gpu) supports flatip and flatl2 only. ivfflat and hnsw are CPU-only; GPU IVF is --index ivf."
+                    "description": "FAISS type for --index faiss. GPU (--faiss_device gpu) supports flatip and flatl2 only. ivfflat and hnsw are CPU-only; GPU IVF is --index ivf."
+                },
+                "faiss_device": {
+                    "type": "string",
+                    "default": "cpu",
+                    "enum": [
+                        "cpu",
+                        "gpu",
+                        "cuda"
+                    ],
+                    "description": "FAISS build and search device: cpu or gpu. GPU is supported for FlatIP and FlatL2 only and requires a GPU-capable execution environment. The legacy value cuda is deprecated and normalized to gpu."
                 },
                 "faiss_gpu": {
                     "type": "boolean",
                     "default": false,
-                    "description": "Build and search FAISS FlatIP/FlatL2 on GPU. Requires -profile gpu. Not available for FAISS IVF or HNSW; GPU IVF is --index ivf."
+                    "description": "Deprecated compatibility alias for --faiss_device gpu. When true, build and search FAISS FlatIP/FlatL2 on GPU. Not available for FAISS IVF or HNSW; GPU IVF is --index ivf."
                 },
                 "faiss_nlist": {
                     "type": "integer",

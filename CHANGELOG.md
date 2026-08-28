@@ -30,11 +30,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### `Changed`
 
+- GPU selection is now per process. The `gpu` execution profile is removed;
+  use an ordinary execution profile and select GPU-capable stages with their
+  device parameters. User-facing device values are `cpu` and `gpu`; CUDA is
+  an implementation/runtime detail.
+- The canonical device parameters are `--embed_device`,
+  `--exact_rerank_device`, `--search_device`, and `--faiss_device`, each
+  accepting `cpu` or `gpu`. The legacy `cuda` values and
+  `--search_device auto` are deprecated aliases normalized to `gpu`;
+  `--faiss_gpu` is a deprecated alias for `--faiss_device gpu`.
+- GINFINITY 1.2.2 fixes model inference at float32 precision on CPU and GPU.
 - `ALIGN_CLUSTERS` is one task over all seed clusters (not one Nextflow job per query). It requests `--align_cpus` and 12 GB instead of the 6-CPU / 36 GB `process_medium` label. Independent crops run concurrently through GINFINITY-SW `align_many`. `--align_cpus` CLI values are coerced to integers so `--align_cpus 16` no longer fails with a String/Integer comparison.
 - Residue embeddings are packed as concatenated `embeddings.vectors.npy` + offsets (plus a compact `embeddings.npz`). Legacy per-id NPZ databases still load, and alignment only decompresses the IDs present in `clusters.tsv`.
 - `ESTIMATE_EVD` uses the same CPU/memory request and `--workers` for null-sample SW.
 - `--index` is `faiss|cagra|ivf|hnswlib`. cuVS IVF-Flat is `--index ivf` (the GPU IVF path).
-- FAISS public types are `flatip`, `flatl2`, `ivfflat`, and `hnsw`. `--faiss_gpu` is exact FlatIP/FlatL2 only. FAISS IVF and HNSW are CPU-only; GPU IVF is `--index ivf`, GPU graph is `--index cagra`.
+- FAISS public types are `flatip`, `flatl2`, `ivfflat`, and `hnsw`. `--faiss_device gpu` is exact FlatIP/FlatL2 only; `--faiss_gpu` remains a deprecated compatibility alias. FAISS IVF and HNSW are CPU-only; GPU IVF is `--index ivf`, GPU graph is `--index cagra`.
 - Default `--exact_rerank true`, `--candidate_k 200`. Raise `--seed_k` and `--candidate_k` with database size (see [docs/indexes.md](docs/indexes.md)).
 - Index guide rewritten without benchmark tables.
 - Published layout now uses `index/` for every reusable index, `seeds/` for
@@ -55,12 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in [docs/quantized-hnsw-research.md](docs/quantized-hnsw-research.md).
 - Optional GPU HNSWLIB companion (`--hnswlib_gpu true`) using pinned cuVS CAGRA
   over int8-scaled original windows, with exact reranking from the preserved
-  float16 embeddings. Requires `-profile gpu`; the serialized companion is
+  float16 embeddings. Requires a GPU-capable execution environment; the serialized companion is
   stored under `faiss/cagra/` and is identified as `HNSWLIB_GPU_CAGRA`.
-- ScaNN seed search (`--index scann`): [Google ScaNN](https://github.com/google-research/google-research/tree/master/scann) (`scann==1.4.2`) as a CPU-only alternative to FAISS. Auto-selects brute-force (<20k windows), AH+reorder (<100k), or tree+AH+reorder. ScaNN knobs are `--scann_leaves`, `--scann_leaves_to_search`, `--scann_reorder`, `--scann_ah_dim`, `--scann_anisotropic`, `--scann_soar`. Artifacts go to `faiss/scann/` instead of `index.faiss`. `--faiss_gpu` with ScaNN is an error.
+- ScaNN seed search (`--index scann`): [Google ScaNN](https://github.com/google-research/google-research/tree/master/scann) (`scann==1.4.2`) as a CPU-only alternative to FAISS. Auto-selects brute-force (<20k windows), AH+reorder (<100k), or tree+AH+reorder. ScaNN knobs are `--scann_leaves`, `--scann_leaves_to_search`, `--scann_reorder`, `--scann_ah_dim`, `--scann_anisotropic`, `--scann_soar`. Artifacts go to `faiss/scann/` instead of `index.faiss`. `--faiss_device gpu` (or its deprecated `--faiss_gpu` alias) with ScaNN is an error.
 - Launch warning when a library-specific flag does not apply to `--index` / `--faiss_index` (for example `--scann_reorder` with FAISS, or `--faiss_nlist` with `flatip`). Guide: [docs/indexes.md](docs/indexes.md).
 - Additional FAISS index types (`--faiss_index`): `flatip` (default), `flatl2`, `hnsw`, `ivfflat`, `lsh`, `sq`, `pq`, `ivfsq`, `ivfpq`, `ivfpqr`, matching [Faiss indexes](https://github.com/facebookresearch/faiss/wiki/Faiss-indexes). IVF/PQ/HNSW/LSH/SQ knobs are `--faiss_nlist`, `--faiss_nprobe`, `--faiss_pq_m`, `--faiss_pq_nbits`, `--faiss_pq_m_refine`, `--faiss_hnsw_m`, `--faiss_hnsw_ef_construction`, `--faiss_hnsw_ef_search`, `--faiss_lsh_nbits`, `--faiss_sq_type`.
-- Optional FAISS GPU (`--faiss_gpu`) for `flatip`, `flatl2`, `ivfflat`, `ivfpq`, and `ivfsq`. Requires `-profile gpu` so `BUILD_FAISS_INDEX` / `SEARCH_FAISS` get `accelerator = 1` and the `faiss-gpu` image; otherwise the pipeline errors. GPU-incompatible types also error.
+- Optional FAISS GPU (`--faiss_device gpu`) for `flatip` and `flatl2`; the deprecated `--faiss_gpu` flag is a compatibility alias. GPU selection is per process; `BUILD_FAISS_INDEX` / `SEARCH_FAISS` receive `accelerator = 1` and the `faiss-gpu` image. GPU-incompatible types also error.
 - Optional `start`/`end` columns on the structures table build GINFINITY sliced graphs (one independent subject/query per window, including several comma-separated windows on the same row). Defaults: `--keep_paired_neighbours` with `--context_hops 4`. Mixed examples are in `tests/data/sliced_structures.tsv`. Per-query alignment and plot filenames use `baseName` so two slices of the same accession do not collide.
 - GINflow logo in `docs/images/ginflow_logo.svg` (README header and search report masthead) and `docs/images/ginflow_icon.svg` (report favicon).
 - Metro-map pipeline schematic (`docs/images/ginflow_metro.svg`) generated with [nf-metro](https://github.com/seqeralabs/nf-metro) from `docs/images/ginflow_metro.mmd`.
@@ -73,7 +83,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Diverse Rfam test tables: 10-sequence `-profile smoke_test` (`tests/data/smoke_test_structures.tsv`) and 1200-sequence `-profile test` (`tests/data/test_structures.tsv`), rebuilt from 12 Rfam families using each record's full sequence and structure, with 5-mer Jaccard < 0.4.
 - GPU conda env `modules/embed_rna_graphs/environment.gpu.yml` and `tests/nextflow.gpu.config`, matching nf-core ribodetector's `task.accelerator` switch.
 - `scripts/bump_ginfinity_containers.py` rebuilds the CPU and GPU Wave images for a new `ginfinity` release and pins the URLs in the module `environment*.yml` files and `main.nf` processes.
-- GINFINITY embeddings are stored as float16; CPU model inference defaults to full precision, while the GPU profile defaults to float16. `--ginfinity_full_precision` enables full-precision inference explicitly.
+- GINFINITY embeddings are stored as float16; GINFINITY 1.2.2 fixes model inference at float32 precision on both CPU and GPU.
 
 ### `Changed`
 
@@ -94,12 +104,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test TSVs now emit pair-closed, balanced `.()` full molecules so `ginfinity build-graphs` no longer dies on unmatched brackets.
 - Sliced FAISS records and alignments now drop pairs that cross the window, so GINFINITY-SW formatting and structure plots receive a balanced subject.
 - `scripts/bump_ginfinity_containers.py` no longer treats a published Wave image as a hard failure when the service reports `succeeded: false`, and it retries SIF HEAD 403s (Python-urllib User-Agent) with a ranged GET.
-- `-profile gpu` now passes `--allow-nondeterministic-cuda` to `ginfinity embed-graphs`, which GINFINITY requires on CUDA.
-- `-profile gpu` now follows the nf-core ribodetector pattern: `task.accelerator` switches `EMBED_RNA_GRAPHS` to `environment.gpu.yml` (`ginfinity` + `pytorch-gpu=2.6.0` + `cuda-version=12.6`) and the CUDA Wave image. The published ginfinity-only Wave tag is CPU PyTorch, which caused `CUDA was requested but is unavailable`.
+- GPU embedding passes `--allow-nondeterministic-cuda` to `ginfinity embed-graphs`, which GINFINITY requires on CUDA.
+- GPU embedding follows the nf-core ribodetector pattern: `task.accelerator` switches `EMBED_RNA_GRAPHS` to `environment.gpu.yml` (`ginfinity` + `pytorch-gpu=2.6.0` + `cuda-version=12.6`) and the CUDA Wave image. The published ginfinity-only Wave tag is CPU PyTorch, which caused `CUDA was requested but is unavailable`.
 
 ### `Dependencies`
 
-- Graph and embed modules use `nicolas.aira::ginfinity=1.2.1` (sliced graphs; float16 embeddings).
+- Graph and embed modules use `nicolas.aira::ginfinity=1.2.2` (sliced graphs; float16 embeddings and float32 model inference).
 - FAISS modules use conda-forge `faiss-cpu=1.10.0` with MKL (`python=3.12`, `numpy=2.2.6`). GPU FAISS uses `pytorch::faiss-gpu=1.10.0` (CUDA 12.1 runtime) so it runs on host drivers that report CUDA 12.1/12.2 (e.g. 535.x). conda-forge `faiss-gpu` 1.10 is CUDA 12.9-only.
 - HNSWLIB modules use conda-forge `hnswlib=0.8.0` with Python 3.12 and NumPy 2.2.6; use `-profile conda` or `-profile wave` because the pinned FAISS/ScaNN Docker images do not include hnswlib.
 - Alignment uses `nicolas.aira::ginfinity-sw=1.2.0` (`align_many` / `align_scores_many`).

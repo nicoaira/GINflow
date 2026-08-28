@@ -2,7 +2,7 @@
     "Should build a graph shard from a structures TSV with extra columns": {
         "content": [
             [
-                "versions.yml:md5,8abfd4bee05136f18d8fe04eebbdade7"
+                "versions.yml:md5,2e6bd6bfd53797b7dc9b053eb6607def"
             ]
         ],
         "timestamp": "2026-08-18T17:36:36.991565647",

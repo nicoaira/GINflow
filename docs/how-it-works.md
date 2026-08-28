@@ -64,9 +64,7 @@ downstream stages need them.
 ## Stage 2 — Embeddings
 
 `EMBED_RNA_GRAPHS` runs `ginfinity embed-graphs`. Each nucleotide becomes
-a 128-dimensional vector. Storage is float16. CPU inference is full
-precision by default; `-profile gpu` uses float16 inference unless you
-pass `--ginfinity-full-precision`.
+a 128-dimensional vector. Storage is float16.
 
 For a sliced subject the embedding has shape `(end - start, 128)` —
 core nucleotides only. Context nodes are used during message passing
@@ -126,7 +124,7 @@ One of four libraries builds a reusable window database under `index/`:
 
 | `--index` | Quantize | Role |
 |---|---|---|
-| `faiss` (default) | `none`, `sq` | CPU FAISS; GPU Flat with `--faiss_gpu` |
+| `faiss` (default) | `none`, `sq` | CPU FAISS; GPU Flat with `--faiss_device gpu` |
 | `cagra` | `none`, `sq` | Stock cuVS CAGRA (GPU graph) |
 | `cagra` | `pq`, `opq` | Custom PQ-CAGRA (GPU build, GPU or CPU ADC search) |
 | `ivf` | `none`, `sq` | cuVS IVF-Flat (GPU) |

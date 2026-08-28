@@ -132,13 +132,14 @@ from shell history was:
 
 ```bash
 nextflow run main.nf \
-  -profile docker,gpu -resume \
+  -profile docker -resume \
   -c conf/pq_cagra_48gb.config \
   -w /mnt/ssd_samsung/ginflow-pq-cagra-wt/6k \
   --input tests/data/rfam_pdb_benchmark/rouskin_sample_6k.cleaned.4k.tsv \
   --query tests/data/rfam_pdb_benchmark/queries.tsv \
   --outdir /mnt/ssd_samsung/ginflow-benchmarks/pq-cagra-r4rna-6k \
   --index cagra --quantize pq --pq_m 16 --pq_nbits 4 \
+  --embed_device gpu \
   --plot_backend r4rna
 ```
 
@@ -418,9 +419,9 @@ attempt multiplier.
 
 - `nextflow config . -profile awsbatch` resolves `us-east-1`, the CPU default
   queue, empty `aws.batch.cliPath`, `maxSpotAttempts=5`, and `/tmp` volumes.
-- `-profile awsbatch,gpu` routes PQ-CAGRA build and GPU search to the smallest
-  homogeneous GPU-memory queue that satisfies `task.ext.gpu_memory_gb`; CPU
-  search stays on the CPU Spot queue.
+- `-profile awsbatch` routes GPU-selected PQ-CAGRA build and search tasks to
+  the smallest homogeneous GPU-memory queue that satisfies
+  `task.ext.gpu_memory_gb`; CPU search stays on the CPU Spot queue.
 - Standalone Nextflow tasks resolved the allocation-derived values at the
   requested 30k and 150k counts: build 7/11 GiB and 32/49 GiB host/GPU;
   1,000-window search shards 4/4 GiB and 16/12 GiB host/GPU. The same tasks
@@ -489,11 +490,12 @@ set +a
 
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 nextflow run . \
-  -profile awsbatch,fusion,gpu,smoke_test \
+  -profile awsbatch,fusion,smoke_test \
   -w s3://BUCKET/ginflow/work/gpu-smoke-${RUN_ID} \
   --input tests/data/smoke_test_structures.tsv \
   --query tests/data/smoke_test_structures.tsv \
   --index cagra --quantize pq --pq_m 16 --pq_nbits 4 \
+  --embed_device gpu \
   --outdir s3://BUCKET/ginflow/results/gpu-smoke-${RUN_ID} \
   -with-report -with-trace -with-timeline -with-dag \
   -name ginflow-gpu-smoke-${RUN_ID}
@@ -505,11 +507,12 @@ benchmark:
 ```bash
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 nextflow run . \
-  -profile awsbatch,fusion,gpu \
+  -profile awsbatch,fusion \
   -w s3://BUCKET/ginflow/work/pq-cagra-r4rna-30k-${RUN_ID} \
   --input tests/data/rouskin_sample_30k.tsv \
   --query tests/data/rfam_pdb_benchmark/queries.tsv \
   --index cagra --quantize pq --pq_m 16 --pq_nbits 4 \
+  --embed_device gpu \
   --plot_backend r4rna \
   --outdir s3://BUCKET/ginflow/results/pq-cagra-r4rna-30k-${RUN_ID} \
   -with-report -with-trace -with-timeline -with-dag \

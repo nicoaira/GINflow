@@ -2,7 +2,7 @@
     "Should embed a graph shard built from the test structures TSV": {
         "content": [
             [
-                "versions.yml:md5,2649b1cdae76d41ec1d2cb7bbd4ba97b"
+                "versions.yml:md5,f4d6c1f4ccfe5cfabebf1f89447dd620"
             ]
         ],
         "timestamp": "2026-08-18T17:28:43.877552555",

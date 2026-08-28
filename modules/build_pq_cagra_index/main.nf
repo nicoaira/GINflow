@@ -2,7 +2,6 @@ process BUILD_PQ_CAGRA_INDEX {
     tag "pq-cagra"
     label 'process_high_memory'
     label 'process_gpu'
-    accelerator 1
 
     conda "${moduleDir}/environment.yml"
     container "${ workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container ?

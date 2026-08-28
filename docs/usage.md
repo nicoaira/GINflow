@@ -155,7 +155,7 @@ The mode is inferred from the flags. Do not pass `--input`, `--query`, and `--da
 | `--query` + `--database` | Embed the query table and search an existing `index/` directory |
 | `--input` + `--query` | Build the database, search it, and publish it for later runs |
 
-`--database` must be a previous run's `index/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `cuvs/`, `cagra.index`, or `index.bin`). CAGRA/IVF GPU search needs `-profile gpu` unless the database was converted with `--cagra_to_hnsw`. If `--input` and `--query` are the same file, embeddings are computed once.
+`--database` must be a previous run's `index/` directory (`windows.tsv`, `meta.json`, `embeddings.npz`, `records.tsv`, and a vector index such as `index.faiss`, `cuvs/`, `cagra.index`, or `index.bin`). CAGRA/IVF GPU search requires `--search_device gpu`; CPU CAGRA search is available when the database was converted with `--cagra_to_hnsw`. If `--input` and `--query` are the same file, embeddings are computed once.
 
 The intermediate graph and embedding shard directories are not published by
 default. Use `--save_graphs true` to publish `graphs_shards/`,
@@ -242,38 +242,39 @@ nextflow run nicoaira/ginflow \
 
 A ready-made pair lives in the repo: `-profile test` builds the 1200-sequence database, and `tests/data/example_queries.tsv` is four queries under 200 nt from RF00001, RF00003, RF01725, and RF01852. See the README for the exact commands. `tests/data/sliced_structures.tsv` is a small mixed table (full molecules + single slice + overlapping slices) you can pass as `--input` and/or `--query`.
 
-CPU is the default embed device. For GPU:
+CPU is the default embed device. For GPU embedding:
 
 ```bash
 nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
+    -profile docker \
+    --embed_device gpu \
     --input structures.tsv \
     --outdir results
 ```
 
-`-profile gpu` sets `accelerator = 1` on `EMBED_RNA_GRAPHS`. That switches the process to `environment.gpu.yml` and the GPU Wave image (`ginfinity` + `pytorch-gpu` + `cuda-version`), and passes `--device cuda --allow-nondeterministic-cuda`. Graph construction stays on the CPU image.
+`--embed_device gpu` requests an accelerator for `EMBED_RNA_GRAPHS`. That switches the process to `environment.gpu.yml` and the GPU Wave image (`ginfinity` + `pytorch-gpu` + `cuda-version`), and enables the CUDA runtime. Graph construction stays on the CPU image.
 
-Embeddings are stored as float16. CPU runs use full-precision model inference by default; `-profile gpu` disables it for faster float16 inference. Pass `--ginfinity-full-precision` (or `--ginfinity_full_precision`) to force full-precision inference in any profile.
+Embeddings are stored as float16. GINFINITY 1.2.2 always performs model inference in float32 on both CPU and GPU; inference precision is not a pipeline option. This does not change the default embedding storage dtype.
 
 FAISS GPU is **opt-in** and separate from embedding:
 
 ```bash
 nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
+    -profile docker \
     --index faiss \
-    --faiss_gpu \
+    --faiss_device gpu \
     --faiss_index flatip \
     --input structures.tsv \
     --outdir results
 ```
 
-`--faiss_gpu` without `-profile gpu` is a pipeline error. With both, `BUILD_FAISS_INDEX` and `SEARCH_FAISS` switch to `environment.gpu.yml` (`pytorch::faiss-gpu=1.10.0`, CUDA 12.1 runtime) and the FAISS GPU Wave image. That runtime matches host drivers that report CUDA 12.1 or 12.2 (for example NVIDIA driver 535.x). A newer conda-forge CUDA 12.9 build will not start on those drivers.
+`--faiss_device gpu` selects GPU execution for `BUILD_FAISS_INDEX` and `SEARCH_FAISS`. Those processes switch to `environment.gpu.yml` (`pytorch::faiss-gpu=1.10.0`, CUDA 12.1 runtime) and the FAISS GPU Wave image. That runtime matches host drivers that report CUDA 12.1 or 12.2 (for example NVIDIA driver 535.x). A newer conda-forge CUDA 12.9 build will not start on those drivers. The deprecated `--faiss_gpu` flag is accepted as a compatibility alias for `--faiss_device gpu`.
 
 CAGRA and cuVS IVF-Flat are GPU-built. Convert a CAGRA graph for CPU search with `--cagra_to_hnsw true`:
 
 ```bash
 nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
+    -profile docker \
     --index cagra \
     --cagra_to_hnsw true \
     --input structures.tsv --query queries.tsv \

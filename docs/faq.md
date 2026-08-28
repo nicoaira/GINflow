@@ -25,13 +25,15 @@ contain `windows.tsv`, `meta.json`, residue `embeddings.npz` /
 The database’s `meta.json` (or on-disk artifact) already selected a
 library. Omit `--index` on query-only runs, or pass the matching value.
 
-### `--faiss_gpu requires -profile gpu`
+### GPU execution fails at launch
 
-GPU FAISS needs the `faiss-gpu` image and the NVIDIA runtime. Add
-`gpu` to `-profile`. `--faiss_gpu` only applies to `--index faiss`
-with `--faiss_index flatip` or `flatl2`.
+GPU FAISS needs the `faiss-gpu` image, an NVIDIA runtime, and
+`--faiss_device gpu`. GPU selection is per process; use an ordinary execution
+profile such as `-profile docker`, not a GPU profile. `--faiss_gpu` only
+applies to `--index faiss` with `--faiss_index flatip` or `flatl2`; it is a
+deprecated compatibility alias for `--faiss_device gpu`.
 
-### `--index cagra/ivf GPU build/search requires -profile gpu`
+### `--index cagra/ivf GPU build/search fails`
 
 CAGRA and cuVS IVF are GPU-built. To search a CAGRA graph without a
 GPU, build with `--cagra_to_hnsw true`, then query with
@@ -67,12 +69,14 @@ sequence. Test tables are pair-closed. For sliced inputs, GINflow
 rewrites crossing pairs as unpaired (`.`) on the published subject;
 the *source* structure still has to parse.
 
-### CUDA was requested but is unavailable
+### GPU was requested but is unavailable
 
-`-profile gpu` must be set so `EMBED_RNA_GRAPHS` gets
-`environment.gpu.yml` and the CUDA Wave image. The published
-ginfinity-only Wave tag is CPU PyTorch. Also pass `--allow-nondeterministic-cuda`
-(the gpu profile does this).
+Select the GPU explicitly, for example with `--embed_device gpu`,
+`--search_device gpu`, `--exact_rerank_device gpu`, or `--faiss_device gpu`.
+The affected process must receive a GPU-capable environment and an NVIDIA
+runtime through the selected execution profile. The GPU embedding path uses
+`environment.gpu.yml` and the CUDA Wave image. If using GINFINITY on CUDA,
+the process also enables the required nondeterministic-CUDA option.
 
 ### FAISS GPU image will not start
 
@@ -147,5 +151,5 @@ several databases separately and merge `alignments.tsv` yourself.
 
 Docker/Singularity is the usual path. Conda is fully supported and
 already lists `nicolas.aira` for GINFINITY, GINFINITY-SW, RNArtistCore,
-R4RNA, and PQ-CAGRA. GPU CAGRA/IVF/FAISS still need `-profile gpu` so
-the NVIDIA runtime is attached.
+R4RNA, and PQ-CAGRA. GPU CAGRA/IVF/FAISS require an NVIDIA-capable
+execution environment; GPU selection is attached to the individual tasks.

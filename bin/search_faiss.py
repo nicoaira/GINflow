@@ -221,8 +221,8 @@ def main(argv: list[str] | None = None) -> int:
         elif is_cuvs_database(args.database, db_meta):
             if not args.gpu and args.search_device != "gpu":
                 raise ValueError(
-                    "cuVS CAGRA/IVF search on GPU needs -profile gpu, or rebuild with "
-                    "--cagra_to_hnsw true and search with --search_device cpu"
+                    "cuVS CAGRA/IVF search requires --search-device gpu, or rebuild "
+                    "with --cagra_to_hnsw true and search with --search-device cpu"
                 )
             index = load_cuvs_index(args.database / "cuvs", db_meta, args.cuvs_n_probes)
             metric, lsh_nbits = str(db_meta.get("metric") or index.metric), None

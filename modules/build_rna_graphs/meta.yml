@@ -61,10 +61,10 @@ maintainers:
 containers:
   docker:
     linux/amd64:
-      name: community.wave.seqera.io/library/ginfinity:1.2.1--18305a26eeaa0fcb
-      build_id: bd-18305a26eeaa0fcb_1
+      name: community.wave.seqera.io/library/ginfinity:1.2.2--4f957fe3f833bed2
+      build_id: bd-4f957fe3f833bed2_1
   singularity:
     linux/amd64:
-      name: oras://community.wave.seqera.io/library/ginfinity:1.2.1--573a5f92b6b6c5be
-      build_id: bd-573a5f92b6b6c5be_1
-      https: https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/9a/9af1d5c2bf9cb29fac6bef4b49ac1c9d3bf0c0885dc4f8f3f44109e8832737bb/data
+      name: oras://community.wave.seqera.io/library/ginfinity:1.2.2--cd35d06300b1a8e4
+      build_id: bd-cd35d06300b1a8e4_1
+      https: https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/c9/c94aa66bb7d6f358fd34bdcc02f0cd69a44ca39a2bcee482e047a7ece445174a/data

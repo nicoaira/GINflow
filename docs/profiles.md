@@ -33,42 +33,67 @@ Custom PQ-CAGRA code is on Anaconda as:
 
 Recipe notes: [`packaging/conda/README.md`](../packaging/conda/README.md).
 
-## GPU
+## GPU execution
 
-`-profile gpu` does three things:
+There is no GPU profile. Select an ordinary execution profile, then choose
+GPU independently for the processes that support it. The module resource
+configuration requests an accelerator and attaches engine-specific GPU
+runtime options only to those tasks. CPU-only tasks remain CPU tasks and do
+not receive GPU runtime flags.
 
-1. `params.embed_device = 'cuda'`
-2. `params.ginfinity_full_precision = false` (float16 inference)
-3. NVIDIA runtime flags (`--gpus all` on Docker, `--nv` on
-   Singularity/Apptainer) and `accelerator = 1` on `EMBED_RNA_GRAPHS`
+For GPU embedding, use `--embed_device gpu`:
 
-That switches `EMBED_RNA_GRAPHS` to `environment.gpu.yml` and the GPU
-Wave image (`ginfinity` + `pytorch-gpu=2.6.0` + `cuda-version=12.6`).
-Graph construction stays on the CPU image.
+```bash
+nextflow run nicoaira/ginflow \
+    -profile docker \
+    --embed_device gpu \
+    --input structures.tsv \
+    --outdir results
+```
+
+This selects `environment.gpu.yml` and the GPU Wave image
+(`ginfinity` + `pytorch-gpu=2.6.0` + `cuda-version=12.6`). Graph construction
+stays on the CPU image. GINFINITY 1.2.2 always performs model inference in
+float32 on both CPU and GPU. The embedding storage dtype remains float16 by
+default.
+
+Device selection is independent between stages. For example:
+
+```bash
+nextflow run nicoaira/ginflow \
+    -profile docker \
+    --embed_device cpu \
+    --search_device gpu \
+    --exact_rerank_device gpu \
+    --query queries.tsv \
+    --database results/index \
+    --outdir search_results
+```
 
 FAISS GPU is **opt-in and separate**:
 
 ```bash
 nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
+    -profile docker \
     --index faiss \
-    --faiss_gpu \
+    --faiss_device gpu \
     --faiss_index flatip \
     --input structures.tsv \
     --outdir results
 ```
 
-`--faiss_gpu` without `-profile gpu` is a pipeline error. GPU FAISS is
-exact FlatIP / FlatL2 only (CUDA 12.1 runtime, host drivers that report
+`--faiss_device gpu` is a per-process GPU selection; it does not require a
+GPU profile. GPU FAISS is exact FlatIP / FlatL2 only (CUDA 12.1 runtime, host drivers that report
 12.1 or 12.2, for example NVIDIA 535.x). FAISS IVF and HNSW are
 CPU-only; GPU IVF is `--index ivf`; GPU graph is `--index cagra`.
 
-CAGRA and cuVS IVF **build** always need a GPU and `-profile gpu`.
+CAGRA and cuVS IVF **build** always need a GPU. Their resource configuration
+requests it automatically; no additional GPU profile is needed.
 Search a CAGRA graph on CPU after `--cagra_to_hnsw true`:
 
 ```bash
 nextflow run nicoaira/ginflow \
-    -profile docker,gpu \
+    -profile docker \
     --index cagra \
     --cagra_to_hnsw true \
     --input structures.tsv \
@@ -80,9 +105,28 @@ Later query-only runs can use `--search_device cpu` without a GPU.
 PQ/OPQ CAGRA still needs a GPU to **build**; CPU-only PQ **builds** use
 `--index hnswlib`.
 
-`--exact_rerank_device cuda` also requires `-profile gpu`.
+`--exact_rerank_device gpu` requests GPU exact reranking. CPU and GPU
+selection can be mixed in the same run.
 
 Who can build and who can search: [Window indexes](indexes.md#devices-who-can-build-and-who-can-search).
+
+### Migration from the former GPU profile
+
+Remove `gpu` from existing profile lists and select devices explicitly:
+
+| Previous setting | Current setting |
+|---|---|
+| GPU embedding selected by the profile | `--embed_device gpu` |
+| `--embed_device cuda` | `--embed_device gpu` |
+| `--exact_rerank_device cuda` | `--exact_rerank_device gpu` |
+| `--search_device auto` | Choose `--search_device gpu` or `--search_device cpu` explicitly |
+| `--faiss_gpu` with the former GPU profile | `--faiss_device gpu` with an ordinary execution profile |
+
+The legacy `cuda` device value and `--search_device auto` are deprecated
+aliases normalized to `gpu`. `--faiss_gpu` is a deprecated compatibility
+alias for `--faiss_device gpu`. CUDA remains the runtime/backend terminology
+used by the GPU containers and low-level tools; it is not a user-facing
+device value.
 
 ## Test profiles
 
@@ -135,8 +179,9 @@ process {
 }
 ```
 
-Keep GPU processes on a GPU partition; they set `accelerator = 1` when
-the gpu profile / `--faiss_gpu` / CAGRA search requires it.
+Keep GPU processes on a GPU partition. GPU-selected optional processes and
+GPU-required index builds set `accelerator = 1` in their module resource
+configuration.
 
 ## External nf-core profiles and AWS Batch
 
@@ -199,16 +244,17 @@ nextflow run . \
     --outdir s3://<bucket>/ginflow/results/cpu-${RUN_ID}
 ```
 
-For a GPU smoke test, add `gpu --faiss_gpu`; the profile routes GPU work to
-the GPU Spot queue while the On-Demand quota is pending:
+For a GPU smoke test, pass `--faiss_device gpu`; the resource configuration routes
+GPU work to the GPU Spot queue while the On-Demand quota is pending:
 
 ```bash
 nextflow run . \
-    -profile awsbatch,gpu,smoke_test \
+    -profile awsbatch,smoke_test \
     -w s3://<bucket>/ginflow/work/gpu-${RUN_ID} \
     --aws_gpu_queue ginflow-gpu-t4-16gb-spot-queue \
     --awsregion us-east-1 \
-    --faiss_gpu \
+    --faiss_device gpu \
+    --embed_device gpu \
     --input tests/data/smoke_test_structures.tsv \
     --query tests/data/smoke_test_structures.tsv \
     --outdir s3://<bucket>/ginflow/results/gpu-${RUN_ID}
@@ -250,7 +296,7 @@ and [Wave](https://docs.seqera.io/wave) documentation for current limits.
 
 | Component | Pin |
 |---|---|
-| GINFINITY | `nicolas.aira::ginfinity=1.2.1` |
+| GINFINITY | `nicolas.aira::ginfinity=1.2.2` |
 | GINFINITY-SW | `nicolas.aira::ginfinity-sw=1.2.0` |
 | FAISS CPU | conda-forge `faiss-cpu=1.10.0` (Python 3.12, NumPy 2.2.6, MKL) |
 | FAISS GPU | `pytorch::faiss-gpu=1.10.0` (CUDA 12.1) |

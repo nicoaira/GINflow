@@ -15,7 +15,7 @@
 
 ## Overnight execution
 
-- [x] Submit the GPU smoke command with `-profile awsbatch,fusion,gpu,smoke_test`.
+- [x] Submit the GPU smoke command with `-profile awsbatch,fusion,smoke_test`.
 - [x] Confirm `BUILD_RNA_GRAPHS` and `GENERATE_WINDOWS` use the CPU Spot queue.
 - [x] Confirm GPU embedding, PQ-CAGRA build, and PQ-CAGRA search use
       `ginflow-gpu-queue-virginia`.
