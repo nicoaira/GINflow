@@ -12,7 +12,14 @@ process DRAW_SW {
     path clusters
     path query_embeddings, stageAs: 'query_emb/*'
     path database
-    path parameters
+    val align_mu
+    val align_sigma
+    val align_gamma
+    val align_score_min
+    val align_score_max
+    val align_gap_open
+    val align_gap_extend
+    val align_score_offset
 
     output:
     path "plots_sw_*",    emit: plots
@@ -29,9 +36,16 @@ process DRAW_SW {
     plot_sw.py \\
         --alignments ${alignments} \\
         --clusters ${clusters} \\
-        --parameters ${parameters} \\
         --query-embeddings query_emb/*.npz \\
         --database ${database} \\
+        --mu ${align_mu} \\
+        --sigma ${align_sigma} \\
+        --gamma ${align_gamma} \\
+        --score-min ${align_score_min} \\
+        --score-max ${align_score_max} \\
+        --gap-open ${align_gap_open} \\
+        --gap-extend ${align_gap_extend} \\
+        --score-offset ${align_score_offset} \\
         --outdir ${plot_dir} \\
         --pad ${params.align_pad} \\
         --max-cells ${params.align_max_cells} \\

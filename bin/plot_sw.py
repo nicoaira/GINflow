@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import base64
 import csv
-import json
 import re
 import struct
 import sys
@@ -17,6 +16,7 @@ import numpy as np
 from ginfinity_sw import ScoringParameters, align, similarity_matrix, transform_scores
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from alignment_parameters import add_scoring_arguments, scoring_parameters_from_args  # noqa: E402
 from record_pack import load_embedding_files, load_residue_embeddings  # noqa: E402
 
 SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
@@ -54,18 +54,6 @@ def xml_escape(value: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
-
-
-def load_json(path: Path) -> dict:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    return payload
-
-
-def load_parameters(path: Path) -> ScoringParameters:
-    payload = load_json(path)
-    return ScoringParameters(**payload.get("scoring_parameters", payload))
 
 
 def load_clusters(path: Path) -> dict[str, dict]:
@@ -364,7 +352,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--alignments", type=Path, required=True)
     parser.add_argument("--clusters", type=Path, required=True)
-    parser.add_argument("--parameters", type=Path, required=True)
     parser.add_argument("--query-embeddings", type=Path, nargs="+", required=True)
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--outdir", type=Path, required=True)
@@ -373,6 +360,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-pairs", type=int, default=25)
     parser.add_argument("--highlight-colour", default="#24B064")
     parser.add_argument("--cpus", type=int, default=1)
+    add_scoring_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -388,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
         with args.alignments.open(newline="") as handle:
             rows = list(csv.DictReader(handle, delimiter="\t"))
         clusters = load_clusters(args.clusters)
-        params = load_parameters(args.parameters)
+        params = scoring_parameters_from_args(args)
         query_emb = load_embedding_files(args.query_embeddings)
         target_emb = resolve_targets(args.database)
     except (OSError, ValueError, TypeError, KeyError) as exc:

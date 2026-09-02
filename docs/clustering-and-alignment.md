@@ -73,20 +73,32 @@ target [cluster.target_start - pad, cluster.target_end + pad)
 is the maximum product of the two crop lengths; larger crops are
 rejected so a runaway cluster cannot explode DP memory.
 
-Scoring is **embedding-only cosine**, not a nucleotide matrix. Gap
-open, gap extend, and the cosine → substitution map live in
-`assets/alignment.json` and are passed to
-[GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW). Independent
-crops are aligned concurrently (`--align_cpus`).
+Scoring is **embedding-only cosine**, not a nucleotide matrix. The
+cosine → substitution transform and affine-gap costs are configured by
+the following `nextflow.config` parameters and passed to
+[GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW):
 
-Each cluster may yield several disjoint local HSPs inside the crop
-(`align_multiple`). Filters for the SW call (and for EVD calibration):
+| Parameter | Default | Role |
+|---|---:|---|
+| `--align_mu` | `0.3890` | Transform location (`mu`) |
+| `--align_sigma` | `1.0000` | Transform scale (`sigma`) |
+| `--align_gamma` | `1.5616` | Transform exponent (`gamma`) |
+| `--align_score_min` | `-2.7734` | Lower transform score bound |
+| `--align_score_max` | `6.1810` | Upper transform score bound |
+| `--align_gap_open` | `1.6042` | Affine gap-open cost |
+| `--align_gap_extend` | `0.1923` | Affine gap-extension cost |
+| `--align_score_offset` | `0.0449` | Transform score offset |
+
+Independent crops are aligned concurrently (`--align_cpus`).
+`ALIGN_CLUSTERS` emits one best local alignment per cluster. The
+multi-HSP filters below are used by `ESTIMATE_EVD` to calibrate pair-level
+statistics:
 
 | Flag | Default | Role |
 |---|---:|---|
-| `--align_max_alignments` | 16 | Max disjoint local HSPs kept from one crop |
-| `--align_min_score` | 0.0 | Minimum HSP score |
-| `--align_min_match_count` | 1 | Minimum matched columns |
+| `--align_max_alignments` | 16 | Max disjoint local HSPs kept per EVD sample |
+| `--align_min_score` | 0.0 | Minimum HSP score for EVD calibration |
+| `--align_min_match_count` | 1 | Minimum matched columns for EVD calibration |
 
 `ALIGN_CLUSTERS` deliberately writes **one TSV row per seed cluster**.
 It is not the pair-level result.

@@ -188,10 +188,11 @@ Each cluster is a candidate local alignment, not yet a gapped alignment.
 [GINFINITY-SW](https://github.com/nicoaira/GINFINITY-SW) on a padded
 crop of each cluster (`--align_pad`, default 32 nt), not the full
 molecules. Independent crops use `--align_cpus` threads (default 8).
-Scoring is embedding cosine with the parameters in
-`assets/alignment.json` (gap open / extend, score offset). The process
-emits **one row per cluster**. Plot processes still split that table
-per query.
+Scoring is embedding cosine with the transform and affine-gap parameters
+configured in `nextflow.config` (`align_mu`, `align_sigma`,
+`align_gamma`, `align_score_min`, `align_score_max`, `align_gap_open`,
+`align_gap_extend`, and `align_score_offset`). The process emits **one
+row per cluster**. Plot processes still split that table per query.
 
 `MERGE_ALIGNMENTS` is the pair-level boundary: every HSP for the same
 query and target becomes one BLAST-style result with `total_score`
@@ -244,6 +245,6 @@ Details: [Plotting and report](plotting.md) and [Output](output.md).
 | Nextflow processes | `modules/<name>/main.nf` |
 | Python / C++ tools | `bin/` |
 | Parameters | `nextflow.config`, `nextflow_schema.json` |
-| SW scoring | `assets/alignment.json` |
+| SW scoring | Alignment parameters in `nextflow.config` |
 | PQ-CAGRA native code | `vendor/cagra-pq-adc/` |
 | hnswlib (PQ CPU path) | `vendor/hnswlib-0.8.0/` |

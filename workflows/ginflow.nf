@@ -58,7 +58,6 @@ workflow GINFLOW {
     ch_plots_r4rna      = channel.empty()
     ch_plots_sw         = channel.empty()
     ch_report           = channel.empty()
-    alignment_params    = file("${projectDir}/assets/alignment.json", checkIfExists: true)
     hnsw_bundle         = file("${projectDir}/vendor/hnswlib-0.8.0", checkIfExists: true)
     def pq_codes        = quantize_mode in ['pq', 'opq']
     def sq_vectors      = quantize_mode == 'sq'
@@ -155,7 +154,17 @@ workflow GINFLOW {
         }
         ch_search_database = ch_built_database
 
-        ESTIMATE_EVD_BUILD(ch_built_database, alignment_params)
+        ESTIMATE_EVD_BUILD(
+            ch_built_database,
+            params.align_mu,
+            params.align_sigma,
+            params.align_gamma,
+            params.align_score_min,
+            params.align_score_max,
+            params.align_gap_open,
+            params.align_gap_extend,
+            params.align_score_offset
+        )
         ch_versions = ch_versions.mix(ESTIMATE_EVD_BUILD.out.versions)
         ch_evd      = ESTIMATE_EVD_BUILD.out.evd
         ch_published_evd = ESTIMATE_EVD_BUILD.out.evd
@@ -166,7 +175,17 @@ workflow GINFLOW {
             ch_evd = channel.fromPath(evd_existing, checkIfExists: true)
         }
         else {
-            ESTIMATE_EVD_QUERY(ch_search_database, alignment_params)
+            ESTIMATE_EVD_QUERY(
+                ch_search_database,
+                params.align_mu,
+                params.align_sigma,
+                params.align_gamma,
+                params.align_score_min,
+                params.align_score_max,
+                params.align_gap_open,
+                params.align_gap_extend,
+                params.align_score_offset
+            )
             ch_versions = ch_versions.mix(ESTIMATE_EVD_QUERY.out.versions)
             ch_evd      = ESTIMATE_EVD_QUERY.out.evd
             ch_published_evd = ESTIMATE_EVD_QUERY.out.evd
@@ -358,7 +377,14 @@ workflow GINFLOW {
             ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
             ch_query_metadata.map { meta, tensors, sidecar -> sidecar }.collect(),
             ch_search_database.collect(),
-            alignment_params,
+            params.align_mu,
+            params.align_sigma,
+            params.align_gamma,
+            params.align_score_min,
+            params.align_score_max,
+            params.align_gap_open,
+            params.align_gap_extend,
+            params.align_score_offset,
             ch_evd.collect()
         )
         ch_versions = ch_versions.mix(ALIGN_CLUSTERS.out.versions)
@@ -394,7 +420,14 @@ workflow GINFLOW {
                 CLUSTER_SEEDS.out.clusters,
                 ch_query_embeddings.map { meta, npz, manifest -> npz }.collect(),
                 ch_search_database.collect(),
-                alignment_params
+                params.align_mu,
+                params.align_sigma,
+                params.align_gamma,
+                params.align_score_min,
+                params.align_score_max,
+                params.align_gap_open,
+                params.align_gap_extend,
+                params.align_score_offset
             )
             ch_versions = ch_versions.mix(DRAW_SW.out.versions)
             ch_plots_sw = DRAW_SW.out.plots.collect()

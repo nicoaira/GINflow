@@ -13,7 +13,14 @@ process ALIGN_CLUSTERS {
     path query_embeddings, stageAs: 'query_emb/*'
     path query_metadata, stageAs: 'query_meta/*'
     path database
-    path parameters
+    val align_mu
+    val align_sigma
+    val align_gamma
+    val align_score_min
+    val align_score_max
+    val align_gap_open
+    val align_gap_extend
+    val align_score_offset
     path evd
 
     output:
@@ -36,11 +43,18 @@ process ALIGN_CLUSTERS {
     export NUMBA_NUM_THREADS=${task.cpus}
     align_clusters.py \\
         --clusters ${clusters} \\
-        --parameters ${parameters} \\
         --query-embeddings query_emb/*.npz \\
         --query-metadata query_meta/*.json \\
         --database ${database} \\
         --evd ${evd} \\
+        --mu ${align_mu} \\
+        --sigma ${align_sigma} \\
+        --gamma ${align_gamma} \\
+        --score-min ${align_score_min} \\
+        --score-max ${align_score_max} \\
+        --gap-open ${align_gap_open} \\
+        --gap-extend ${align_gap_extend} \\
+        --score-offset ${align_score_offset} \\
         --pad ${params.align_pad} \\
         --max-cells ${params.align_max_cells} \\
         --cpus ${task.cpus} \\

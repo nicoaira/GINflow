@@ -140,6 +140,14 @@ CPU PQ/OPQ only.
 | `--align_pad` | `32` | Extra nucleotides on each side of the cluster crop. |
 | `--align_max_cells` | `16777216` | Max DP cells (crop length product). |
 | `--align_cpus` | `8` | Threads for `ALIGN_CLUSTERS` and `ESTIMATE_EVD`. One alignment task loads embeddings once. |
+| `--align_mu` | `0.3890` | GINFINITY-SW cosine-to-substitution transform location. |
+| `--align_sigma` | `1.0000` | GINFINITY-SW transform scale. |
+| `--align_gamma` | `1.5616` | GINFINITY-SW transform exponent. |
+| `--align_score_min` | `-2.7734` | Lower bound of the cosine-to-substitution score transform. |
+| `--align_score_max` | `6.1810` | Upper bound of the cosine-to-substitution score transform. |
+| `--align_gap_open` | `1.6042` | GINFINITY-SW affine gap-open cost. |
+| `--align_gap_extend` | `0.1923` | GINFINITY-SW affine gap-extension cost. |
+| `--align_score_offset` | `0.0449` | Offset applied by the cosine-to-substitution score transform. |
 | `--align_max_alignments` | `16` | Max disjoint local HSPs per crop / EVD sample. |
 | `--align_min_score` | `0.0` | Minimum HSP score retained. |
 | `--align_min_match_count` | `1` | Minimum matched columns retained. |

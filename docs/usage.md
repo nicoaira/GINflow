@@ -195,6 +195,16 @@ Seeds are then clustered along nearby diagonals and each cluster is aligned with
 | `--cluster_max_diagonal_span` | `96` | Max diagonal breadth of one cluster |
 | `--cluster_max_seed_rank` | `10` | Ignore seed hits worse than this rank |
 | `--align_pad` | `32` | Extra nucleotides on each side of the cluster crop |
+| `--align_max_cells` | `16777216` | Maximum DP cells in one cluster crop |
+| `--align_cpus` | `8` | Threads for alignment and EVD calibration |
+| `--align_mu` | `0.3890` | GINFINITY-SW transform location |
+| `--align_sigma` | `1.0000` | GINFINITY-SW transform scale |
+| `--align_gamma` | `1.5616` | GINFINITY-SW transform exponent |
+| `--align_score_min` | `-2.7734` | Lower transform score bound |
+| `--align_score_max` | `6.1810` | Upper transform score bound |
+| `--align_gap_open` | `1.6042` | Affine gap-open cost |
+| `--align_gap_extend` | `0.1923` | Affine gap-extension cost |
+| `--align_score_offset` | `0.0449` | Transform score offset |
 | `--align_max_alignments` | `16` | Maximum disjoint local HSPs used for pair-level EVD calibration |
 | `--align_min_score` | `0.0` | Minimum HSP score retained for pair-level EVD calibration |
 | `--align_min_match_count` | `1` | Minimum matched columns retained for pair-level EVD calibration |

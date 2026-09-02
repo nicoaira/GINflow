@@ -56,7 +56,14 @@ nextflow_process {
             process {
                 """
                 input[0] = BUILD_FAISS_INDEX.out.database
-                input[1] = file("${projectDir}/assets/alignment.json", checkIfExists: true)
+                input[1] = 0.3890
+                input[2] = 1.0000
+                input[3] = 1.5616
+                input[4] = -2.7734
+                input[5] = 6.1810
+                input[6] = 1.6042
+                input[7] = 0.1923
+                input[8] = 0.0449
                 """
             }
         }

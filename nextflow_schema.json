@@ -502,6 +502,50 @@
                     "minimum": 1,
                     "description": "CPU threads for ALIGN_CLUSTERS and ESTIMATE_EVD. Each task loads residue embeddings once and aligns independent cluster crops concurrently."
                 },
+                "align_mu": {
+                    "type": "number",
+                    "default": 0.3890,
+                    "description": "GINFINITY-SW cosine-to-substitution transform location parameter (mu)."
+                },
+                "align_sigma": {
+                    "type": "number",
+                    "default": 1.0000,
+                    "exclusiveMinimum": 0,
+                    "description": "GINFINITY-SW cosine-to-substitution transform scale parameter (sigma)."
+                },
+                "align_gamma": {
+                    "type": "number",
+                    "default": 1.5616,
+                    "exclusiveMinimum": 0,
+                    "description": "GINFINITY-SW cosine-to-substitution transform exponent parameter (gamma)."
+                },
+                "align_score_min": {
+                    "type": "number",
+                    "default": -2.7734,
+                    "description": "Lower bound of the GINFINITY-SW cosine-to-substitution score transform."
+                },
+                "align_score_max": {
+                    "type": "number",
+                    "default": 6.1810,
+                    "description": "Upper bound of the GINFINITY-SW cosine-to-substitution score transform."
+                },
+                "align_gap_open": {
+                    "type": "number",
+                    "default": 1.6042,
+                    "minimum": 0,
+                    "description": "GINFINITY-SW affine gap-open cost."
+                },
+                "align_gap_extend": {
+                    "type": "number",
+                    "default": 0.1923,
+                    "minimum": 0,
+                    "description": "GINFINITY-SW affine gap-extension cost."
+                },
+                "align_score_offset": {
+                    "type": "number",
+                    "default": 0.0449,
+                    "description": "Offset applied by the GINFINITY-SW cosine-to-substitution score transform."
+                },
                 "evd_samples": {
                     "type": "integer",
                     "default": 1000,

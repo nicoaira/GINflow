@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import sys
@@ -14,28 +13,17 @@ import numpy as np
 from ginfinity_sw import ScoringParameters, align_multiple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from alignment_parameters import (  # noqa: E402
+    add_scoring_arguments,
+    scoring_parameters_digest,
+    scoring_parameters_from_args,
+    scoring_parameters_payload,
+)
 from record_pack import load_residue_embeddings  # noqa: E402
 
 
 EULER_MASCHERONI = 0.5772156649015329
 LN2 = math.log(2.0)
-
-
-def load_json(path: Path) -> dict:
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    return payload
-
-
-def load_parameters(path: Path) -> tuple[ScoringParameters, str]:
-    raw = path.read_bytes()
-    payload = json.loads(raw.decode())
-    if not isinstance(payload, dict):
-        raise ValueError(f"{path} is not a JSON object")
-    params = ScoringParameters(**payload.get("scoring_parameters", payload))
-    digest = hashlib.sha256(raw).hexdigest()
-    return params, digest
 
 
 def load_embeddings(path: Path) -> dict[str, np.ndarray]:
@@ -47,19 +35,6 @@ def load_embeddings(path: Path) -> dict[str, np.ndarray]:
     if len(arrays) < 2:
         raise ValueError(f"{path} needs at least two residue embeddings of length >= 2")
     return arrays
-
-
-def scoring_parameters_payload(params: ScoringParameters) -> dict:
-    return {
-        "mu": params.mu,
-        "sigma": params.sigma,
-        "gamma": params.gamma,
-        "score_min": params.score_min,
-        "score_max": params.score_max,
-        "gap_open": params.gap_open,
-        "gap_extend": params.gap_extend,
-        "score_offset": params.score_offset,
-    }
 
 
 def random_crop(matrix: np.ndarray, max_length: int, rng: np.random.Generator) -> np.ndarray:
@@ -296,7 +271,6 @@ def evalue_from_log(log_e: float) -> float:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database", type=Path, required=True, help="Packed index/ directory")
-    parser.add_argument("--parameters", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=1000)
     parser.add_argument("--max-length", type=int, default=400)
@@ -306,6 +280,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--min-match-count", type=int, default=1)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--workers", type=int, default=1)
+    add_scoring_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -327,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.workers < 1:
             raise ValueError("--workers must be >= 1")
         embeddings = load_embeddings(args.database)
-        params, scoring_sha256 = load_parameters(args.parameters)
+        params = scoring_parameters_from_args(args)
         rng = np.random.default_rng(args.seed)
         scores, q_len, t_len = sample_null_scores(
             embeddings,
@@ -362,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         "database_residues": database_residues(embeddings),
         "max_length": args.max_length,
         "random_seed": args.seed,
-        "scoring_sha256": scoring_sha256,
+        "scoring_sha256": scoring_parameters_digest(params),
         "scoring_parameters": scoring_parameters_payload(params),
         "gumbel_loc": fit["gumbel_loc"],
         "gumbel_scale": fit["gumbel_scale"],

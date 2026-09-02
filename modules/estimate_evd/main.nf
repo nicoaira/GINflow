@@ -10,7 +10,14 @@ process ESTIMATE_EVD {
 
     input:
     path database
-    path parameters
+    val align_mu
+    val align_sigma
+    val align_gamma
+    val align_score_min
+    val align_score_max
+    val align_gap_open
+    val align_gap_extend
+    val align_score_offset
 
     output:
     path "evd.json",     emit: evd
@@ -29,8 +36,15 @@ process ESTIMATE_EVD {
     export NUMBA_NUM_THREADS=${task.cpus}
     estimate_evd.py \\
         --database ${database} \\
-        --parameters ${parameters} \\
         --output evd.json \\
+        --mu ${align_mu} \\
+        --sigma ${align_sigma} \\
+        --gamma ${align_gamma} \\
+        --score-min ${align_score_min} \\
+        --score-max ${align_score_max} \\
+        --gap-open ${align_gap_open} \\
+        --gap-extend ${align_gap_extend} \\
+        --score-offset ${align_score_offset} \\
         --samples ${params.evd_samples} \\
         --max-length ${params.evd_max_length} \\
         --max-cells ${params.align_max_cells} \\

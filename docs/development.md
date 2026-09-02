@@ -18,7 +18,7 @@ modules/<name>/         # one process (sometimes two) per directory
   environment.gpu.yml   # when the process has a CUDA image
   tests/
 bin/                    # tools invoked by processes
-assets/alignment.json   # GINFINITY-SW scoring parameters
+assets/                 # bundled input assets
 conf/                   # base + test / smoke_test / pq_cagra resources
 docs/                   # this wiki
 tests/                  # pipeline-level nf-test + pytest

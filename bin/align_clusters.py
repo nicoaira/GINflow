@@ -20,6 +20,7 @@ import numpy as np
 from ginfinity_sw import Alignment, ScoringParameters, align, format_alignment, transform_scores
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from alignment_parameters import add_scoring_arguments, scoring_parameters_from_args  # noqa: E402
 from record_pack import load_embedding_files, load_residue_embeddings  # noqa: E402
 from sw_batch import align_score_matrices, pin_blas_threads  # noqa: E402
 
@@ -192,11 +193,6 @@ def load_json(path: Path) -> dict:
     return payload
 
 
-def load_parameters(path: Path) -> ScoringParameters:
-    payload = load_json(path)
-    return ScoringParameters(**payload.get("scoring_parameters", payload))
-
-
 def load_clusters(path: Path) -> list[dict]:
     with path.open(newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
@@ -296,7 +292,6 @@ def align_cluster(
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--clusters", type=Path, required=True)
-    parser.add_argument("--parameters", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--alignment-text", type=Path)
     parser.add_argument("--stats-json", type=Path)
@@ -314,6 +309,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=1,
         help="independent-pair SW workers (Numba threads)",
     )
+    add_scoring_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -347,7 +343,7 @@ def main(argv: list[str] | None = None) -> int:
     load_started = time.perf_counter()
     try:
         clusters = load_clusters(args.clusters)
-        params = load_parameters(args.parameters)
+        params = scoring_parameters_from_args(args)
         query_ids = {cluster["query_id"] for cluster in clusters}
         target_ids = {cluster["target_id"] for cluster in clusters}
         query_emb = normalize_residue_dict(
