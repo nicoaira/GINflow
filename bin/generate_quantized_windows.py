@@ -73,7 +73,9 @@ def slice_sq_windows(codes: np.ndarray, scale: np.ndarray, zero: np.ndarray, win
         return np.empty((0, window_size * reconstructed.shape[1]), dtype=np.float32)
     view = np.lib.stride_tricks.sliding_window_view(reconstructed, window_size, axis=0)[::stride][:count]
     stacked = np.ascontiguousarray(np.transpose(view, (0, 2, 1)))
-    return stacked.reshape(count, window_size * reconstructed.shape[1]).astype(np.float32, copy=False)
+    flat = stacked.reshape(count, window_size * reconstructed.shape[1]).astype(np.float32, copy=False)
+    norms = np.linalg.norm(flat, axis=1, keepdims=True)
+    return flat / np.maximum(norms, np.float32(1e-12))
 
 
 def generate_windows(input_dir: Path, output_dir: Path, window_size: int, stride: int) -> dict[str, Any]:
@@ -81,6 +83,7 @@ def generate_windows(input_dir: Path, output_dir: Path, window_size: int, stride
         raise ValueError("window-size and stride must be >= 1")
     quantizer = load_json(input_dir / "quantizer.json")
     mode = str(quantizer["mode"])
+    embedding_dim = int(quantizer["embedding_dim"])
     shards = pair_code_shards(input_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     scale = zero = None
@@ -127,7 +130,9 @@ def generate_windows(input_dir: Path, output_dir: Path, window_size: int, stride
                 "mode": mode,
                 "window_size": window_size,
                 "stride": stride,
+                "embedding_dim": embedding_dim,
                 "window_dim": int(next(iter(windows.values())).shape[1]) if windows else 0,
+                "l2_normalized": mode == "sq",
                 "pq_m": pq_m or None,
                 "pq_nbits": nbits or None,
                 "records": records,

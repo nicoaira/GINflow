@@ -2,7 +2,9 @@
 """Unit tests for node-level SQ / PQ / OPQ and SDC artifacts."""
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,6 +24,7 @@ from node_quantization import (  # noqa: E402
     train_node_sq,
     unpack_pq_codes,
 )
+from generate_quantized_windows import generate_windows  # noqa: E402
 
 
 def l2_nodes(n: int, dim: int = 128, seed: int = 0) -> np.ndarray:
@@ -73,6 +76,35 @@ class TestNodeQuantization(unittest.TestCase):
         self.assertEqual(codes.dtype, np.uint8)
         self.assertEqual(codes.shape, nodes.shape)
         self.assertTrue(np.all(scale > 0))
+
+    def test_sq_window_manifest_keeps_dimension_and_normalizes_windows(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            quantization = Path(directory) / "quantization"
+            nodes = quantization / "nodes"
+            nodes.mkdir(parents=True)
+            (quantization / "quantizer.json").write_text(
+                json.dumps({"mode": "sq", "embedding_dim": 3})
+            )
+            np.save(quantization / "sq_scale.npy", np.ones(3, dtype=np.float32))
+            np.save(quantization / "sq_zero.npy", np.zeros(3, dtype=np.float32))
+            np.savez_compressed(
+                nodes / "sample.quantized.npz",
+                sample=np.array([[255, 0, 0], [0, 255, 0], [0, 0, 255]], dtype=np.uint8),
+            )
+            (nodes / "sample.quantized.manifest.json").write_text(
+                json.dumps({"records": [{"identifier": "sample", "length": 3}]})
+            )
+
+            generate_windows(quantization, Path(directory) / "windows", window_size=2, stride=1)
+
+            manifest_path = Path(directory) / "windows" / "sample.windows.manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["embedding_dim"], 3)
+            self.assertEqual(manifest["window_dim"], 6)
+            self.assertTrue(manifest["l2_normalized"])
+            with np.load(Path(directory) / "windows" / "sample.windows.npz") as archive:
+                norms = np.linalg.norm(archive["sample"], axis=1)
+            np.testing.assert_allclose(norms, np.ones(2), atol=1e-6)
 
 
 if __name__ == "__main__":

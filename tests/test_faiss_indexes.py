@@ -29,6 +29,8 @@ from faiss_index import (  # noqa: E402
     resolve_pq_m,
     supports_gpu,
 )
+from build_faiss import build_index  # noqa: E402
+from generate_quantized_windows import generate_windows  # noqa: E402
 
 
 def unit_vectors(n: int, dim: int, seed: int = 0) -> np.ndarray:
@@ -116,6 +118,37 @@ class TestBuildIndexes(unittest.TestCase):
 
     def test_hnsw(self) -> None:
         self._roundtrip(IndexOptions(index_type="hnsw", hnsw_m=8, hnsw_ef_search=16))
+
+    def test_hnsw_builds_from_sq_window_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            quantization = root / "quantization"
+            nodes = quantization / "nodes"
+            nodes.mkdir(parents=True)
+            (quantization / "quantizer.json").write_text(
+                '{"mode": "sq", "embedding_dim": 3}'
+            )
+            np.save(quantization / "sq_scale.npy", np.ones(3, dtype=np.float32))
+            np.save(quantization / "sq_zero.npy", np.zeros(3, dtype=np.float32))
+            np.savez_compressed(
+                nodes / "sample.quantized.npz",
+                sample=np.array([[255, 0, 0], [0, 255, 0], [0, 0, 255]], dtype=np.uint8),
+            )
+            (nodes / "sample.quantized.manifest.json").write_text(
+                '{"records": [{"identifier": "sample", "length": 3}]}'
+            )
+            windows_dir = root / "windows"
+            generate_windows(quantization, windows_dir, window_size=2, stride=1)
+
+            index, mapping, metadata = build_index(
+                [(windows_dir / "sample.windows.npz", windows_dir / "sample.windows.manifest.json")],
+                IndexOptions(index_type="hnsw", hnsw_m=4, hnsw_ef_search=8),
+            )
+
+            self.assertEqual(index.ntotal, 2)
+            self.assertEqual(len(mapping), 2)
+            self.assertEqual(metadata["embedding_dim"], 3)
+            self.assertEqual(metadata["window_dim"], 6)
 
     def test_ivfflat(self) -> None:
         self._roundtrip(IndexOptions(index_type="ivfflat", nlist=4, nprobe=4))
